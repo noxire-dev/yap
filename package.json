@@ -1,0 +1,15 @@
+{
+  "name": "kumi",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kumi": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun src/cli.ts",
+    "check": "bun src/crew.check.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

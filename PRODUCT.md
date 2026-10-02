@@ -1,0 +1,72 @@
+# Product
+
+<!-- impeccable:product-schema 1 -->
+
+## Platform
+
+web
+
+## Stack
+
+Bun (no dependencies): `Bun.serve`, `bun:sqlite`, one static `ui/index.html` with vanilla JS and no build step.
+Delegated: the owner's standing rule is stdlib and native platform features before dependencies.
+
+## Users
+
+A solo developer with several repositories that no longer need their attention. They want work to keep moving
+on those repos without supervising agents step by step. They check in occasionally, often once in the morning,
+and otherwise only want to hear about decisions that are genuinely theirs.
+
+Personal tool first, on the owner's Windows machine. It should stay releasable: no hardcoded paths, a first run
+someone else could follow.
+
+## Product Purpose
+
+kumi turns a goal into merged commits without a human in the loop. A planner breaks the goal into tickets with
+acceptance criteria. An agent takes each ticket on its own branch in its own git worktree. A second agent, in a
+fresh context that never saw the author's reasoning, checks the diff against every criterion. Approved work is
+squashed onto the base branch in a scratch worktree, the project's gate command runs on that merged result, and
+only then does the base branch move.
+
+Success: the owner types a goal, leaves, and comes back to a merge log they trust, plus a short list of tickets
+that needed them.
+
+## Positioning
+
+The agent that wrote a change never decides whether it merges. Every merge carries its receipt in the commit
+message: ticket, rounds, reviewer, and each criterion. Modelled on niwa.build, which is closed and has no
+Windows build.
+
+## Operating Context
+
+- Runs on localhost. Code, board and journal stay on the machine; prompts go to the owner's existing Claude account.
+- Agents are headless Claude Code processes (`claude -p`), one process per run.
+- Several projects at once; each is a git repo with a base branch, an optional gate command and a worker count.
+- The owner is rarely watching. The usual visit is short: read what merged, clear what escalated, add a goal.
+
+## Capabilities and Constraints
+
+- Ticket states: draft, todo, working, review, gate, merged, escalated, dropped.
+- A planned goal produces draft tickets. One click starts them; nothing runs before that.
+- A ticket gets four review rounds, then escalates. Agent crashes and a base branch that cannot fast-forward
+  also escalate.
+- Human actions on an escalated ticket: retry with a note, approve past the reviewer (goes to the gate), drop.
+- Tickets can depend on other tickets and wait for them to merge.
+- Reviewer is Claude in a fresh context. A different-vendor reviewer is not built.
+- No sandbox: agents run under Claude Code's auto permission mode on the owner's machine.
+- Terminology: goal, ticket, criterion, round, verdict, gate, receipt, journal, escalation.
+
+## Brand Commitments
+
+Name: kumi (組, a crew). Lowercase.
+
+## Evidence on Hand
+
+No real usage data yet. Any numbers, repos or tickets shown in mock-ups are synthetic and must be labelled so.
+
+## Product Principles
+
+1. Exception-driven. The interface speaks up only when a decision belongs to the human.
+2. The receipt is the product. Every verdict is traceable to named criteria and readable later.
+3. One click, not zero. Plans wait for a start; everything after it runs alone.
+4. Nothing is hidden, nothing is streamed. The record is available in full; the firehose is not the default view.

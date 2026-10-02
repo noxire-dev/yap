@@ -1,0 +1,62 @@
+import type { Database } from 'bun:sqlite'
+import type { Event, Goal, Project, Store, Ticket } from './ports'
+
+type Table = 'project' | 'goal' | 'ticket'
+
+// ponytail: rows are JSON blobs and filtering happens in JS. Real columns and
+// indexes when a project passes a few thousand tickets.
+export class SqliteStore implements Store {
+  constructor(private db: Database) {
+    db.run('PRAGMA journal_mode = WAL')
+    for (const t of ['project', 'goal', 'ticket'])
+      db.run(`CREATE TABLE IF NOT EXISTS ${t} (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL)`)
+    db.run(`CREATE TABLE IF NOT EXISTS event (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, ticket_id INTEGER,
+      ts INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`)
+  }
+
+  private all<T>(table: Table): T[] {
+    const rows = this.db.query(`SELECT id, data FROM ${table} ORDER BY id`).all() as { id: number; data: string }[]
+    return rows.map(r => ({ ...JSON.parse(r.data), id: r.id }))
+  }
+
+  private add<T>(table: Table, data: object): T {
+    const { lastInsertRowid } = this.db.query(`INSERT INTO ${table} (data) VALUES (?)`).run(JSON.stringify(data))
+    return { ...data, id: Number(lastInsertRowid) } as T
+  }
+
+  private patch(table: Table, id: number, patch: object) {
+    const row = this.db.query(`SELECT data FROM ${table} WHERE id = ?`).get(id) as { data: string } | null
+    if (!row) throw new Error(`no ${table} ${id}`)
+    const next = { ...JSON.parse(row.data), ...patch, id: undefined }
+    this.db.query(`UPDATE ${table} SET data = ? WHERE id = ?`).run(JSON.stringify(next), id)
+  }
+
+  projects = () => this.all<Project>('project')
+  addProject = (p: Omit<Project, 'id'>) => this.add<Project>('project', p)
+  patchProject = (id: number, patch: Partial<Project>) => this.patch('project', id, patch)
+
+  goals = () => this.all<Goal>('goal')
+  addGoal = (g: Omit<Goal, 'id'>) => this.add<Goal>('goal', g)
+  patchGoal = (id: number, patch: Partial<Goal>) => this.patch('goal', id, patch)
+
+  tickets = () => this.all<Ticket>('ticket')
+  addTicket = (t: Omit<Ticket, 'id' | 'updated'>) => this.add<Ticket>('ticket', { ...t, updated: Date.now() })
+  patchTicket = (id: number, patch: Partial<Ticket>) => this.patch('ticket', id, { ...patch, updated: Date.now() })
+
+  log(project_id: number, ticket_id: number | null, kind: Event['kind'], data: Event['data'] = {}) {
+    this.db
+      .query('INSERT INTO event (project_id, ticket_id, ts, kind, data) VALUES (?, ?, ?, ?, ?)')
+      .run(project_id, ticket_id, Date.now(), kind, JSON.stringify(data))
+  }
+
+  events({ ticket_id, project_id, limit = 200 }: { ticket_id?: number; project_id?: number; limit?: number }) {
+    const rows = this.db
+      .query(
+        `SELECT * FROM event WHERE (?1 IS NULL OR ticket_id = ?1) AND (?2 IS NULL OR project_id = ?2)
+         ORDER BY id DESC LIMIT ?3`,
+      )
+      .all(ticket_id ?? null, project_id ?? null, limit) as (Omit<Event, 'data'> & { data: string })[]
+    return rows.map(r => ({ ...r, data: JSON.parse(r.data) }))
+  }
+}
