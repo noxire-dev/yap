@@ -2,8 +2,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Ran, Workspace } from './ports'
 
+// windowsHide: the daemon has no console, so without it every child would open a visible one.
 async function sh(cmd: string[], cwd: string, signal?: AbortSignal): Promise<Ran> {
-  const p = Bun.spawn(cmd, { cwd, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', signal })
+  const p = Bun.spawn(cmd, { cwd, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', signal, windowsHide: true })
   const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited])
   return { ok: code === 0, log: (out + err).trim() }
 }

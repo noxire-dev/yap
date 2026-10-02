@@ -10,7 +10,7 @@ export class ClaudeCli implements AgentRunner {
     else args.push('--permission-mode', 'auto')
     if (schema) args.push('--json-schema', JSON.stringify(schema))
 
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal })
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()

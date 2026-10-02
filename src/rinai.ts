@@ -12,7 +12,7 @@ export class Rinai implements Tracker {
     if (!this.token || Date.now() - this.token.at > 5 * 60_000) {
       let value = ''
       try {
-        const p = Bun.spawn(['gh', 'auth', 'token'], { stdout: 'pipe', stderr: 'ignore' })
+        const p = Bun.spawn(['gh', 'auth', 'token'], { stdout: 'pipe', stderr: 'ignore', windowsHide: true })
         value = (await new Response(p.stdout).text()).trim()
       } catch {}
       if (!value) throw new Error('rinai needs the GitHub CLI signed in: run `gh auth login`')
