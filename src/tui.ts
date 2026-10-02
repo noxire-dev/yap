@@ -7,7 +7,7 @@ export interface State {
   goals: Goal[]
   tickets: Ticket[]
   /** Ticket id to the one line its agent is on right now. */
-  activity: Record<string, string>
+  activity: Record<string, { line: string; at: number }>
 }
 
 /** The daemon, as the TUI sees it. */
@@ -321,10 +321,12 @@ export function rail(s: State, p: Project, w: number, o: { sel: number | null; s
     put(t, [head(t, dim('├─╮'), red('needs you')), clip(`${pipe} ${red('✗')} ${first(t.note) || 'escalated'}`, w), pipe])
 
   for (const t of by('working', 'review', 'gate')) {
-    const doing = s.activity[t.id] ? dim(` · ${s.activity[t.id]}`) : ''
+    const live = s.activity[t.id]
+    const quiet = live && o.now - live.at > 5 * 60_000 ? yellow(` · quiet ${ago(live.at, o.now)}`) : ''
+    const doing = live?.line ? dim(` · ${live.line}`) : ''
     put(t, [
       head(t, dim('├─╮'), dim(`round ${t.round || 1}`)),
-      clip(`${pipe} ${spin} ${PHASE[t.status]} ${dim(ago(t.updated, o.now))}${doing}`, w),
+      clip(`${pipe} ${spin} ${PHASE[t.status]} ${dim(ago(t.updated, o.now))}${quiet}${doing}`, w),
       pipe,
     ])
   }
@@ -444,8 +446,8 @@ export function status(s: State, w: number, seen: number) {
 const HINTS: Record<Ticket['status'], string> = {
   draft: 's start  e edit  x drop',
   todo: 'e edit  x drop',
-  working: 'x drop',
-  review: 'x drop',
+  working: 'R restart the agent  x drop',
+  review: 'R restart the agent  x drop',
   gate: '',
   merged: '',
   escalated: 'r retry  a approve anyway  e edit  x drop',
@@ -461,6 +463,7 @@ const HELP = `
    e            edit a ticket             A   add another repo by path
    r            retry, with a note        tab next project
    a            approve past the reviewer q   quit (the crew keeps working)
+   R            restart a stalled agent
    x            drop a ticket
 
  A ticket moves: draft → queued → working → in review → at the gate → merged.
@@ -526,10 +529,13 @@ export class Tui {
         this.render()
       },
     )
+    // The spinner runs while something is; the clock alone redraws once a second.
     setInterval(() => {
       this.tick++
-      this.render()
-    }, 1000)
+      const p = this.project
+      const busy = this.s.tickets.some(t => t.project_id === p?.id && PHASE[t.status]) || this.s.goals.some(g => g.status === 'planning') || (this.picker && !this.picker.cards)
+      if (busy || this.tick % 10 === 0) this.render()
+    }, 100)
     await this.refresh()
   }
 
@@ -887,10 +893,15 @@ export class Tui {
       this.diff = diff ? diff.split('\n').map(l => (l.startsWith('+') ? green(l) : l.startsWith('-') ? red(l) : l.startsWith('@@') ? dim(l) : l)) : [dim(' no changes on this ticket yet')]
       this.view = 'diff'
       this.top = 0
-    } else if (k === 's' && on('draft')) {
-      const n = this.s.tickets.filter(o => o.goal_id === t.goal_id && o.status === 'draft').length
-      await post(t.goal_id ? `/api/goals/${t.goal_id}/start` : `/api/tickets/${t.id}/start`)
-      this.say(`started ${plural(n, 'ticket')}. You can close kumi; the crew keeps going.`)
+    } else if (k === 's') {
+      // The selected goal's drafts, or every draft in the project when something else is selected.
+      const drafts = this.s.tickets.filter(o => o.project_id === t.project_id && o.status === 'draft' && (!on('draft') || o.goal_id === t.goal_id))
+      if (!drafts.length) return this.say('nothing to start: no drafts on the rail')
+      for (const g of new Set(drafts.map(o => o.goal_id))) await this.api.send('POST', g ? `/api/goals/${g}/start` : `/api/tickets/${drafts[0].id}/start`)
+      await this.refresh()
+      this.say(`started ${plural(drafts.length, 'ticket')}. You can close kumi; the crew keeps going.`)
+    } else if (k === 'R' && on('working', 'review')) {
+      this.confirm = { text: `kill t${t.id}'s agent and run this round again?`, done: () => post(`/api/tickets/${t.id}/restart`) }
     } else if (k === 'r' && on('escalated')) {
       this.form(`retry t${t.id}`, [['', '', 3, 'Anything the author should know? Optional.']], ([note]) => post(`/api/tickets/${t.id}/retry`, { note }))
     } else if (k === 'a' && on('escalated')) {

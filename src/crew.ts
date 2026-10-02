@@ -138,7 +138,7 @@ function receipt(t: Ticket, checks: Check[] | null, ref: string) {
 }
 
 export class Crew {
-  private live = new Map<number, { abort: AbortController; activity: string; done: Promise<void> }>()
+  private live = new Map<number, { abort: AbortController; activity: string; at: number; done: Promise<void> }>()
   private gates = new Map<number, Promise<unknown>>()
 
   constructor(
@@ -150,9 +150,9 @@ export class Crew {
     private changed: () => void = () => {},
   ) {}
 
-  /** What each running ticket's agent is doing right now. */
+  /** What each running ticket's agent is doing right now, and when it last did anything. */
   activity() {
-    return Object.fromEntries([...this.live].map(([id, l]) => [id, l.activity]))
+    return Object.fromEntries([...this.live].map(([id, l]) => [id, { line: l.activity, at: l.at }]))
   }
 
   /** Whatever a dead process left mid-flight goes back on the board. Branches survive. */
@@ -304,7 +304,7 @@ export class Crew {
     this.kick()
   }
 
-  async act(id: number, action: 'start' | 'retry' | 'approve' | 'drop', note = '') {
+  async act(id: number, action: 'start' | 'retry' | 'approve' | 'restart' | 'drop', note = '') {
     const t = this.ticket(id)
     const p = this.project(t.project_id)
     const from = (...ok: Ticket['status'][]) => {
@@ -320,6 +320,13 @@ export class Crew {
     } else if (action === 'approve') {
       from('escalated')
       this.store.patchTicket(id, { status: 'todo', tries: ROUNDS, override: true })
+    } else if (action === 'restart') {
+      // A stalled agent: kill it and run the same round again, no try spent.
+      from('working', 'review')
+      const run = this.live.get(id)
+      run?.abort.abort()
+      await run?.done
+      this.store.patchTicket(id, { status: 'todo', round: Math.max(0, t.round - 1), tries: t.tries + 1 })
     } else {
       if (t.status === 'merged') throw new Error('already merged')
       const run = this.live.get(id)
@@ -364,7 +371,7 @@ export class Crew {
         this.live.delete(id)
         this.kick()
       })
-    this.live.set(id, { abort, activity: '', done })
+    this.live.set(id, { abort, activity: '', at: Date.now(), done })
   }
 
   private async run(p: Project, id: number, signal: AbortSignal) {
@@ -377,7 +384,10 @@ export class Crew {
     const log = (kind: Parameters<Store['log']>[2], data: Record<string, unknown>) => this.store.log(p.id, id, kind, data)
     const onActivity = (line: string) => {
       const l = this.live.get(id)
-      if (l) l.activity = line
+      if (l) {
+        l.activity = line
+        l.at = Date.now()
+      }
       this.changed()
     }
     const send = (round: number, note: string) => {

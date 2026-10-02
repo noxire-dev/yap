@@ -153,8 +153,8 @@ Bun.serve({
     '/api/tickets/:id/:action': {
       POST: api((req, b) => {
         const action = req.params.action
-        if (action !== 'start' && action !== 'retry' && action !== 'approve' && action !== 'drop') throw new Error('unknown action')
-        return crew.act(Number(req.params.id), action, String(b.note ?? ''))
+        if (!['start', 'retry', 'approve', 'restart', 'drop'].includes(action)) throw new Error('unknown action')
+        return crew.act(Number(req.params.id), action as 'start', String(b.note ?? ''))
       }),
     },
   },

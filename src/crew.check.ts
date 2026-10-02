@@ -8,7 +8,7 @@ import { SqliteStore } from './store'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean } = {}) {
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
   const ws: Workspace = {
@@ -31,9 +31,15 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object } = {}) {
   }
   const prompts: string[] = []
   const agent: AgentRunner = {
-    async run({ prompt, schema }) {
+    async run({ prompt, schema, signal }) {
       prompts.push(prompt)
       if (prompt.startsWith('Break this goal')) return { ok: true, text: '', data: o.plan ?? TWO }
+      if (!schema && o.hang) {
+        // The first author run never answers until it is killed.
+        o.hang = false
+        await new Promise(r => signal!.addEventListener('abort', r))
+        return { ok: false, text: 'killed' }
+      }
       if (!schema) return { ok: true, text: 'did the thing' }
       const pass = reviews.shift() ?? false
       return { ok: true, text: '', data: { criteria: [{ criterion: 'a', pass: true, reason: 'fine' }, { criterion: 'b', pass, reason: 'no cap' }] } }
@@ -99,6 +105,19 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(t.status, 'escalated')
   assert.equal(t.sha, null)
   assert.match(t.findings[0], /1 test failed/)
+}
+
+// A stalled author is restarted by hand: same round again, no try spent, and it merges.
+{
+  const { store, crew } = rig([true], { hang: true })
+  const p = await crew.openProject('.')
+  const id = crew.addTicket(p.id, { title: 'x', criteria: ['a', 'b'] }).id
+  await until(() => store.tickets()[0].status === 'working')
+  await crew.act(id, 'restart')
+  const t = await settled(store, id)
+  assert.equal(t.status, 'merged')
+  assert.equal(t.round, 1)
+  assert.deepEqual(store.events({ ticket_id: id }).map(e => e.kind).reverse(), ['claim', 'human', 'claim', 'submit', 'verdict', 'merge'])
 }
 
 // An issue taken from the tracker: planned from its brief into drafts that wait, the second ticket waits for
