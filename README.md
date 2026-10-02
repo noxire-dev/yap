@@ -22,12 +22,14 @@ Criterion: [pass] slugify strips leading and trailing dashes
 
 ## Run
 
-Needs [Bun](https://bun.sh), git, and [Claude Code](https://claude.com/claude-code) signed in.
+Needs [Bun](https://bun.sh), git, and [Claude Code](https://claude.com/claude-code) signed in. For the Rinai
+board, the GitHub CLI signed in too.
 
 ```
 bun install
 bun link        # puts `kumi` in bun's global bin
-kumi            # opens the board; starts the daemon if needed
+cd ~/some/repo
+kumi            # the repo becomes a project; the daemon starts if it isn't running
 ```
 
 | Command | |
@@ -38,12 +40,13 @@ kumi            # opens the board; starts the daemon if needed
 | `kumi serve` | Daemon in the foreground. |
 
 State lives in `~/.kumi` (`KUMI_HOME`): the database, worktrees, and `daemon.log`. The daemon listens on
-`127.0.0.1:4170` (`KUMI_PORT`).
+`127.0.0.1:4170` (`KUMI_PORT`). A daemon running older code than the `kumi` you launch is restarted, unless an
+agent is mid-ticket.
 
 ## The board
 
 The base branch runs down the screen like `git log --graph`. Above the first merge is everything on its way in,
-most urgent first.
+most urgent first. On a wide terminal the selected ticket's criteria, verdicts and journal sit beside the rail.
 
 ```
  ├─╮ t13 idempotency keys on redelivery                          needs you
@@ -52,27 +55,42 @@ most urgent first.
 ▌├─╮ t12 cap webhook retries                                       round 2
  │ ⠸ working 5m · Bash bun test src/webhook.test.ts
  │
- ┆ goal webhook delivery survives a flaky receiver   2 drafts · s starts them
+ ┆ goal #154 webhook delivery survives a flaky receiver  2 drafts · s starts them
  ┆   t16 dead-letter queue for exhausted deliveries                  draft
  │
  ● 22:15 t11 add retry backoff (main)          ✓ 3/3 · 1 round · a1b2c3d new
 ```
 
-`A` add a repo · `g` goal · `n` ticket · `↵` open · `d` diff · `s` start a goal's drafts · `r` retry with a note ·
-`a` approve past the reviewer · `x` drop · `e` edit in `$EDITOR` · `p` pause · `c` gate and worker count ·
-`tab` next project · `q` quit.
+`n` say what you want done · `i` take issues from the Rinai board · `↵` open · `d` diff · `s` start a goal's
+drafts · `e` edit a draft · `r` retry with a note · `a` approve past the reviewer · `x` drop · `p` pause ·
+`c` gate and agent count · `A` add a repo by path · `tab` next project · `?` help · `q` quit.
+
+Everything you type goes through the planner: it reads the repo and drafts tickets with acceptance criteria.
+Edit them if you like, then `s`. Nothing runs before that.
+
+## Rinai
+
+A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
+
+- `i` lists the board's open cards, the cycle first. Taking one fetches its brief and plans tickets from it.
+- `n` can file what you typed as an issue too (`tab` in the composer), so the board knows about it.
+- When the crew starts on an issue it is claimed: Ongoing, assigned to you. When a ticket lands in front of you
+  the issue moves to Blocked with a comment saying why. When the last ticket merges, a comment lists the merges and
+  the issue moves to In review; the commit says `Fixes #n`, so pushing closes it.
+
+`RINAI_URL` points at a local worker instead.
 
 ## Things to know
 
-- **No sandbox.** Authors run under Claude Code's `auto` permission mode on your machine. Reviewers and the
-  planner get read-only tools.
+- **No sandbox.** Authors and reviewers run under Claude Code's `auto` permission mode on your machine, in
+  worktrees. The planner runs in your checkout with read-only tools.
 - **The gate runs in a fresh worktree.** If your checks need installed dependencies, put the install in the
-  gate: `bun install --frozen-lockfile && bun test`.
+  gate: `bun install --frozen-lockfile && bun test`. `c` suggests one from the repo's lockfile.
 - **Your checkout is only ever fast-forwarded.** If the base branch moved or your tree has conflicting local
   changes, the ticket escalates instead.
 
 ## Layout
 
-`src/crew.ts` is the loop and talks only to the three interfaces in `src/ports.ts`: `Store` (SQLite),
-`Workspace` (git and the gate shell), `AgentRunner` (`claude -p`). `src/server.ts` wires them into the daemon;
-`src/tui.ts` is a client of its HTTP API. `bun run check` runs the loop against fakes.
+`src/crew.ts` is the loop and talks only to the interfaces in `src/ports.ts`: `Store` (SQLite), `Workspace`
+(git and the gate shell), `AgentRunner` (`claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
+daemon; `src/tui.ts` is a client of its HTTP API. `bun run check` runs the loop against fakes.

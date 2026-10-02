@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import type { Ran, Workspace } from './ports'
 
 async function sh(cmd: string[], cwd: string, signal?: AbortSignal): Promise<Ran> {
@@ -12,6 +13,30 @@ const git = (cwd: string, ...args: string[]) => sh(['git', ...args], cwd)
 const GATE_TIMEOUT = 15 * 60_000
 
 export class LocalWorkspace implements Workspace {
+  async root(dir: string) {
+    if (!existsSync(dir)) return null
+    const r = await git(dir, 'rev-parse', '--show-toplevel')
+    return r.ok ? resolve(r.log) : null
+  }
+
+  async slug(repo: string) {
+    const r = await git(repo, 'remote', 'get-url', 'origin')
+    return (r.ok && r.log.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1]) || null
+  }
+
+  gateHint(repo: string) {
+    const has = (f: string) => existsSync(join(repo, f))
+    if (has('pyproject.toml') || has('pytest.ini')) return 'python -m pytest'
+    try {
+      if (!JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8')).scripts?.test) return ''
+    } catch {
+      return ''
+    }
+    if (has('bun.lock') || has('bun.lockb')) return 'bun install --frozen-lockfile && bun run test'
+    if (has('pnpm-lock.yaml')) return 'pnpm install --frozen-lockfile && pnpm test'
+    return 'npm install && npm test'
+  }
+
   async branch(repo: string) {
     if (!existsSync(repo)) return null
     const r = await git(repo, 'symbolic-ref', '--short', 'HEAD')

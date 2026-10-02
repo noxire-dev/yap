@@ -3,7 +3,8 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { ClaudeCli } from './agent'
 import { Crew } from './crew'
-import { home, port, url } from './env'
+import { build, home, port, url } from './env'
+import { Rinai } from './rinai'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
 
@@ -12,23 +13,28 @@ mkdirSync(home, { recursive: true })
 const store = new SqliteStore(new Database(join(home, 'kumi.db'), { create: true }))
 const ws = new LocalWorkspace()
 
-// Server-sent pings: the UI refetches state when one lands.
+// Server-sent pings: a client refetches state when one lands.
 const clients = new Set<ReadableStreamDefaultController>()
+const ping = () => {
+  for (const c of clients) {
+    try {
+      c.enqueue('data: x\n\n')
+    } catch {
+      clients.delete(c)
+    }
+  }
+}
 let pending: Timer | undefined
 const changed = () => {
   pending ??= setTimeout(() => {
     pending = undefined
-    for (const c of clients) {
-      try {
-        c.enqueue('data: x\n\n')
-      } catch {
-        clients.delete(c)
-      }
-    }
+    ping()
   }, 150)
 }
+// Keeps idle streams from being timed out by the client's fetch.
+setInterval(ping, 30_000)
 
-const crew = new Crew(store, ws, new ClaudeCli(), home, changed)
+const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 crew.recover()
 
 // This server runs shell commands, so a web page must not be able to drive it:
@@ -45,7 +51,9 @@ const api = (fn: Handler) => async (req: Request & { params: Record<string, stri
   if (foreign(req)) return new Response('forbidden', { status: 403 })
   try {
     const body = req.method === 'GET' ? {} : await req.json().catch(() => ({}))
-    return Response.json((await fn(req, body)) ?? { ok: true })
+    const out = (await fn(req, body)) ?? { ok: true }
+    if (req.method !== 'GET') changed()
+    return Response.json(out)
   } catch (e: any) {
     return Response.json({ error: String(e?.message ?? e) }, { status: 400 })
   }
@@ -58,8 +66,9 @@ Bun.serve({
   port,
   routes: {
     '/api/state': api(() => ({
+      build,
       projects: store.projects(),
-      goals: store.goals(),
+      goals: store.goals().map(g => ({ ...g, brief: undefined })),
       tickets: store.tickets(),
       activity: crew.activity(),
     })),
@@ -93,12 +102,13 @@ Bun.serve({
       }),
     },
 
-    '/api/projects': { POST: api((_, b) => crew.addProject(String(b.path ?? ''), b.gate, b.workers)) },
+    // Opening is idempotent: the project for the repo that path sits in, new or not.
+    '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''))) },
 
     '/api/projects/:id': {
       PATCH: api((req, b) => {
         const patch: Record<string, unknown> = {}
-        if (typeof b.gate === 'string') patch.gate = b.gate
+        if (typeof b.gate === 'string') patch.gate = b.gate.trim()
         if (Number.isInteger(b.workers) && b.workers > 0) patch.workers = b.workers
         if (typeof b.running === 'boolean') patch.running = b.running
         store.patchProject(Number(req.params.id), patch)
@@ -106,10 +116,17 @@ Bun.serve({
       }),
     },
 
-    '/api/goals': { POST: api((_, b) => crew.plan(Number(b.project_id), String(b.text ?? ''))) },
-    '/api/goals/:id/start': { POST: api(req => crew.startGoal(Number(req.params.id))) },
+    '/api/projects/:id/cards': api(req => crew.cards(Number(req.params.id))),
 
-    '/api/tickets': { POST: api((_, b) => crew.addTicket(Number(b.project_id), b)) },
+    // A goal is typed (`text`, and `file` to put it on the tracker too) or taken from the tracker (`issue`).
+    '/api/goals': {
+      POST: api((_, b) =>
+        Number.isInteger(b.issue)
+          ? crew.take(Number(b.project_id), b.issue, String(b.title ?? ''))
+          : crew.compose(Number(b.project_id), String(b.text ?? ''), b.file === true),
+      ),
+    },
+    '/api/goals/:id/start': { POST: api(req => crew.startGoal(Number(req.params.id))) },
 
     '/api/tickets/:id': {
       PATCH: api((req, b) => {
@@ -122,7 +139,6 @@ Bun.serve({
         if (Array.isArray(b.criteria) && b.criteria.some((c: string) => c.trim()))
           patch.criteria = b.criteria.map((c: string) => c.trim()).filter(Boolean)
         store.patchTicket(id, patch)
-        changed()
       }),
     },
 

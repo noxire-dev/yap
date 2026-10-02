@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import type { AgentRunner, Project, Store, Ticket, Workspace } from './ports'
+import type { AgentRunner, Project, Store, Ticket, Tracker, Workspace } from './ports'
 
 /** Review rounds a ticket gets before it lands in front of a human. */
 export const ROUNDS = 4
@@ -100,19 +100,20 @@ ${list(t.criteria)}
 ${diff.length > DIFF_CAP ? diff.slice(0, DIFF_CAP) + '\n[diff truncated: read the files for the rest]' : diff}
 \`\`\`
 
-The working directory is the author's branch. Read files where the diff is not enough.
+The working directory is the author's branch, checked out. Read files where the diff is not enough, and run the
+project's tests or other commands where a criterion is about behaviour. Change nothing: your edits are thrown away.
 
-Answer every criterion, in the order given, with pass or fail and a one or two sentence reason that cites file:line.
-Fail a criterion you cannot verify from the code. If the change breaks existing behaviour or goes beyond the ticket,
+Answer every criterion, in the order given, with pass or fail and a one or two sentence reason that cites file:line
+or the command you ran. Fail a criterion you could not verify. If the change breaks existing behaviour or goes beyond the ticket,
 fail the criterion it touches most closely and say why.`
 }
 
-function planPrompt(goal: string) {
+function planPrompt(goal: string, brief: string) {
   return `Break this goal into tickets for an autonomous engineering crew working in this repository. Read the code first.
 
 # Goal
 ${goal}
-
+${brief ? `\n# The issue this came from\n${brief}\n` : ''}
 # Rules
 - A ticket is one reviewable change that leaves the repo working once it and its deps are merged.
 - 1 to 8 tickets. Fewer is better: a small goal is one ticket.
@@ -123,10 +124,12 @@ ${goal}
   independent tickets run in parallel.`
 }
 
-function receipt(t: Ticket, checks: Check[] | null) {
+/** The merge commit's message. `ref` is the line that ties it to a tracker issue, if any. */
+function receipt(t: Ticket, checks: Check[] | null, ref: string) {
   return [
     `t${t.id}: ${t.title}`,
     '',
+    ...(ref ? [ref, ''] : []),
     `Ticket: ${t.id}`,
     `Rounds: ${t.round}`,
     `Reviewed-by: ${checks ? 'kumi reviewer (fresh context, not the author)' : 'human override'}`,
@@ -142,6 +145,7 @@ export class Crew {
     private store: Store,
     private ws: Workspace,
     private agent: AgentRunner,
+    private tracker: Tracker,
     private home: string,
     private changed: () => void = () => {},
   ) {}
@@ -158,15 +162,95 @@ export class Crew {
         this.store.patchTicket(t.id, { status: 'todo', round: Math.max(0, t.round - 1), tries: t.tries + 1 })
     for (const g of this.store.goals())
       if (g.status === 'planning') this.store.patchGoal(g.id, { status: 'failed', note: 'interrupted' })
+    // Projects added before the tracker existed.
+    for (const p of this.store.projects())
+      if (p.tracker === undefined)
+        void this.ws.slug(p.path).then(tracker => {
+          this.store.patchProject(p.id, { tracker, hint: this.ws.gateHint(p.path) })
+          this.changed()
+        })
     this.kick()
   }
 
-  async addProject(input: string, gate = '', workers = 2) {
-    const path = resolve(input.trim().replace(/^["']|["']$/g, '').replace(/^~(?=[\\/]|$)/, homedir()))
-    if (this.store.projects().some(p => p.path === path)) throw new Error('that repo is already a project')
-    const base = await this.ws.branch(path)
-    if (!base) throw new Error(`${path} is not a git repo on a branch`)
-    return this.store.addProject({ name: basename(path), path, base, gate, workers, running: true })
+  /** The project for the repo `input` sits in, added if it is new. */
+  async openProject(input: string) {
+    const dir = resolve(input.trim().replace(/^["']|["']$/g, '').replace(/^~(?=[\\/]|$)/, homedir()))
+    const path = await this.ws.root(dir)
+    const base = path && (await this.ws.branch(path))
+    if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch`)
+    const known = this.store.projects().find(p => p.path === path)
+    if (known) return known
+    const p = this.store.addProject({
+      name: basename(path),
+      path,
+      base,
+      gate: '',
+      workers: 2,
+      running: true,
+      tracker: await this.ws.slug(path),
+      hint: this.ws.gateHint(path),
+    })
+    this.changed()
+    return p
+  }
+
+  /** The tracker's open cards, each marked if a goal already came from it. */
+  async cards(project_id: number) {
+    const p = this.project(project_id)
+    if (!p.tracker) throw new Error('this repo has no GitHub remote, so there is no board to read')
+    const taken = new Set(this.store.goals().filter(g => g.project_id === p.id && g.status !== 'failed').map(g => g.issue))
+    return (await this.tracker.cards(p.tracker)).map(c => ({ ...c, onRail: taken.has(c.number) }))
+  }
+
+  /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. */
+  async take(project_id: number, issue: number, title: string) {
+    const p = this.project(project_id)
+    if (!p.tracker) throw new Error('this repo has no board')
+    if (this.store.goals().some(g => g.project_id === p.id && g.issue === issue && g.status !== 'failed'))
+      throw new Error(`#${issue} is already on the rail`)
+    return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue))
+  }
+
+  /** A goal typed by the human, optionally filed on the tracker first so the board knows about it. */
+  async compose(project_id: number, text: string, file: boolean) {
+    const p = this.project(project_id)
+    if (!text.trim()) throw new Error('say what you want done')
+    if (!file) return this.plan(p.id, text)
+    if (!p.tracker) throw new Error('this repo has no board to file on')
+    const card = await this.tracker.file(p.tracker, text.trim().split(/\r?\n/)[0].slice(0, 120), text.trim())
+    this.store.log(p.id, null, 'tracker', { did: 'filed', issue: card.number })
+    return this.plan(p.id, text, card.number)
+  }
+
+  /** Tell the tracker what became of the issue a ticket came from. Never blocks or fails the crew. */
+  private report(p: Project, t: Ticket, what: 'start' | 'stuck' | 'landed', detail = '') {
+    const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
+    const repo = p.tracker
+    if (!repo || !issue) return
+    const say = async () => {
+      if (what === 'start') return this.tracker.claim(repo, issue)
+      if (what === 'stuck') {
+        await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human.\n\n${detail}`)
+        return this.tracker.move(repo, issue, 'blocked')
+      }
+      const mine = this.store.tickets().filter(o => o.goal_id === t.goal_id && o.status !== 'dropped')
+      if (mine.some(o => o.status !== 'merged')) return
+      const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
+      await this.tracker.comment(repo, issue, `kumi merged this on local ${p.base}. Pushing closes the issue.\n\n${lines.join('\n')}`)
+      return this.tracker.move(repo, issue, 'in-review')
+    }
+    say().then(
+      () => this.store.log(p.id, t.id, 'tracker', { did: what, issue }),
+      e => this.store.log(p.id, t.id, 'tracker', { failed: what, issue, error: String(e?.message ?? e) }),
+    )
+  }
+
+  /** `Fixes #n` on the ticket that completes a tracker issue, `Refs #n` on the ones before it. */
+  private ref(t: Ticket) {
+    const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
+    if (!issue) return ''
+    const open = this.store.tickets().some(o => o.goal_id === t.goal_id && o.id !== t.id && o.status !== 'merged' && o.status !== 'dropped')
+    return `${open ? 'Refs' : 'Fixes'} #${issue}.`
   }
 
   addTicket(project_id: number, d: { title: string; body?: string; criteria?: string[]; deps?: number[] }, goal_id: number | null = null) {
@@ -192,12 +276,12 @@ export class Crew {
   }
 
   /** Turn a goal into draft tickets. Returns at once; the planner runs behind it. */
-  plan(project_id: number, text: string) {
+  plan(project_id: number, text: string, issue: number | null = null, brief = '') {
     const p = this.project(project_id)
-    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '' })
+    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief })
     this.changed()
     void this.agent
-      .run({ cwd: p.path, prompt: planPrompt(goal.text), readOnly: true, schema: PLAN })
+      .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
       .then(r => {
         const drafts: any[] = r.data?.tickets ?? []
         if (!r.ok || !drafts.length) throw new Error(tail(r.text, 500) || 'planner returned no tickets')
@@ -274,6 +358,7 @@ export class Crew {
         const why = String(e?.message ?? e)
         this.store.patchTicket(id, { status: 'escalated', override: false, note: why })
         this.store.log(p.id, id, 'escalate', { why })
+        this.report(p, this.ticket(id), 'stuck', why)
       })
       .finally(() => {
         this.live.delete(id)
@@ -310,10 +395,12 @@ export class Crew {
         if (t.tries <= 0) {
           const why = `still failing after ${t.round} rounds`
           log('escalate', { why, findings: t.findings })
+          this.report(p, t, 'stuck', [why, ...t.findings.map(f => `- ${f}`)].join('\n'))
           return set({ status: 'escalated', note: why })
         }
         const round = t.round + 1
         log('claim', { round })
+        if (t.tries === ROUNDS) this.report(p, t, 'start')
         set({ status: 'working', round, tries: t.tries - 1 })
         t = this.ticket(id)
 
@@ -339,7 +426,6 @@ export class Crew {
         const review = await this.agent.run({
           cwd: dir,
           prompt: reviewPrompt(t, diff),
-          readOnly: true,
           schema: VERDICT,
           signal,
           onActivity,
@@ -361,7 +447,7 @@ export class Crew {
       set({ status: 'gate' })
       onActivity(p.gate)
       const gate = await this.locked(p.id, async (): Promise<{ log: string; sha?: string; human?: boolean }> => {
-        const merged = await this.ws.squash(p.path, this.dir(p, 'gate'), p.base, branch, receipt(t, checks))
+        const merged = await this.ws.squash(p.path, this.dir(p, 'gate'), p.base, branch, receipt(t, checks, this.ref(t)))
         if (!merged.sha) return { log: merged.log }
         if (p.gate) {
           const ran = await this.ws.exec(this.dir(p, 'gate'), p.gate)
@@ -374,11 +460,13 @@ export class Crew {
       if (gate.sha) {
         log('merge', { sha: gate.sha, rounds: t.round })
         set({ status: 'merged', sha: gate.sha, findings: [] })
+        this.report(p, this.ticket(id), 'landed')
         return this.ws.cleanup(p.path, dir, branch)
       }
       log('gate', { ok: false, log: gate.log })
       if (gate.human) {
         log('escalate', { why: gate.log })
+        this.report(p, t, 'stuck', gate.log)
         return set({ status: 'escalated', override: false, note: gate.log })
       }
       set({ findings: [gate.log], override: false })

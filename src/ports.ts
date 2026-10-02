@@ -9,6 +9,10 @@ export interface Project {
   gate: string
   workers: number
   running: boolean
+  /** `owner/repo` on the tracker, when the repo has a GitHub remote. */
+  tracker: string | null
+  /** A gate command guessed from the repo, offered when `gate` is empty. */
+  hint: string
 }
 
 export interface Goal {
@@ -17,6 +21,10 @@ export interface Goal {
   text: string
   status: 'planning' | 'ready' | 'failed'
   note: string
+  /** The tracker issue this goal came from or was filed as. */
+  issue: number | null
+  /** The issue in full, for the planner. */
+  brief: string
 }
 
 export interface Ticket {
@@ -46,7 +54,7 @@ export interface Event {
   project_id: number
   ticket_id: number | null
   ts: number
-  kind: 'plan' | 'claim' | 'submit' | 'verdict' | 'gate' | 'merge' | 'escalate' | 'human'
+  kind: 'plan' | 'claim' | 'submit' | 'verdict' | 'gate' | 'merge' | 'escalate' | 'human' | 'tracker'
   data: Record<string, unknown>
 }
 
@@ -71,8 +79,14 @@ export interface Ran {
 
 /** Git worktrees plus the one shell command the gate runs in them. */
 export interface Workspace {
+  /** The repo a directory sits in, or null. */
+  root(dir: string): Promise<string | null>
   /** Current branch of a repo, or null if `repo` isn't one. */
   branch(repo: string): Promise<string | null>
+  /** `owner/repo` of the GitHub remote, or null. */
+  slug(repo: string): Promise<string | null>
+  /** A plausible gate command for the repo, or ''. */
+  gateHint(repo: string): string
   /** Ensure `dir` is a worktree of `repo` on `branch`, created from `base` if new. */
   worktree(repo: string, dir: string, branch: string, base: string): Promise<void>
   /** Merge `base` into the worktree's branch. False = conflicts were left in the tree. */
@@ -92,7 +106,7 @@ export interface Workspace {
 export interface AgentRun {
   cwd: string
   prompt: string
-  /** Read/search tools only: reviewers and planners never edit. */
+  /** Read and search tools only. The planner runs in the user's own checkout, so it gets nothing else. */
   readOnly?: boolean
   /** JSON Schema the agent must answer with; the answer lands in `data`. */
   schema?: object
@@ -102,4 +116,25 @@ export interface AgentRun {
 
 export interface AgentRunner {
   run(o: AgentRun): Promise<{ ok: boolean; text: string; data?: any }>
+}
+
+export interface Card {
+  number: number
+  title: string
+  column: string
+  priority: string
+  cycle: boolean
+}
+
+/** An issue board the crew can read from, file to, and report back on. */
+export interface Tracker {
+  /** Open cards, what the board is doing now first. */
+  cards(repo: string): Promise<Card[]>
+  /** One issue in full, as markdown. */
+  brief(repo: string, n: number): Promise<string>
+  file(repo: string, title: string, body: string): Promise<Card>
+  /** Take the issue: in progress, assigned to the user. */
+  claim(repo: string, n: number): Promise<void>
+  move(repo: string, n: number, column: 'in-review' | 'blocked'): Promise<void>
+  comment(repo: string, n: number, text: string): Promise<void>
 }
