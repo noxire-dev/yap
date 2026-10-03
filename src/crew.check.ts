@@ -13,6 +13,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
   const merged: string[] = []
   const ws: Workspace = {
     root: async dir => dir,
+    init: async () => {},
     branch: async () => 'main',
     slug: async () => 'acme/toy',
     gateHint: () => '',
@@ -34,6 +35,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     async run({ prompt, schema, signal }) {
       prompts.push(prompt)
       if (prompt.startsWith('Break this goal')) return { ok: true, text: '', data: o.plan ?? TWO }
+      if (prompt.startsWith('You are reporting')) return { ok: true, text: 'The crew did the thing in x.' }
       if (!schema && o.hang) {
         // The first author run never answers until it is killed.
         o.hang = false
@@ -140,6 +142,8 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match(merged[1], /Fixes #7\./)
   await until(() => told.includes('move 7 in-review'))
   assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 kumi merged this on local main. Pushing closes the issue.', 'move 7 in-review'])
+  assert.equal(store.goals()[0].summary, 'The crew did the thing in x.', 'the goal carries the reporter\'s summary')
+  assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
 }
 
 // A typed goal filed on the tracker first; a stuck ticket blocks its issue.

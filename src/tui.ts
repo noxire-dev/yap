@@ -355,6 +355,8 @@ export function rail(s: State, p: Project, w: number, o: { sel: number | null; s
   }
 
   const merged = by('merged').sort((a, b) => b.updated - a.updated)
+  const fresh = merged.filter(t => t.updated > o.seen).length
+  if (fresh && o.seen) lines.push(clip(` ${dim('●')} ${bold(`${plural(fresh, 'merge')} since you last looked`)} ${dim(`(${clock(o.seen, o.now)})`)}`, w))
   merged.forEach((t, i) => {
     const seal = t.override ? yellow('human override') : `${green('✓')} ${t.criteria.length}/${t.criteria.length}`
     const fresh = t.updated > o.seen ? ` ${red('new')}` : ''
@@ -383,6 +385,8 @@ function told(e: Event) {
       return red(first(d.why))
     case 'human':
       return `${d.action}${d.note ? ` · ${d.note}` : ''}`
+    case 'digest':
+      return d.written ? 'the crew wrote up what it did' : 'no write-up; listed the author reports instead'
     case 'tracker':
       return d.failed ? red(`rinai #${d.issue}: ${d.failed} failed · ${d.error}`) : `rinai #${d.issue} · ${d.did}`
     default:
@@ -397,8 +401,8 @@ function state(t: Ticket) {
   return dim(t.status === 'todo' ? 'queued' : t.status)
 }
 
-/** One ticket in full: the latest verdict per criterion, its journal, then what it asked for. */
-function sheet(t: Ticket, events: Event[], goal: Goal | undefined, w: number) {
+/** One ticket in full: the latest verdict per criterion, what was done, its journal, then what it asked for. */
+export function sheet(t: Ticket, events: Event[], goal: Goal | undefined, w: number) {
   const out: string[] = []
   const say = (text: string, indent: number, style = (s: string) => s) => wrap(text, w - indent - 1).forEach(l => out.push(' '.repeat(indent) + style(l)))
   const verdict = events.find(e => e.kind === 'verdict' && (e.data.criteria as any[])?.length)?.data as any
@@ -422,6 +426,14 @@ function sheet(t: Ticket, events: Event[], goal: Goal | undefined, w: number) {
   if (t.findings.length && t.status !== 'merged') {
     out.push('', ` ${bold('Sent back with')}`)
     for (const f of t.findings) say(`- ${f}`, 3)
+  }
+  if (goal?.summary && t.status === 'merged') {
+    out.push('', ` ${bold('What the crew did')} ${dim(`for: ${goalLabel(goal)}`)}`)
+    say(goal.summary, 3)
+  }
+  if (t.summary) {
+    out.push('', ` ${bold(t.status === 'merged' ? "The author's report" : 'The author says')}`)
+    say(t.summary, 3)
   }
   if (events.length) {
     out.push('', ` ${bold('Journal')}`)
@@ -521,7 +533,9 @@ export class Tui {
     // Started inside a repo: that repo is the project, added on the spot if it is new.
     try {
       this.pid = (await this.api.send('POST', '/api/projects', { path: this.host.cwd })).id
-    } catch {}
+    } catch (e: any) {
+      if (String(e?.message).includes('not inside a git repo')) this.offerInit(this.host.cwd)
+    }
     this.api.watch(
       () => void this.refresh(),
       down => {
@@ -537,6 +551,18 @@ export class Tui {
       if (busy || this.tick % 10 === 0) this.render()
     }, 100)
     await this.refresh()
+  }
+
+  /** A plain directory: make it a repo, so the crew has a base to branch from. */
+  private offerInit(path: string) {
+    this.confirm = {
+      text: `${path} is not a git repo. Create one there so the crew can work?`,
+      done: async () => {
+        this.pid = (await this.api.send('POST', '/api/projects', { path, init: true })).id
+        this.sel = null
+        await this.refresh()
+      },
+    }
   }
 
   private get project() {
@@ -836,8 +862,13 @@ export class Tui {
       }
       if (k === 'A')
         return this.form('add a repo', [['path', this.host.cwd]], async ([path]) => {
-          this.pid = (await this.api.send('POST', '/api/projects', { path })).id
-          this.sel = null
+          try {
+            this.pid = (await this.api.send('POST', '/api/projects', { path })).id
+            this.sel = null
+          } catch (e: any) {
+            if (!String(e?.message).includes('not inside a git repo')) throw e
+            this.offerInit(path)
+          }
         })
       const p = this.project
       if (!p) return

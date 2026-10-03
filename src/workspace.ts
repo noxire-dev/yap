@@ -20,6 +20,13 @@ export class LocalWorkspace implements Workspace {
     return r.ok ? resolve(r.log) : null
   }
 
+  async init(dir: string) {
+    for (const args of [['init', '-b', 'main'], ['add', '-A'], ['commit', '--allow-empty', '-m', 'kumi: first commit']]) {
+      const r = await git(dir, ...args)
+      if (!r.ok) throw new Error(`git ${args[0]}: ${r.log}`)
+    }
+  }
+
   async slug(repo: string) {
     const r = await git(repo, 'remote', 'get-url', 'origin')
     return (r.ok && r.log.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1]) || null

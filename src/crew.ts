@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import type { AgentRunner, Project, Store, Ticket, Tracker, Workspace } from './ports'
+import type { AgentRunner, Goal, Project, Store, Ticket, Tracker, Workspace } from './ports'
 
 /** Review rounds a ticket gets before it lands in front of a human. */
 export const ROUNDS = 4
@@ -48,6 +48,7 @@ const PLAN = {
 }
 
 const tail = (s: string, n = 2000) => (s.length > n ? '…' + s.slice(-n) : s)
+const first = (s: string) => s.trim().split(/\r?\n/)[0].slice(0, 200)
 const list = (items: string[]) => items.map((c, i) => `${i + 1}. ${c}`).join('\n')
 
 function workPrompt(t: Ticket, round: number, conflicts: boolean) {
@@ -125,6 +126,29 @@ ${brief ? `\n# The issue this came from\n${brief}\n` : ''}
 }
 
 /** The merge commit's message. `ref` is the line that ties it to a tracker issue, if any. */
+function digestPrompt(goal: Goal, done: { t: Ticket; diff: string }[]) {
+  return `You are reporting to the person who asked an autonomous crew for this. They were not watching. Read what
+merged and tell them, in plain language, what changed and where (file paths), any call the crew made that they
+would want to know about, and anything left undone or worth a look. Four to eight sentences or short bullets.
+No preamble, no praise.
+
+# What they asked for
+${goal.text}
+
+${done
+  .map(
+    ({ t, diff }) => `# t${t.id}: ${t.title} (${t.sha?.slice(0, 7)}, ${t.round} round${t.round === 1 ? '' : 's'})
+Author's report:
+${t.summary || '(none)'}
+
+\`\`\`diff
+${diff.length > 40_000 ? diff.slice(0, 40_000) + '\n[truncated]' : diff}
+\`\`\`
+`,
+  )
+  .join('\n')}`
+}
+
 function receipt(t: Ticket, checks: Check[] | null, ref: string) {
   return [
     `t${t.id}: ${t.title}`,
@@ -172,9 +196,10 @@ export class Crew {
     this.kick()
   }
 
-  /** The project for the repo `input` sits in, added if it is new. */
-  async openProject(input: string) {
+  /** The project for the repo `input` sits in, added if it is new. `init` makes a repo of a plain directory. */
+  async openProject(input: string, init = false) {
     const dir = resolve(input.trim().replace(/^["']|["']$/g, '').replace(/^~(?=[\\/]|$)/, homedir()))
+    if (init && !(await this.ws.root(dir))) await this.ws.init(dir)
     const path = await this.ws.root(dir)
     const base = path && (await this.ws.branch(path))
     if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch`)
@@ -223,26 +248,45 @@ export class Crew {
   }
 
   /** Tell the tracker what became of the issue a ticket came from. Never blocks or fails the crew. */
-  private report(p: Project, t: Ticket, what: 'start' | 'stuck' | 'landed', detail = '') {
+  private report(p: Project, t: Ticket, what: 'start' | 'stuck', detail = '') {
     const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
     const repo = p.tracker
     if (!repo || !issue) return
     const say = async () => {
       if (what === 'start') return this.tracker.claim(repo, issue)
-      if (what === 'stuck') {
-        await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human.\n\n${detail}`)
-        return this.tracker.move(repo, issue, 'blocked')
-      }
-      const mine = this.store.tickets().filter(o => o.goal_id === t.goal_id && o.status !== 'dropped')
-      if (mine.some(o => o.status !== 'merged')) return
-      const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
-      await this.tracker.comment(repo, issue, `kumi merged this on local ${p.base}. Pushing closes the issue.\n\n${lines.join('\n')}`)
-      return this.tracker.move(repo, issue, 'in-review')
+      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human.\n\n${detail}`)
+      return this.tracker.move(repo, issue, 'blocked')
     }
     say().then(
       () => this.store.log(p.id, t.id, 'tracker', { did: what, issue }),
       e => this.store.log(p.id, t.id, 'tracker', { failed: what, issue, error: String(e?.message ?? e) }),
     )
+  }
+
+  /**
+   * The last merge of a goal: a reporter reads everything that landed and writes the goal's summary for the
+   * human, which also goes to the tracker. Never blocks or fails the crew.
+   */
+  private async landed(p: Project, t: Ticket) {
+    const goal = this.store.goals().find(g => g.id === t.goal_id)
+    if (!goal) return
+    const mine = this.store.tickets().filter(o => o.goal_id === goal.id && o.status !== 'dropped')
+    if (mine.some(o => o.status !== 'merged')) return
+    const done = await Promise.all(mine.map(async t => ({ t, diff: await this.ws.diff(p.path, `${t.sha}^`, t.sha!) })))
+    const r = await this.agent.run({ cwd: p.path, prompt: digestPrompt(goal, done), readOnly: true }).catch(() => null)
+    const summary = (r?.ok && r.text.trim()) || mine.map(o => `- ${o.title}: ${o.summary.split('\n')[0]}`).join('\n')
+    this.store.patchGoal(goal.id, { summary })
+    this.store.log(p.id, t.id, 'digest', { goal: goal.id, written: !!r?.ok })
+    this.changed()
+    if (!p.tracker || !goal.issue) return
+    const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
+    this.tracker
+      .comment(p.tracker, goal.issue, `kumi merged this on local ${p.base}. Pushing closes the issue.\n\n${summary}\n\n${lines.join('\n')}`)
+      .then(() => this.tracker.move(p.tracker!, goal.issue!, 'in-review'))
+      .then(
+        () => this.store.log(p.id, t.id, 'tracker', { did: 'landed', issue: goal.issue }),
+        e => this.store.log(p.id, t.id, 'tracker', { failed: 'landed', issue: goal.issue, error: String(e?.message ?? e) }),
+      )
   }
 
   /** `Fixes #n` on the ticket that completes a tracker issue, `Refs #n` on the ones before it. */
@@ -267,6 +311,7 @@ export class Crew {
       round: 0,
       tries: ROUNDS,
       findings: [],
+      summary: '',
       note: '',
       override: false,
       sha: null,
@@ -278,7 +323,7 @@ export class Crew {
   /** Turn a goal into draft tickets. Returns at once; the planner runs behind it. */
   plan(project_id: number, text: string, issue: number | null = null, brief = '') {
     const p = this.project(project_id)
-    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief })
+    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief, summary: '' })
     this.changed()
     void this.agent
       .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
@@ -429,8 +474,8 @@ export class Crew {
           send(round, 'no changes were produced on the branch')
           continue
         }
-        log('submit', { round, summary: tail(work.text, 800) })
-        set({ status: 'review' })
+        log('submit', { round, summary: first(work.text) })
+        set({ status: 'review', summary: work.text.trim().slice(0, 4000) })
         onActivity('')
 
         const review = await this.agent.run({
@@ -470,7 +515,7 @@ export class Crew {
       if (gate.sha) {
         log('merge', { sha: gate.sha, rounds: t.round })
         set({ status: 'merged', sha: gate.sha, findings: [] })
-        this.report(p, this.ticket(id), 'landed')
+        void this.landed(p, this.ticket(id))
         return this.ws.cleanup(p.path, dir, branch)
       }
       log('gate', { ok: false, log: gate.log })

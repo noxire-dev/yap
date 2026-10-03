@@ -3,13 +3,17 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { build, home, url } from './env'
-import { type Client, type State, Tui, reader, status, useColor } from './tui'
+import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
-const USAGE = `kumi           open the board (starts the daemon if it isn't running)
-kumi status    print every project's rail and exit
-kumi start     start the daemon in the background
-kumi serve     run the daemon in the foreground
-kumi stop      stop the daemon; running agents are killed and their tickets requeued`
+const USAGE = `kumi                 open the board (starts the daemon if it isn't running)
+kumi status          every project's rail
+kumi show <ticket>   one ticket: criteria, verdicts, what was done, journal
+kumi goal <text>     plan tickets for this repo from a sentence (--rinai files it as an issue too)
+kumi take <issue>    plan tickets from an issue on this repo's Rinai board
+kumi go              start this repo's drafted tickets
+kumi init            make this directory a git repo so the crew can work in it
+kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
+kumi serve           the daemon in the foreground`
 
 class HttpClient implements Client {
   async get<T>(path: string) {
@@ -124,15 +128,50 @@ async function board() {
   await tui.start()
 }
 
-const cmd = process.argv[2]
+// The project for the current directory, for the one-shot commands agents and scripts use.
+async function here(init = false) {
+  await daemon()
+  return api.send('POST', '/api/projects', { path: process.cwd(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
+}
+
+const [cmd, ...rest] = process.argv.slice(2)
+const cols = process.stdout.columns || 100
 try {
+  useColor(!!process.stdout.isTTY && !process.env.NO_COLOR)
   if (!cmd) await board()
   else if (cmd === 'serve') await import('./server')
   else if (cmd === 'start') await daemon()
   else if (cmd === 'status') {
-    useColor(!!process.stdout.isTTY && !process.env.NO_COLOR)
     const s = await running()
-    console.log(s ? status(s, process.stdout.columns || 100, readSeen()) : 'the daemon is not running. `kumi` starts it.')
+    console.log(s ? status(s, cols, readSeen()) : 'the daemon is not running. `kumi` starts it.')
+  } else if (cmd === 'show') {
+    const id = Number(String(rest[0]).replace(/^t/, ''))
+    const s = await running()
+    const t = s?.tickets.find(t => t.id === id)
+    if (!s || !t) throw new Error(`no ticket t${rest[0]}`)
+    console.log(sheet(t, await api.get(`/api/events?ticket=${id}`), s.goals.find(g => g.id === t.goal_id), Math.min(cols, 110)).join('\n'))
+  } else if (cmd === 'goal') {
+    const file = rest.includes('--rinai')
+    const text = rest.filter(a => a !== '--rinai').join(' ').trim()
+    if (!text) throw new Error('kumi goal <what you want done>')
+    const p = await here()
+    const g = await api.send('POST', '/api/goals', { project_id: p.id, text, file })
+    console.log(`goal ${g.id} on ${p.name}${g.issue ? ` (rinai #${g.issue})` : ''}: a planner is drafting tickets. \`kumi status\` shows them, \`kumi go\` starts them.`)
+  } else if (cmd === 'take') {
+    const n = Number(String(rest[0]).replace(/^#/, ''))
+    const p = await here()
+    const card = (await api.get<{ number: number; title: string }[]>(`/api/projects/${p.id}/cards`)).find(c => c.number === n)
+    if (!card) throw new Error(`#${rest[0]} is not an open issue on ${p.tracker ?? 'this repo'}`)
+    const g = await api.send('POST', '/api/goals', { project_id: p.id, issue: n, title: card.title })
+    console.log(`goal ${g.id} on ${p.name} from #${n}: a planner is drafting tickets. \`kumi go\` starts them.`)
+  } else if (cmd === 'go') {
+    const p = await here()
+    const s = (await running())!
+    const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft').map(t => t.goal_id))
+    for (const g of goals) await api.send('POST', `/api/goals/${g}/start`)
+    console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
+  } else if (cmd === 'init') {
+    console.log(`${(await here(true)).name} is ready for the crew`)
   } else if (cmd === 'stop') {
     console.log((await running()) ? (await api.send('POST', '/api/stop'), 'stopped') : 'not running')
   } else console.log(USAGE)

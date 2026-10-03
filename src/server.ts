@@ -103,7 +103,7 @@ Bun.serve({
     },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
-    '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''))) },
+    '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
 
     '/api/projects/:id': {
       PATCH: api((req, b) => {

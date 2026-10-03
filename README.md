@@ -68,6 +68,29 @@ drafts · `e` edit a draft · `r` retry with a note · `a` approve past the revi
 Everything you type goes through the planner: it reads the repo and drafts tickets with acceptance criteria.
 Edit them if you like, then `s`. Nothing runs before that.
 
+When a goal's last ticket merges, a reporter reads everything that landed and writes what the crew did, for
+you: what changed and where, calls it made, anything left. It sits on every merged ticket of the goal, next to
+the author's own report and the reviewer's verdict per criterion. The rail says how many merges happened since
+you last looked.
+
+A directory that isn't a git repo yet is offered `git init` on the spot; the crew needs a base branch to work
+from. Worktrees are always automatic, one per ticket, outside the repo.
+
+## From Claude Code
+
+`skills/kumi` is a skill that teaches Claude Code the one-shot commands, so you can say "give this to kumi"
+in a session and read back what it did:
+
+```
+kumi goal "<what should be true when it is done>"   # plans drafts; --rinai files it as an issue too
+kumi take 154                                        # plans from a Rinai issue
+kumi go                                              # starts the drafts
+kumi status · kumi show 12 · kumi init
+```
+
+Install it for every session with a junction (or copy) into `~/.claude/skills`, or load the repo as a plugin
+for one session with `claude --plugin-dir <this repo>`.
+
 ## Rinai
 
 A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).

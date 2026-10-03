@@ -25,6 +25,8 @@ export interface Goal {
   issue: number | null
   /** The issue in full, for the planner. */
   brief: string
+  /** What the crew did, written for the person who asked, once every ticket has merged. */
+  summary: string
 }
 
 export interface Ticket {
@@ -41,6 +43,8 @@ export interface Ticket {
   /** Rounds left before the ticket escalates to a human. */
   tries: number
   findings: string[]
+  /** The author's own report from its latest round. */
+  summary: string
   /** Why an escalated ticket needs a human. */
   note: string
   /** A human approved past the reviewer: the run goes straight to the gate, and the merge records it. */
@@ -54,7 +58,7 @@ export interface Event {
   project_id: number
   ticket_id: number | null
   ts: number
-  kind: 'plan' | 'claim' | 'submit' | 'verdict' | 'gate' | 'merge' | 'escalate' | 'human' | 'tracker'
+  kind: 'plan' | 'claim' | 'submit' | 'verdict' | 'gate' | 'merge' | 'escalate' | 'human' | 'tracker' | 'digest'
   data: Record<string, unknown>
 }
 
@@ -81,6 +85,8 @@ export interface Ran {
 export interface Workspace {
   /** The repo a directory sits in, or null. */
   root(dir: string): Promise<string | null>
+  /** Make `dir` a repo with one commit, so the crew has a base to branch from. */
+  init(dir: string): Promise<void>
   /** Current branch of a repo, or null if `repo` isn't one. */
   branch(repo: string): Promise<string | null>
   /** `owner/repo` of the GitHub remote, or null. */
