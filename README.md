@@ -73,6 +73,11 @@ you: what changed and where, calls it made, anything left. It sits on every merg
 the author's own report and the reviewer's verdict per criterion. The rail says how many merges happened since
 you last looked.
 
+The prompts are in `src/crew.ts` and follow `docs/research/agent-prompts.md`. Tickets carry exact files, the
+verify command and the planner's assumptions. Authors make the calls a ticket left open and record each as a
+ruling; an author that reports `Status: BLOCKED` goes straight to you instead of the reviewer. Reviewers pass
+only on evidence they produced, keep style in non-blocking nits, and from round 2 check every previous finding.
+
 A directory that isn't a git repo yet is offered `git init` on the spot; the crew needs a base branch to work
 from. Worktrees are always automatic, one per ticket, outside the repo.
 

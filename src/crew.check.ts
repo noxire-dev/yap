@@ -8,7 +8,7 @@ import { SqliteStore } from './store'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string } = {}) {
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
   const ws: Workspace = {
@@ -42,9 +42,18 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
         await new Promise(r => signal!.addEventListener('abort', r))
         return { ok: false, text: 'killed' }
       }
-      if (!schema) return { ok: true, text: 'did the thing' }
+      if (!schema) return { ok: true, text: o.report ?? 'did the thing' }
       const pass = reviews.shift() ?? false
-      return { ok: true, text: '', data: { criteria: [{ criterion: 'a', pass: true, reason: 'fine' }, { criterion: 'b', pass, reason: 'no cap' }] } }
+      const again = prompt.includes('the previous round failed on these')
+      return {
+        ok: true,
+        text: '',
+        data: {
+          previous: again ? [{ finding: 'b', evidence: 'slug.ts:2 unchanged', addressed: pass }] : [],
+          criteria: [{ criterion: 'a', reason: 'fine', pass: true }, { criterion: 'b', reason: 'no cap', pass }],
+          nits: ['rename x'],
+        },
+      }
     },
   }
   const told: string[] = []
@@ -81,6 +90,9 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(t.round, 2)
   assert.match(merged[0], /Rounds: 2\nReviewed-by: kumi reviewer/)
   assert.match(prompts[2], /Round 2[\s\S]*b: no cap/, 'findings reach the author')
+  assert.match(prompts[3], /previous round failed on these[\s\S]*b: no cap/, 'and the next reviewer')
+  assert.match(prompts[3], /author's report \(claims to check, not evidence\)\ndid the thing/)
+  assert.deepEqual(store.events({ ticket_id: t.id }).find(e => e.kind === 'verdict')!.data.nits, ['rename x'])
   assert.deepEqual(store.events({ ticket_id: t.id }).map(e => e.kind).reverse(), ['claim', 'submit', 'verdict', 'claim', 'submit', 'verdict', 'merge'])
 }
 
@@ -93,6 +105,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(t.status, 'escalated')
   assert.equal(t.round, ROUNDS)
   assert.equal(merged.length, 0)
+  assert.ok(t.findings.some(f => f.startsWith('Still open from round 3: b')), 'an unaddressed finding is carried')
   await crew.act(id, 'approve')
   assert.equal((await settled(store, id)).status, 'merged')
   assert.match(merged[0], /Reviewed-by: human override/)
@@ -144,6 +157,16 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 kumi merged this on local main. Pushing closes the issue.', 'move 7 in-review'])
   assert.equal(store.goals()[0].summary, 'The crew did the thing in x.', 'the goal carries the reporter\'s summary')
   assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
+}
+
+// An author that reports BLOCKED goes to a human, not to the reviewer.
+{
+  const { store, crew, prompts } = rig([], { report: 'Status: BLOCKED\nVerified: nothing; the API needs a key I do not have' })
+  const p = await crew.openProject('.')
+  const t = await settled(store, crew.addTicket(p.id, { title: 'x', criteria: ['a', 'b'] }).id)
+  assert.equal(t.status, 'escalated')
+  assert.match(t.note, /needs a decision[\s\S]*needs a key/)
+  assert.equal(prompts.length, 1, 'no review ran')
 }
 
 // A typed goal filed on the tracker first; a stuck ticket blocks its issue.

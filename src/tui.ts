@@ -423,6 +423,10 @@ export function sheet(t: Ticket, events: Event[], goal: Goal | undefined, w: num
     out[start] = ` ${!v ? dim('·') : v.pass ? green('✓') : red('✗')}${out[start].slice(2)}`
     if (v?.reason) say(v.reason, 6, dim)
   })
+  if (verdict?.nits?.length) {
+    out.push('', ` ${bold('Nits')}${dim('  the reviewer noted these; they did not block')}`)
+    for (const n of verdict.nits) say(`- ${n}`, 3, dim)
+  }
   if (t.findings.length && t.status !== 'merged') {
     out.push('', ` ${bold('Sent back with')}`)
     for (const f of t.findings) say(`- ${f}`, 3)

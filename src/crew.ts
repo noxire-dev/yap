@@ -12,19 +12,29 @@ interface Check {
   reason: string
 }
 
+// Reason before verdict in every row: the model commits to evidence before it commits to a word.
 const VERDICT = {
   type: 'object',
   properties: {
+    previous: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { finding: { type: 'string' }, evidence: { type: 'string' }, addressed: { type: 'boolean' } },
+        required: ['finding', 'evidence', 'addressed'],
+      },
+    },
     criteria: {
       type: 'array',
       items: {
         type: 'object',
-        properties: { criterion: { type: 'string' }, pass: { type: 'boolean' }, reason: { type: 'string' } },
-        required: ['criterion', 'pass', 'reason'],
+        properties: { criterion: { type: 'string' }, reason: { type: 'string' }, pass: { type: 'boolean' } },
+        required: ['criterion', 'reason', 'pass'],
       },
     },
+    nits: { type: 'array', items: { type: 'string' } },
   },
-  required: ['criteria'],
+  required: ['previous', 'criteria', 'nits'],
 }
 
 const PLAN = {
@@ -50,31 +60,32 @@ const PLAN = {
 const tail = (s: string, n = 2000) => (s.length > n ? '…' + s.slice(-n) : s)
 const first = (s: string) => s.trim().split(/\r?\n/)[0].slice(0, 200)
 const list = (items: string[]) => items.map((c, i) => `${i + 1}. ${c}`).join('\n')
+const fence = (diff: string, cap: number, note: string) =>
+  '```diff\n' + (diff.length > cap ? diff.slice(0, cap) + `\n[${note}]` : diff) + '\n```'
+
+/** An author report that opens `Status: BLOCKED`: the author stopped on purpose and a human has to look. */
+export const blocked = (report: string) => /^\W*status\W*blocked\b/im.test(report.trim().split(/\r?\n/).slice(0, 3).join('\n'))
 
 function workPrompt(t: Ticket, round: number, conflicts: boolean) {
-  return `You are an engineer on an autonomous crew, working alone in a git worktree on your own branch.
-Nobody is watching this session and nobody can answer questions. Make reasonable calls and finish the ticket.
+  return `You are the engineer on ticket t${t.id}, working alone in a git worktree on your own branch. Nobody is
+watching and nobody can answer a question, so when the ticket leaves a call open, make it, write it down as a
+ruling, and keep going. A reviewer who never sees your reasoning will check the diff against each criterion
+below, and anything it cannot verify fails.
 
 # Ticket t${t.id}: ${t.title}
 ${t.body}
 
 # Acceptance criteria
-A reviewer who has not seen your reasoning will check the diff against each of these:
 ${list(t.criteria)}
-
-# Rules
-- Work only in this directory. Do not switch branches, push, or touch other worktrees.
-- Whatever you leave in the tree is committed for you when you stop.
-- Run the project's own tests or checks for what you touched before you finish.
-- Stay inside the ticket. No drive-by refactors.
-- Finish with a short summary of what you changed.
 ${
   round > 1
     ? `
-# Round ${round}: your previous attempt was sent back
+# Round ${round}: the last attempt was sent back
 ${t.findings.map(f => `- ${f}`).join('\n')}
 
-The earlier work is already on this branch. Fix the findings; do not start over.
+That work is already on this branch. Fix these; do not start over. A finding about evidence ("could not
+verify") is fixed by producing the evidence: a test that exercises the behaviour, or output the reviewer can
+reproduce.
 `
     : ''
 }${
@@ -83,70 +94,152 @@ The earlier work is already on this branch. Fix the findings; do not start over.
 The base branch was merged into this branch and left conflicts. Resolve every conflict marker first.
 `
       : ''
-  }`
+  }
+# How to work
+- Read the code the ticket names before you change it, and follow the conventions already there.
+- Leave the tree as the ticket and nothing else: no scratch scripts, no notes or docs about the change, no new
+  dependencies, no reformatting of lines you did not need to touch, no edits to existing tests unless the ticket
+  asks. A bug you notice outside the ticket goes in your report, not in the diff.
+- Verify by running, not by reading: the command the ticket names, or the project's tests for what you touched.
+  If you are about to write "should work" or "probably", run the check instead.
+- If the same check has failed three times, stop editing. List the possible causes, test the likeliest with a
+  focused check, then change code. If that fails too, report BLOCKED with what you tried.
+- Stay in this directory. Never switch branches, push, or touch another worktree. Whatever is in the tree when
+  you stop is committed for you.
+
+Stop and report BLOCKED only when the next step is outside this worktree (a push, a publish, a credential, a
+service you cannot reach), destructive or irreversible, or the ticket is wrong enough that every path is a guess,
+such as a criterion that contradicts the code it names. Anything else, decide.
+
+# Your report
+End with this report and nothing after it:
+
+Status: DONE | DONE_WITH_CONCERNS | BLOCKED
+Verified: each command you ran to check the work, with its result (pass/fail counts or exit code)
+Changed: each file, with one line on what changed in it
+Rulings: each call the ticket did not make, as "what — why — what it costs if wrong", or "none"
+Noticed: anything outside the ticket worth a look, or "nothing"`
 }
 
-function reviewPrompt(t: Ticket, diff: string) {
-  return `You are reviewing a change you did not write. You have no context beyond this message.
-Judge what the code does, not what the author meant.
+function reviewPrompt(t: Ticket, diff: string, round: number, report: string) {
+  return `You are reviewing a change you did not write, with no context beyond this message. Judge what the code
+does, not what anyone says it does. Pass a criterion only on evidence: the diff, files you read, or output you
+produced yourself. A commit message, a comment, a function name, or the author's report claiming the behaviour is
+not evidence. A test that passes without the change, or asserts nothing, is not evidence either.
 
 # Ticket t${t.id}: ${t.title}
 ${t.body}
 
 # Acceptance criteria
 ${list(t.criteria)}
+${
+  round > 1 && t.findings.length
+    ? `
+# Round ${round}: the previous round failed on these
+${t.findings.map(f => `- ${f}`).join('\n')}
 
+For each, say whether it is addressed, with the file:line or command that shows it. Attempted is not addressed:
+the specific gap must be gone.
+`
+    : ''
+}
 # Diff against the base branch
-\`\`\`diff
-${diff.length > DIFF_CAP ? diff.slice(0, DIFF_CAP) + '\n[diff truncated: read the files for the rest]' : diff}
-\`\`\`
+${fence(diff, DIFF_CAP, 'diff truncated: read the files for the rest')}
 
-The working directory is the author's branch, checked out. Read files where the diff is not enough, and run the
-project's tests or other commands where a criterion is about behaviour. Change nothing: your edits are thrown away.
+# The author's report (claims to check, not evidence)
+${report || '(none)'}
 
-Answer every criterion, in the order given, with pass or fail and a one or two sentence reason that cites file:line
-or the command you ran. Fail a criterion you could not verify. If the change breaks existing behaviour or goes beyond the ticket,
-fail the criterion it touches most closely and say why.`
+# How to judge
+The working directory is the author's branch, checked out. Read files where the diff is not enough. Where a
+criterion is about behaviour, run the focused test or command that shows it. Your edits are thrown away.
+
+- A criterion fails when the behaviour it names is missing, wrong, or you could not make it happen. Uncertain is
+  a fail: say what you ran or read and what was missing, so the next round can supply it.
+- A criterion about a test passes only if that test would fail without the change. Read the assertion; run it
+  against the base branch if in doubt.
+- Every hunk traces to a criterion. A hunk that does not (an unrelated fix, a rename, a stray file, a new
+  dependency, an edit to an existing test the ticket did not ask for) fails the nearest criterion and names it.
+- Style, naming, coverage you would like more of, and pre-existing problems the diff did not introduce are not
+  fails. Put them in nits; they do not block.
+- A fail reason is written for the engineer who fixes it: the file:line or command and its output, the input
+  that shows the gap, and what would make it pass.
+
+Answer every criterion in the order given: the reason first, then pass or fail.`
 }
 
 function planPrompt(goal: string, brief: string) {
-  return `Break this goal into tickets for an autonomous engineering crew working in this repository. Read the code first.
+  return `Break this goal into tickets for an autonomous engineering crew working in this repository. Read the
+code before you write a ticket. Each ticket goes to an engineer who has the repo, sees nothing but that ticket,
+and cannot ask anyone anything. A reviewer then checks the engineer's diff against the ticket's criteria.
 
 # Goal
 ${goal}
 ${brief ? `\n# The issue this came from\n${brief}\n` : ''}
-# Rules
-- A ticket is one reviewable change that leaves the repo working once it and its deps are merged.
-- 1 to 8 tickets. Fewer is better: a small goal is one ticket.
+# A ticket
+- One reviewable change that leaves the repo working once it and its deps are merged. Fewer is better: a small
+  goal is one ticket, and 8 is the most.
 - title: imperative, under 70 characters.
-- body: what to change and where, with file paths. The engineer has no other context.
-- criteria: 2 to 5 statements a reviewer can verify by reading the diff. Concrete and checkable, never "works well".
-- deps: zero-based indexes of earlier tickets that must merge first. Only when the ticket truly builds on the other;
-  independent tickets run in parallel.`
+- body, in this order:
+  1. The problem, with an input or example that shows it where there is one.
+  2. The files to change, by exact path.
+  3. Any name, signature, error message or flag this ticket must produce or use, so tickets that run in
+     parallel agree without talking.
+  4. Out of scope: what the engineer must not touch.
+  5. Verify: the command that proves it, and what its output looks like when it passes.
+  6. Assumptions: every call you made where the goal was silent. Nobody can be asked, so decide and say so.
+- criteria: 2 to 5 lines. Each is one observable behaviour with its input and expected result, checkable from the
+  diff or by running something. Any function, message, flag or path a criterion names also appears in the body.
+  If a criterion asks for a test, say which regression the test must catch. Never "works", "handles edge cases",
+  "is tested", or "is clean".
+- deps: zero-based indexes of earlier tickets that must merge first, only when this ticket builds on that one's
+  code. Independent tickets run in parallel.
+
+# Example
+title: Collapse dash runs in slugify
+body:
+  slugify('a  b') returns 'a--b'; runs of separators should become one dash.
+  Files: slug.ts, slug.test.ts.
+  Keep the export \`slugify(input: string): string\` unchanged.
+  Out of scope: accent handling, length limits.
+  Verify: \`bun test slug.test.ts\` passes, including a new 'collapses dash runs' test.
+  Assumptions: leading and trailing dashes are trimmed too, since a slug never starts with one.
+criteria:
+  - slugify('a  b') and slugify('a--b') both return 'a-b'
+  - slugify('  Hello World!  ') returns 'hello-world'
+  - slug.test.ts has a 'collapses dash runs' test that fails on the current slugify
+
+Before you return, read each ticket as that engineer. If they would have to guess what done means, fix the
+ticket.`
 }
 
-/** The merge commit's message. `ref` is the line that ties it to a tracker issue, if any. */
 function digestPrompt(goal: Goal, done: { t: Ticket; diff: string }[]) {
-  return `You are reporting to the person who asked an autonomous crew for this. They were not watching. Read what
-merged and tell them, in plain language, what changed and where (file paths), any call the crew made that they
-would want to know about, and anything left undone or worth a look. Four to eight sentences or short bullets.
-No preamble, no praise.
+  return `You are reporting to the person who asked an autonomous crew for this. They were not watching and will
+read this once, later. Say only what you can point to in a diff or a report below.
 
 # What they asked for
 ${goal.text}
 
 ${done
   .map(
-    ({ t, diff }) => `# t${t.id}: ${t.title} (${t.sha?.slice(0, 7)}, ${t.round} round${t.round === 1 ? '' : 's'})
+    ({ t, diff }) => `# t${t.id}: ${t.title} (${t.sha?.slice(0, 7)}, ${t.round} round${t.round === 1 ? '' : 's'}${
+      t.override ? ', merged by human override without reviewer approval' : ''
+    })
 Author's report:
 ${t.summary || '(none)'}
 
-\`\`\`diff
-${diff.length > 40_000 ? diff.slice(0, 40_000) + '\n[truncated]' : diff}
-\`\`\`
+${fence(diff, 40_000, 'truncated')}
 `,
   )
-  .join('\n')}`
+  .join('\n')}
+# Write, in this order
+1. One or two sentences on what is now true that was not before.
+2. What changed, by file path, one line each.
+3. Every ruling the authors recorded, with what it costs if wrong. Skip this part if there were none.
+4. What was verified (commands and counts from the reports) and what was not.
+5. Anything noticed and left alone, or worth a look before pushing.
+
+Plain language, short lines. Do not open with "Summary", do not praise the work, and do not end with an offer
+or a question.`
 }
 
 function receipt(t: Ticket, checks: Check[] | null, ref: string) {
@@ -474,13 +567,17 @@ export class Crew {
           send(round, 'no changes were produced on the branch')
           continue
         }
-        log('submit', { round, summary: first(work.text) })
-        set({ status: 'review', summary: work.text.trim().slice(0, 4000) })
+        const report = work.text.trim().slice(0, 4000)
+        set({ summary: report })
+        // The author stopped on purpose: a human decides, the reviewer never sees it.
+        if (blocked(report)) throw new Error(`the author stopped and needs a decision:\n${report}`)
+        log('submit', { round, summary: first(report) })
+        set({ status: 'review' })
         onActivity('')
 
         const review = await this.agent.run({
           cwd: dir,
-          prompt: reviewPrompt(t, diff),
+          prompt: reviewPrompt(t, diff, round, this.ticket(id).summary),
           schema: VERDICT,
           signal,
           onActivity,
@@ -491,10 +588,14 @@ export class Crew {
         if (got.length < t.criteria.length) throw new Error(`reviewer returned no verdict: ${tail(review.text, 500)}`)
         // Pair by position and take approval from the rows, never from the reviewer's say-so.
         checks = t.criteria.map((criterion, i) => ({ criterion, pass: got[i].pass === true, reason: String(got[i].reason ?? '') }))
+        const previous: { finding: string; evidence: string; addressed: boolean }[] = Array.isArray(review.data?.previous) ? review.data.previous : []
+        const nits: string[] = Array.isArray(review.data?.nits) ? review.data.nits.map(String) : []
         const approved = checks.every(c => c.pass)
-        log('verdict', { round, approved, criteria: checks })
+        log('verdict', { round, approved, criteria: checks, previous, nits })
         if (!approved) {
-          set({ findings: checks.filter(c => !c.pass).map(c => `${c.criterion}: ${c.reason}`) })
+          // A previous finding still open rides along, so a half-fix cannot drop out of sight between rounds.
+          const open = previous.filter(f => f.addressed !== true).map(f => `Still open from round ${round - 1}: ${f.finding} (${f.evidence})`)
+          set({ findings: [...checks.filter(c => !c.pass).map(c => `${c.criterion}: ${c.reason}`), ...open] })
           continue
         }
       }
