@@ -12,6 +12,7 @@ kumi goal <text>     plan tickets for this repo from a sentence (--rinai files i
 kumi take <issue>    plan tickets from an issue on this repo's Rinai board
 kumi go              start this repo's drafted tickets
 kumi init            make this directory a git repo so the crew can work in it
+kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 kumi serve           the daemon in the foreground`
 
@@ -170,6 +171,17 @@ try {
     const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft').map(t => t.goal_id))
     for (const g of goals) await api.send('POST', `/api/goals/${g}/start`)
     console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
+  } else if (cmd === 'sessions') {
+    if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
+    const list = await api.get<{ id: string; top: string; intent: string; at: number; files: string[] }[]>('/api/sessions')
+    const ago = (ts: number) => `${Math.round((Date.now() - ts) / 60_000)}m`
+    const show = (s: (typeof list)[number]) =>
+      [
+        `${s.id.slice(0, 8)}  ${ago(s.at).padStart(4)}  ${s.top}`,
+        `          ${s.intent || '(no prompt yet)'}`,
+        ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
+      ].join('\n')
+    console.log(list.length ? list.map(show).join('\n') : 'no sessions')
   } else if (cmd === 'init') {
     console.log(`${(await here(true)).name} is ready for the crew`)
   } else if (cmd === 'stop') {

@@ -20,6 +20,13 @@ export class LocalWorkspace implements Workspace {
     return r.ok ? resolve(r.log) : null
   }
 
+  async where(dir: string) {
+    if (!existsSync(dir)) return null
+    const r = await git(dir, 'rev-parse', '--show-toplevel', '--git-common-dir')
+    const [top, common] = r.log.split(/\r?\n/)
+    return r.ok && top && common ? { top: resolve(top), common: resolve(dir, common) } : null
+  }
+
   async init(dir: string) {
     for (const args of [['init', '-b', 'main'], ['add', '-A'], ['commit', '--allow-empty', '-m', 'kumi: first commit']]) {
       const r = await git(dir, ...args)

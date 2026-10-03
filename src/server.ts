@@ -5,6 +5,7 @@ import { ClaudeCli } from './agent'
 import { Crew } from './crew'
 import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
+import { Sessions } from './sessions'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
 
@@ -36,6 +37,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 crew.recover()
+const sessions = new Sessions(ws, store)
 
 // This server runs shell commands, so a web page must not be able to drive it:
 // refuse anything not addressed to localhost or sent from another origin.
@@ -103,6 +105,19 @@ Bun.serve({
     },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
+    // Claude Code hooks from every session on this machine. Never fails: a hook must not break the session.
+    '/api/hook/:event': {
+      POST: async req => {
+        if (foreign(req)) return new Response('forbidden', { status: 403 })
+        try {
+          return Response.json(await sessions.hook(req.params.event, await req.json()))
+        } catch {
+          return Response.json({})
+        }
+      },
+    },
+    '/api/sessions': api(() => sessions.list()),
+
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
 
     '/api/projects/:id': {

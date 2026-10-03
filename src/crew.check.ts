@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { Crew, ROUNDS } from './crew'
 import type { AgentRunner, Tracker, Workspace } from './ports'
+import { Sessions } from './sessions'
 import { SqliteStore } from './store'
 
 const ok = { ok: true, log: '' }
@@ -13,6 +14,8 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
   const merged: string[] = []
   const ws: Workspace = {
     root: async dir => dir,
+    // `/wt` is a second worktree of `/repo`.
+    where: async dir => ({ top: dir.startsWith('/wt') ? '/wt' : '/repo', common: '/repo/.git' }),
     init: async () => {},
     branch: async () => 'main',
     slug: async () => 'acme/toy',
@@ -66,7 +69,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`),
   }
   const crew = new Crew(store, ws, agent, tracker, '/tmp/kumi')
-  return { store, crew, merged, prompts, told }
+  return { store, crew, merged, prompts, told, ws }
 }
 
 async function until<T>(get: () => T | undefined | false) {
@@ -180,6 +183,29 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await settled(store, store.tickets()[0].id)
   await until(() => told.includes('move 9 blocked'))
   assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 kumi: t1 "first" needs a human.', 'move 9 blocked'])
+}
+
+// Sessions: each one hears about the others in its repo, and is warned once before touching a file another
+// session in the same working tree just edited. A worktree of the same repo is visible but never warned.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const reg = new Sessions(ws, store, () => now)
+  const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
+  assert.deepEqual(await reg.hook('start', { session_id: 'aaaa1111', cwd: '/repo' }), {}, 'alone: nothing to say')
+  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect\nmore' })
+  await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: '/repo/src/auth.ts' } })
+  now += 60_000
+  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /aaaa1111.*"fix the login redirect".*src\/auth\.ts/)
+  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /aaaa1111.*in another worktree/)
+  const warn = await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
+  assert.match(ctx(warn), /src\/auth\.ts in this same working tree: session aaaa1111 \("fix the login redirect"\) edited it 1m ago/)
+  assert.deepEqual(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } }), {}, 'warned once')
+  assert.deepEqual(await reg.hook('pre', { session_id: 'cccc3333', cwd: '/wt', tool_input: { file_path: '/wt/src/auth.ts' } }), {}, 'other worktree')
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'x' })), /bbbb2222[\s\S]*cccc3333/, 'news on the next prompt')
+  assert.deepEqual(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'y' }), {}, 'nothing moved, nothing said')
+  await reg.hook('end', { session_id: 'bbbb2222' })
+  assert.deepEqual(reg.list().map(s => s.id).sort(), ['aaaa1111', 'cccc3333'])
 }
 
 console.log('crew ok')
