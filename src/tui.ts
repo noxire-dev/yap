@@ -28,6 +28,8 @@ export interface Host {
   cwd: string
   /** When the previous session ended; merges after it are marked new. */
   seen: number
+  /** Open straight into the composer, as Herdr's "new work" action does. */
+  open?: 'new'
   quit(): void
 }
 
@@ -555,6 +557,7 @@ export class Tui {
       if (busy || this.tick % 10 === 0) this.render()
     }, 100)
     await this.refresh()
+    if (this.host.open === 'new' && this.project) await this.key('n')
   }
 
   /** A plain directory: make it a repo, so the crew has a base to branch from. */

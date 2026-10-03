@@ -1,0 +1,46 @@
+id = "kumi"
+name = "kumi"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "A crew of coding agents that plans, writes, reviews and merges your goals. The daemon starts with Herdr; the board opens over any pane, on that pane's repo."
+platforms = ["windows", "macos", "linux"]
+
+# One-shot: spawns the daemon detached and exits. Herdr does not supervise startup commands, and the daemon
+# outlives the Herdr server on purpose so a restart never kills an agent mid-ticket.
+[[startup]]
+command = ["bun", "src/cli.ts", "start"]
+
+# Actions run from this directory and read the focused pane from HERDR_PLUGIN_CONTEXT_JSON.
+[[actions]]
+id = "board"
+title = "kumi: board for this repo"
+contexts = ["workspace", "tab", "pane"]
+command = ["bun", "src/cli.ts", "herdr", "board", "popup"]
+
+[[actions]]
+id = "board-tab"
+title = "kumi: board for this repo, in a tab"
+contexts = ["workspace", "tab", "pane"]
+command = ["bun", "src/cli.ts", "herdr", "board", "tab"]
+
+[[actions]]
+id = "new"
+title = "kumi: new work for this repo"
+contexts = ["workspace", "tab", "pane"]
+command = ["bun", "src/cli.ts", "herdr", "new", "popup"]
+
+[[actions]]
+id = "go"
+title = "kumi: start this repo's drafted tickets"
+contexts = ["workspace", "tab", "pane"]
+command = ["bun", "src/cli.ts", "herdr", "go"]
+
+# The board itself. It starts in this directory, so a relative path works on every platform; KUMI_CWD names
+# the repo it is about.
+[[panes]]
+id = "board"
+title = "kumi"
+placement = "popup"
+width = "90%"
+height = "90%"
+command = ["bun", "src/cli.ts"]

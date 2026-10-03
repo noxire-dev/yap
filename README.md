@@ -113,6 +113,23 @@ worktrees included, and kumi's own crew counts as one more worker.
 Edits made through shell commands (`sed`, a codegen script) aren't seen; only Claude's edit tools report.
 The crew's own agents run with `KUMI_AGENT=1` and stay out of the registry.
 
+## Herdr
+
+`herdr-plugin.toml` makes the repo a Herdr plugin: `herdr plugin link <this repo>`.
+
+- The daemon starts when the Herdr server does. It is spawned detached, so restarting Herdr never kills an agent
+  mid-ticket.
+- Actions, each on the focused pane's repo: `kumi.board` (popup), `kumi.board-tab`, `kumi.new` (board opened
+  on the composer), `kumi.go` (start the drafts; the answer comes back as a toast).
+- Bind them in Herdr's `config.toml`:
+
+```toml
+[[keys.command]]
+key = "prefix+u"
+type = "plugin_action"
+command = "kumi.board"
+```
+
 ## Rinai
 
 A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).

@@ -12,6 +12,7 @@ kumi goal <text>     plan tickets for this repo from a sentence (--rinai files i
 kumi take <issue>    plan tickets from an issue on this repo's Rinai board
 kumi go              start this repo's drafted tickets
 kumi init            make this directory a git repo so the crew can work in it
+kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 kumi serve           the daemon in the foreground`
@@ -72,6 +73,19 @@ async function daemon() {
   throw new Error(`the daemon did not start. See ${join(home, 'daemon.log')}`)
 }
 
+/**
+ * The repo kumi is about. Inside a Herdr plugin pane or action the process starts in the plugin's own
+ * directory, so the focused pane's directory comes from Herdr instead.
+ */
+function target() {
+  if (process.env.KUMI_CWD) return process.env.KUMI_CWD
+  try {
+    const c = JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON ?? '{}')
+    if (c.focused_pane_cwd || c.workspace_cwd) return String(c.focused_pane_cwd || c.workspace_cwd)
+  } catch {}
+  return process.cwd()
+}
+
 const seenFile = join(home, 'seen')
 const readSeen = () => {
   try {
@@ -107,8 +121,9 @@ async function board() {
       write: s => void stdout.write(s),
     },
     {
-      cwd: process.cwd(),
+      cwd: target(),
       seen: readSeen(),
+      open: process.env.KUMI_OPEN === 'new' ? 'new' : undefined,
       quit() {
         screen(false)
         writeFileSync(seenFile, String(Date.now()))
@@ -129,10 +144,37 @@ async function board() {
   await tui.start()
 }
 
+/** A Herdr plugin action: open the board on the focused pane's repo, or start its drafts. */
+async function herdr(what: string | undefined, placement: 'popup' | 'tab') {
+  const bin = process.env.HERDR_BIN_PATH || 'herdr'
+  const cwd = target()
+  const toast = (title: string, body: string) =>
+    spawn(bin, ['notification', 'show', title, '--body', body], { stdio: 'ignore', windowsHide: true })
+  try {
+    if (what === 'go') {
+      const p = await here()
+      const s = (await running())!
+      const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft').map(t => t.goal_id))
+      for (const g of goals) await api.send('POST', `/api/goals/${g}/start`)
+      return void toast('kumi', goals.size ? `started ${p.name}'s drafts` : `nothing drafted on ${p.name}`)
+    }
+    if (what !== 'board' && what !== 'new') throw new Error('kumi herdr <board|new|go> [popup|tab]')
+    await daemon()
+    const args = ['plugin', 'pane', 'open', '--plugin', 'kumi', '--entrypoint', 'board', '--placement', placement, '--env', `KUMI_CWD=${cwd}`, '--focus']
+    if (what === 'new') args.push('--env', 'KUMI_OPEN=new')
+    const r = Bun.spawnSync([bin, ...args], { windowsHide: true })
+    if (r.exitCode !== 0) throw new Error(r.stderr.toString().trim() || `herdr exited ${r.exitCode}`)
+  } catch (e: any) {
+    // An action has no terminal to print to; a toast is the only place an error can be seen.
+    toast('kumi', String(e?.message ?? e))
+    throw e
+  }
+}
+
 // The project for the current directory, for the one-shot commands agents and scripts use.
 async function here(init = false) {
   await daemon()
-  return api.send('POST', '/api/projects', { path: process.cwd(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
+  return api.send('POST', '/api/projects', { path: target(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
 }
 
 const [cmd, ...rest] = process.argv.slice(2)
@@ -182,6 +224,8 @@ try {
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
       ].join('\n')
     console.log(list.length ? list.map(show).join('\n') : 'no sessions')
+  } else if (cmd === 'herdr') {
+    await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'init') {
     console.log(`${(await here(true)).name} is ready for the crew`)
   } else if (cmd === 'stop') {
