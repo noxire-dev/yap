@@ -145,7 +145,16 @@ export class LocalWorkspace implements Workspace {
    */
   async exec(dir: string, command: string) {
     const win = process.platform === 'win32'
-    const p = Bun.spawn(win ? ['cmd', '/d', '/s', '/c', command] : ['sh', '-c', command], { cwd: dir, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', windowsHide: true })
+    // cmd parses its own command line: hand it over verbatim, wrapped in the quotes /s strips, or Bun's escaping
+    // of inner quotes (\") mangles the command and a failing gate can exit 0.
+    const p = Bun.spawn(win ? ['cmd', '/d', '/s', '/c', `"${command}"`] : ['sh', '-c', command], {
+      cwd: dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      stdin: 'ignore',
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    })
     let buf = ''
     const dec = new TextDecoder()
     const pump = async (s: ReadableStream<Uint8Array>) => {
@@ -173,8 +182,8 @@ export class LocalWorkspace implements Workspace {
     return git(repo, 'update-ref', `refs/heads/${base}`, sha, parent)
   }
 
-  async cleanup(repo: string, dir: string, branch: string) {
+  async cleanup(repo: string, dir: string, branch?: string) {
     await git(repo, 'worktree', 'remove', '--force', dir)
-    await git(repo, 'branch', '-D', branch)
+    if (branch) await git(repo, 'branch', '-D', branch)
   }
 }

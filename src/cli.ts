@@ -13,6 +13,7 @@ kumi goal <text>     plan tickets for this repo from a sentence (--rinai files i
 kumi take <issue>    plan tickets from an issue on this repo's Rinai board
 kumi go              start this repo's drafted tickets
 kumi init            make this directory a git repo so the crew can work in it
+kumi gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
 kumi forget [name]   take this repo's project (or the named one) off the board
 kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 kumi hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
@@ -310,6 +311,11 @@ try {
     else console.log(`kumi's hooks are in ${install(block)}. Sessions started from now on report to the daemon.`)
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
+  } else if (cmd === 'gate') {
+    const p = await here()
+    if (rest.length) await api.send('PATCH', `/api/projects/${p.id}`, { gate: rest.join(' ') })
+    const now = ((await running())!.projects.find(x => x.id === p.id)!).gate
+    console.log(now ? `${p.name}'s gate: ${now}` : `${p.name} has no gate: the reviewer is the only check`)
   } else if (cmd === 'init') {
     console.log(`${(await here(true)).name} is ready for the crew`)
   } else if (cmd === 'forget') {

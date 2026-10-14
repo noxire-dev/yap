@@ -131,7 +131,8 @@ export interface Workspace {
   exec(dir: string, command: string): Promise<Ran>
   /** Fast-forward `base` to `sha`. Fails rather than clobbering if `base` moved or the checkout is dirty. */
   advance(repo: string, base: string, sha: string): Promise<Ran>
-  cleanup(repo: string, dir: string, branch: string): Promise<void>
+  /** Remove a worktree, and its branch when one is named. */
+  cleanup(repo: string, dir: string, branch?: string): Promise<void>
 }
 
 export interface AgentRun {

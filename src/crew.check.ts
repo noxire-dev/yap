@@ -11,7 +11,8 @@ const ok = { ok: true, log: '' }
 const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean } = {}) {
+  let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
   const squashed: string[] = []
@@ -32,13 +33,18 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     diff: async () => o.diff ?? 'diff --git a/x b/x',
     head: async () => 'reviewed1',
     landed: async () => o.landed ?? null,
-    discard: async () => {},
+    // The gate tree sits on the merged result after a squash, and on the bare base once reset to it.
+    discard: async (_d, to) => void (to === 'main' && (atBase = true)),
     squash: async (_r, _s, _b, pick, message) => {
+      atBase = false
       squashed.push(pick)
       merged.push(message)
       return { ...ok, sha: 'abc123' }
     },
-    exec: async () => ({ ok: o.gateOk ?? true, log: o.gateOk === false ? '1 test failed' : '' }),
+    exec: async () => {
+      const ok = atBase ? !o.baseBroken : (o.gateOk ?? true)
+      return { ok, log: ok ? '' : atBase ? 'base is red' : '1 test failed' }
+    },
     advance: async () => ok,
     cleanup: async () => {},
   }
@@ -132,6 +138,18 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(t.status, 'escalated')
   assert.equal(t.sha, null)
   assert.match(t.findings[0], /1 test failed/)
+  assert.match(t.note, /still failing after 4 rounds: `bun test` failed on the merged result/)
+}
+
+// A gate that fails on the base by itself goes to a human after one round: no author can fix that.
+{
+  const { store, crew, prompts } = rig([true], { gateOk: false, baseBroken: true })
+  const p = await crew.openProject('.')
+  store.patchProject(p.id, { gate: 'bun test' })
+  const t = await settled(store, crew.addTicket(p.id, { title: 'x', criteria: ['a', 'b'] }).id)
+  assert.deepEqual([t.status, t.round], ['escalated', 1])
+  assert.match(t.note, /`bun test` fails on main itself, without t\d+'s change[\s\S]*base is red/)
+  assert.equal(prompts.filter(x => x.startsWith('You are the engineer')).length, 1)
 }
 
 // A stalled author is restarted by hand: same round again, no try spent, and it merges.

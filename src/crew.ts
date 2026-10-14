@@ -324,7 +324,7 @@ export class Crew {
 
   /**
    * Take a project off the board, by name or by a path inside its repo. Refused while any of its tickets is
-   * queued or running. Ticket branches stay in the repo.
+   * queued or running. Its worktrees are removed; ticket branches stay in the repo.
    */
   async forgetProject(name: string, input: string) {
     const path = name ? null : await this.ws.root(resolve(input))
@@ -332,12 +332,14 @@ export class Crew {
     if (!p) throw new Error(`no project ${name || input}`)
     const busy = this.store.tickets().filter(t => t.project_id === p.id && ['todo', 'working', 'review', 'gate'].includes(t.status))
     if (busy.length) throw new Error(`${p.name} has ${busy.length} ticket${busy.length === 1 ? '' : 's'} queued or running; drop them first`)
+    // Worktrees go; branches stay, so unmerged work is still in the repo.
+    for (const t of this.store.tickets()) if (t.project_id === p.id && t.status !== 'merged') await this.ws.cleanup(p.path, this.dir(p, t.id))
+    await this.ws.cleanup(p.path, this.dir(p, 'gate'))
     this.store.removeProject(p.id)
     this.changed()
     return p
   }
 
-  /** The tracker's open cards, each marked if a goal already came from it. */
   /** The project, with its tracker looked up again if it had none (a remote added since). */
   private async tracked(project_id: number) {
     const p = this.project(project_id)
@@ -347,6 +349,7 @@ export class Crew {
     return { ...p, tracker }
   }
 
+  /** The tracker's open cards, each marked if a goal already came from it. */
   async cards(project_id: number) {
     const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no GitHub remote, so there is no board to read')
@@ -375,13 +378,15 @@ export class Crew {
   }
 
   /** Tell the tracker what became of the issue a ticket came from. Never blocks or fails the crew. */
+  // Only kumi's own label for why (the text before the first colon) leaves the machine: what follows it is an
+  // author's report or a reviewer's finding, which an issue body can talk into carrying anything.
   private report(p: Project, t: Ticket, what: 'start' | 'stuck', detail = '') {
     const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
     const repo = p.tracker
     if (!repo || !issue) return
     const say = async () => {
       if (what === 'start') return this.tracker.claim(repo, issue)
-      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human: ${first(detail)}. The full story is on the kumi board.`)
+      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human: ${first(detail).split(/:\s/)[0]}. The full story is on the kumi board.`)
       return this.tracker.move(repo, issue, 'blocked')
     }
     say().then(
@@ -577,7 +582,7 @@ export class Crew {
 
       if (!t.override) {
         if (t.tries <= 0) {
-          const why = `still failing after ${t.round} rounds`
+          const why = `still failing after ${t.round} rounds${t.findings[0] ? `: ${first(t.findings[0])}` : ''}`
           log('escalate', { why, findings: t.findings })
           this.report(p, t, 'stuck', [why, ...t.findings.map(f => `- ${f}`)].join('\n'))
           return set({ status: 'escalated', note: why })
@@ -653,7 +658,14 @@ export class Crew {
         if (!merged.sha) return { log: merged.log }
         if (p.gate) {
           const ran = await this.ws.exec(this.dir(p, 'gate'), p.gate)
-          if (!ran.ok) return { log: `\`${p.gate}\` failed on the merged result:\n${tail(ran.log, 3000)}` }
+          if (!ran.ok) {
+            // Failing on the base alone means no author can fix it by another round: a human fixes the gate.
+            await this.ws.discard(this.dir(p, 'gate'), p.base)
+            const bare = await this.ws.exec(this.dir(p, 'gate'), p.gate)
+            if (!bare.ok)
+              return { log: `\`${p.gate}\` fails on ${p.base} itself, without t${id}'s change; the gate or the base needs fixing, not the ticket:\n${tail(bare.log, 3000)}`, human: true }
+            return { log: `\`${p.gate}\` failed on the merged result:\n${tail(ran.log, 3000)}` }
+          }
         }
         // Dropped while the gate ran: the base branch never moves for it.
         if (signal.aborted) return { log: '' }
