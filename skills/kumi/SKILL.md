@@ -23,6 +23,7 @@ Run every command from inside the repo. The daemon starts on demand.
 | Start the drafted tickets | `kumi go` |
 | A directory with no git yet | `kumi init` |
 | Which other Claude sessions are in this repo, and what they are doing | `kumi sessions` |
+| Tell another session something, or all of them in this repo | `kumi say [@<session>] <text>` |
 
 A goal is planned into drafts first and nothing runs until `kumi go`. Ask the user before running `kumi go`
 unless they already said to start. Write goals as outcomes with enough context for an engineer who has not seen

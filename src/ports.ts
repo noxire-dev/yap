@@ -89,6 +89,8 @@ export interface Workspace {
   root(dir: string): Promise<string | null>
   /** The working tree a directory sits in and the repo's shared git dir (one per repo, across worktrees), or null. */
   where(dir: string): Promise<{ top: string; common: string } | null>
+  /** Modified and untracked files in a working tree, absolute, with their modification times. */
+  changed(top: string): Promise<{ path: string; mtime: number }[]>
   /** Make `dir` a repo with one commit, so the crew has a base to branch from. */
   init(dir: string): Promise<void>
   /** Current branch of a repo, or null if `repo` isn't one. */

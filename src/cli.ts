@@ -15,6 +15,7 @@ kumi init            make this directory a git repo so the crew can work in it
 kumi forget [name]   take this repo's project (or the named one) off the board
 kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
+kumi say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 kumi serve           the daemon in the foreground`
 
@@ -225,6 +226,11 @@ try {
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
       ].join('\n')
     console.log(list.length ? list.map(show).join('\n') : 'no sessions')
+  } else if (cmd === 'say') {
+    const to = rest[0]?.startsWith('@') ? rest.shift() : undefined
+    await daemon()
+    const r = await api.send('POST', '/api/say', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), to, text: rest.join(' ') })
+    console.log(`left for ${r.to.join(', ')}: they read it on their next tool call or prompt`)
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'init') {

@@ -4,18 +4,23 @@ import assert from 'node:assert/strict'
 import { Crew, ROUNDS } from './crew'
 import type { AgentRunner, Tracker, Workspace } from './ports'
 import { Sessions } from './sessions'
+import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 
 const ok = { ok: true, log: '' }
+const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
 function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string } = {}) {
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
+  // What `git status` would list, for shell-edit tracking.
+  const dirty: { path: string; mtime: number }[] = []
   const ws: Workspace = {
     root: async dir => dir,
     // `/wt` is a second worktree of `/repo`.
     where: async dir => ({ top: dir.startsWith('/wt') ? '/wt' : '/repo', common: '/repo/.git' }),
+    changed: async () => dirty,
     init: async () => {},
     branch: async () => 'main',
     slug: async () => 'acme/toy',
@@ -69,7 +74,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`),
   }
   const crew = new Crew(store, ws, agent, tracker, '/tmp/kumi')
-  return { store, crew, merged, prompts, told, ws }
+  return { store, crew, merged, prompts, told, ws, dirty }
 }
 
 async function until<T>(get: () => T | undefined | false) {
@@ -220,6 +225,38 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'y' }), {}, 'nothing moved, nothing said')
   await reg.hook('end', { session_id: 'bbbb2222' })
   assert.deepEqual(reg.list().map(s => s.id).sort(), ['aaaa1111', 'cccc3333'])
+}
+
+// Sessions talk: a message waits for the recipient's next hook call, a clobbering git command is held back while
+// another session edits the same tree, and a shell command's edits count as the session's own.
+{
+  const { store, ws, dirty } = rig([])
+  let now = 1_000_000
+  const reg = new Sessions(ws, store, () => now)
+  const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
+  const bash = (id: string, command: string, event = 'pre') => reg.hook(event, { session_id: id, cwd: '/repo', tool_name: 'Bash', tool_input: { command } })
+  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
+  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session bbbb2222.*kumi say/s)
+  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), ['aaaa1111'])
+  assert.match(ctx(await bash('aaaa1111', 'ls')), /From session bbbb2222: leave auth\.ts to me/)
+  assert.deepEqual(await bash('aaaa1111', 'ls'), {}, 'delivered once')
+  await assert.rejects(reg.say({ from: 'bbbb2222', cwd: '/repo', to: 'zzzz', text: 'hi' }), /no live session zzzz/)
+  await reg.say({ cwd: '/repo', text: 'stop and commit' })
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'bbbb2222', cwd: '/repo', prompt: 'go' })), /From the user: stop and commit/)
+
+  // aaaa's shell command rewrites a file: only what changed since the command started is its edit.
+  dirty.push({ path: '/repo/old.ts', mtime: now - 60_000 })
+  await bash('aaaa1111', "sed -i s/a/b/ src/auth.ts")
+  now += 5_000
+  dirty.push({ path: '/repo/src/auth.ts', mtime: now })
+  await bash('aaaa1111', "sed -i s/a/b/ src/auth.ts", 'post')
+  assert.deepEqual(reg.list().find(s => s.id === 'aaaa1111')!.files, [norm('/repo/src/auth.ts')])
+
+  const held: any = await bash('bbbb2222', 'git stash && git checkout main')
+  assert.equal(held.hookSpecificOutput.permissionDecision, 'deny')
+  assert.match(held.hookSpecificOutput.permissionDecisionReason, /session aaaa1111.*src\/auth\.ts/)
+  assert.deepEqual(await bash('bbbb2222', 'git status && git diff'), {}, 'reading git is fine')
+  assert.equal(((await bash('aaaa1111', 'git reset --hard')) as any).hookSpecificOutput, undefined, 'bbbb edited nothing')
 }
 
 console.log('crew ok')

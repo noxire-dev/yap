@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Ran, Workspace } from './ports'
 
@@ -25,6 +25,26 @@ export class LocalWorkspace implements Workspace {
     const r = await git(dir, 'rev-parse', '--show-toplevel', '--git-common-dir')
     const [top, common] = r.log.split(/\r?\n/)
     return r.ok && top && common ? { top: resolve(top), common: resolve(dir, common) } : null
+  }
+
+  async changed(top: string) {
+    // Not through sh(): its trim would eat the leading space of the first entry's status.
+    const p = Bun.spawn(['git', 'status', '--porcelain', '-z', '--untracked-files=all'], { cwd: top, stdout: 'pipe', stderr: 'ignore', stdin: 'ignore', windowsHide: true })
+    const text = await new Response(p.stdout).text()
+    if ((await p.exited) !== 0) return []
+    const out: { path: string; mtime: number }[] = []
+    const parts = text.split('\u0000')
+    for (let i = 0; i < parts.length; i++) {
+      const e = parts[i]
+      if (e.length < 4) continue
+      // A rename or copy carries its old path as the next entry.
+      if (e[0] === 'R' || e[0] === 'C') i++
+      const path = join(top, e.slice(3))
+      try {
+        out.push({ path, mtime: statSync(path).mtimeMs })
+      } catch {} // deleted
+    }
+    return out
   }
 
   async init(dir: string) {

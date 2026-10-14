@@ -1,7 +1,7 @@
 # kumi
 
 A crew of coding agents that works through a goal without you watching. Modelled on [niwa](https://niwa.build).
-It also keeps parallel Claude Code sessions on one repo aware of each other; see "Parallel sessions" below.
+It also lets parallel Claude Code sessions on one repo see and message each other; see "Parallel sessions" below.
 
 You type a goal. A planner turns it into tickets with acceptance criteria. Each ticket gets an agent on its own
 branch in its own git worktree. A second agent, in a fresh context, checks the diff against every criterion and
@@ -109,9 +109,16 @@ worktrees included, and kumi's own crew counts as one more worker.
 - On your next prompt it hears what moved since, and nothing at all when nothing did.
 - Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
+- Sessions talk: `kumi say @<id> <text>` to one, `kumi say <text>` to all of them in the repo. A message lands
+  on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
+- A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
+  `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
+  last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
 - `kumi sessions` lists them.
 
-Edits made through shell commands (`sed`, a codegen script) aren't seen; only Claude's edit tools report.
+Shell commands count as edits too: after each one, files `git status` shows changed since it started are
+recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
+`kumi` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
 The crew's own agents run with `KUMI_AGENT=1` and stay out of the registry.
 
 ## Herdr
