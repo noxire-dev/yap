@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import type { Event, Goal, Project, Store, Ticket } from './ports'
+import type { Event, Goal, Note, Project, Store, Ticket } from './ports'
 
 type Table = 'project' | 'goal' | 'ticket'
 
@@ -13,6 +13,7 @@ export class SqliteStore implements Store {
     db.run(`CREATE TABLE IF NOT EXISTS event (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, ticket_id INTEGER,
       ts INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`)
+    db.run('CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, ts INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL)')
   }
 
   private all<T>(table: Table): T[] {
@@ -65,4 +66,13 @@ export class SqliteStore implements Store {
       .all(ticket_id ?? null, project_id ?? null, limit) as (Omit<Event, 'data'> & { data: string })[]
     return rows.map(r => ({ ...r, data: JSON.parse(r.data) }))
   }
+
+  addNote(n: Omit<Note, 'id'>) {
+    const { lastInsertRowid } = this.db.query('INSERT INTO note (repo, ts, author, text) VALUES (?, ?, ?, ?)').run(n.repo, n.ts, n.author, n.text)
+    return { ...n, id: Number(lastInsertRowid) }
+  }
+
+  notes = (repo: string) => this.db.query('SELECT * FROM note WHERE repo = ? ORDER BY id DESC').all(repo) as Note[]
+
+  removeNote = (repo: string, id: number) => this.db.query('DELETE FROM note WHERE repo = ? AND id = ?').run(repo, id).changes > 0
 }

@@ -116,6 +116,11 @@ Bun.serve({
       },
     },
     '/api/sessions': api(() => sessions.list()),
+    '/api/notes': {
+      GET: api(req => sessions.notes(new URL(req.url).searchParams.get('cwd') ?? '')),
+      POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),
+    },
+    '/api/notes/:id': { DELETE: api((req, b) => sessions.unnote(String(b.cwd ?? ''), Number(req.params.id))) },
     '/api/say': { POST: api(async (_, b) => ({ to: await sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined }) })) },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.

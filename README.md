@@ -114,6 +114,9 @@ worktrees included, and kumi's own crew counts as one more worker.
 - A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
   `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
+- The board: `kumi note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `kumi notes`
+  reads it, `kumi note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
+  starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once.
 - `kumi sessions` lists them.
 
 Shell commands count as edits too: after each one, files `git status` shows changed since it started are

@@ -62,6 +62,16 @@ export interface Event {
   data: Record<string, unknown>
 }
 
+/** A note on a repo's board: what Claude Code sessions (or the user) leave for whoever works there next. */
+export interface Note {
+  id: number
+  /** The repo's shared git dir, normalized, so every worktree of it shares one board. */
+  repo: string
+  ts: number
+  author: string
+  text: string
+}
+
 export interface Store {
   projects(): Project[]
   addProject(p: Omit<Project, 'id'>): Project
@@ -76,6 +86,11 @@ export interface Store {
   patchTicket(id: number, patch: Partial<Ticket>): void
   log(project_id: number, ticket_id: number | null, kind: Event['kind'], data?: Event['data']): void
   events(filter: { ticket_id?: number; project_id?: number; limit?: number }): Event[]
+  addNote(n: Omit<Note, 'id'>): Note
+  /** Newest first. */
+  notes(repo: string): Note[]
+  /** False when the repo has no such note. */
+  removeNote(repo: string, id: number): boolean
 }
 
 export interface Ran {

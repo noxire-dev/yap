@@ -259,4 +259,21 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(((await bash('aaaa1111', 'git reset --hard')) as any).hookSpecificOutput, undefined, 'bbbb edited nothing')
 }
 
+// The board: a note outlives its author and greets the next session, live sessions hear of it at once, and it
+// comes down by id.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
+  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'auth refactor' })
+  await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
+  const n = await reg.note({ from: 'aaaa1111', cwd: '/repo', text: 'I own src/auth until tonight' })
+  assert.match(ctx(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'ls' } })), /New note on the board, #1 from session aaaa1111 \("auth refactor"\): I own src\/auth/)
+  await reg.hook('end', { session_id: 'aaaa1111' })
+  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /kumi board[\s\S]*#1 just now, session aaaa1111 \("auth refactor"\): I own src\/auth/, 'a worktree shares the board')
+  await assert.rejects(reg.unnote('/repo', 99), /no note #99/)
+  await reg.unnote('/repo', n.id)
+  assert.deepEqual(await reg.notes('/repo'), [])
+}
+
 console.log('crew ok')

@@ -5,6 +5,8 @@ import type { Store, Workspace } from './ports'
 const LIVE = 2 * 60 * 60_000
 /** An edit this recent is worth a warning to whoever touches the same file next. */
 const RECENT = 30 * 60_000
+/** Notes shown to a session; the rest stay on the board for `kumi notes`. */
+const BOARD = 10
 
 const norm = (p: string) => {
   const r = resolve(p).replace(/\\/g, '/')
@@ -113,11 +115,35 @@ export class Sessions {
 
   private overview(s: Session) {
     const lines = [...this.others(s).map(o => this.line(o, s)), ...this.crew(s)]
+    const board = this.store.notes(s.repo).slice(0, BOARD).map(n => `- #${n.id} ${ago(n.ts, this.now())}, ${n.author}: ${n.text.slice(0, 300)}`)
     s.told = this.now()
-    if (!lines.length) return ''
-    return `Other agents are working in this repository right now. Don't redo their work, and re-read any file they touched before you edit it:
-${lines.join('\n')}
-You are session ${s.id.slice(0, 8)}. When your work overlaps theirs, or you need something from one of them, tell them: \`kumi say @<session> <text>\`, or \`kumi say <text>\` for all of them. Their messages reach you the same way.`
+    if (!lines.length && !board.length) return ''
+    return [
+      ...(lines.length
+        ? [`Other agents are working in this repository right now. Don't redo their work, and re-read any file they touched before you edit it:`, ...lines]
+        : []),
+      ...(board.length ? [`This repository's kumi board, what sessions and the user left for whoever works here next:`, ...board] : []),
+      `You are session ${s.id.slice(0, 8)}. Message the others with \`kumi say @<session> <text>\` or \`kumi say <text>\` for all of them. Leave something on the board for later sessions (a claim on an area, a decision, a warning, a handoff) with \`kumi note <text>\`, and take a note down with \`kumi note -d <id>\` once it no longer holds.`,
+    ].join('\n')
+  }
+
+  /** Pin a note on the board of the repo `cwd` sits in. Live sessions there hear about it on their next hook call. */
+  async note(m: { from?: string; cwd: string; text: string }) {
+    const text = m.text.trim()
+    if (!text) throw new Error('say what the note is')
+    const s = m.from ? await this.touch({ session_id: m.from, cwd: m.cwd }) : null
+    const repo = s?.repo ?? (await this.root(m.cwd)).repo
+    const n = this.store.addNote({ repo, ts: this.now(), author: this.label(s), text })
+    for (const o of this.all.values()) if (o.repo === repo && o.id !== s?.id) o.inbox.push(`New note on the board, #${n.id} from ${n.author}: ${text}`)
+    return n
+  }
+
+  async notes(cwd: string) {
+    return this.store.notes((await this.root(cwd)).repo)
+  }
+
+  async unnote(cwd: string, id: number) {
+    if (!this.store.removeNote((await this.root(cwd)).repo, id)) throw new Error(`no note #${id} on this repo's board`)
   }
 
   /** Who a message is from, as the recipient reads it. */

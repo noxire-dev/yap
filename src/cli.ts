@@ -16,6 +16,8 @@ kumi forget [name]   take this repo's project (or the named one) off the board
 kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
 kumi say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
+kumi note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
+kumi notes           this repo's board
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 kumi serve           the daemon in the foreground`
 
@@ -24,7 +26,7 @@ class HttpClient implements Client {
     return this.read(await fetch(url + path)) as Promise<T>
   }
 
-  async send(method: 'POST' | 'PATCH', path: string, body: object = {}) {
+  async send(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: object = {}) {
     return this.read(await fetch(url + path, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }))
   }
 
@@ -231,6 +233,20 @@ try {
     await daemon()
     const r = await api.send('POST', '/api/say', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), to, text: rest.join(' ') })
     console.log(`left for ${r.to.join(', ')}: they read it on their next tool call or prompt`)
+  } else if (cmd === 'note' || cmd === 'notes') {
+    await daemon()
+    const cwd = target()
+    if (cmd === 'note' && rest[0] === '-d') {
+      await api.send('DELETE', `/api/notes/${Number(String(rest[1]).replace(/^#/, ''))}`, { cwd })
+      console.log(`took #${String(rest[1]).replace(/^#/, '')} down`)
+    } else if (cmd === 'note') {
+      const n = await api.send('POST', '/api/notes', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd, text: rest.join(' ') })
+      console.log(`pinned #${n.id}: every session in this repo sees it`)
+    } else {
+      const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
+      const ago = (ts: number) => `${Math.round((Date.now() - ts) / 60_000)}m`
+      console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts).padStart(5)}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
+    }
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'init') {
