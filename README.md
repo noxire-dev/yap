@@ -38,6 +38,7 @@ kumi            # the repo becomes a project; the daemon starts if it isn't runn
 | `kumi` | The board. Closing it leaves the crew running. |
 | `kumi status` | Print every project's rail and exit. |
 | `kumi start` / `kumi stop` | Daemon in the background. Stopping kills running agents and requeues their tickets. |
+| `kumi forget [name]` | Take this repo's project, or the named one, off the board. Refused while tickets are queued or running. |
 | `kumi serve` | Daemon in the foreground. |
 
 State lives in `~/.kumi` (`KUMI_HOME`): the database, worktrees, and `daemon.log`. The daemon listens on

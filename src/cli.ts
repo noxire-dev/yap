@@ -12,6 +12,7 @@ kumi goal <text>     plan tickets for this repo from a sentence (--rinai files i
 kumi take <issue>    plan tickets from an issue on this repo's Rinai board
 kumi go              start this repo's drafted tickets
 kumi init            make this directory a git repo so the crew can work in it
+kumi forget [name]   take this repo's project (or the named one) off the board
 kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
@@ -228,6 +229,10 @@ try {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'init') {
     console.log(`${(await here(true)).name} is ready for the crew`)
+  } else if (cmd === 'forget') {
+    await daemon()
+    const p = await api.send('POST', '/api/projects/forget', { name: rest[0] ?? '', path: target() })
+    console.log(`${p.name} is off the board`)
   } else if (cmd === 'stop') {
     console.log((await running()) ? (await api.send('POST', '/api/stop'), 'stopped') : 'not running')
   } else console.log(USAGE)

@@ -35,6 +35,12 @@ export class SqliteStore implements Store {
   projects = () => this.all<Project>('project')
   addProject = (p: Omit<Project, 'id'>) => this.add<Project>('project', p)
   patchProject = (id: number, patch: Partial<Project>) => this.patch('project', id, patch)
+  removeProject = (id: number) =>
+    this.db.transaction(() => {
+      for (const t of ['goal', 'ticket']) this.db.query(`DELETE FROM ${t} WHERE json_extract(data, '$.project_id') = ?`).run(id)
+      this.db.query('DELETE FROM event WHERE project_id = ?').run(id)
+      this.db.query('DELETE FROM project WHERE id = ?').run(id)
+    })()
 
   goals = () => this.all<Goal>('goal')
   addGoal = (g: Omit<Goal, 'id'>) => this.add<Goal>('goal', g)

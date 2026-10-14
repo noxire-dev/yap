@@ -312,6 +312,21 @@ export class Crew {
     return p
   }
 
+  /**
+   * Take a project off the board, by name or by a path inside its repo. Refused while any of its tickets is
+   * queued or running. Ticket branches stay in the repo.
+   */
+  async forgetProject(name: string, input: string) {
+    const path = name ? null : await this.ws.root(resolve(input))
+    const p = this.store.projects().find(p => (name ? p.name === name : p.path === path))
+    if (!p) throw new Error(`no project ${name || input}`)
+    const busy = this.store.tickets().filter(t => t.project_id === p.id && ['todo', 'working', 'review', 'gate'].includes(t.status))
+    if (busy.length) throw new Error(`${p.name} has ${busy.length} ticket${busy.length === 1 ? '' : 's'} queued or running; drop them first`)
+    this.store.removeProject(p.id)
+    this.changed()
+    return p
+  }
+
   /** The tracker's open cards, each marked if a goal already came from it. */
   async cards(project_id: number) {
     const p = this.project(project_id)

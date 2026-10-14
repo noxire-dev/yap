@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Bun (no dependencies): `Bun.serve`, `bun:sqlite`, one static `ui/index.html` with vanilla JS and no build step.
+Bun (no dependencies): a `Bun.serve` daemon on `bun:sqlite`, and a terminal board (`src/tui.ts`) as its client. No build step.
 Delegated: the owner's standing rule is stdlib and native platform features before dependencies.
 
 ## Users

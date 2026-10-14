@@ -104,7 +104,6 @@ Bun.serve({
       }),
     },
 
-    // Opening is idempotent: the project for the repo that path sits in, new or not.
     // Claude Code hooks from every session on this machine. Never fails: a hook must not break the session.
     '/api/hook/:event': {
       POST: async req => {
@@ -118,7 +117,9 @@ Bun.serve({
     },
     '/api/sessions': api(() => sessions.list()),
 
+    // Opening is idempotent: the project for the repo that path sits in, new or not.
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
+    '/api/projects/forget': { POST: api((_, b) => crew.forgetProject(String(b.name ?? ''), String(b.path ?? ''))) },
 
     '/api/projects/:id': {
       PATCH: api((req, b) => {

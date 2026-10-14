@@ -66,6 +66,8 @@ export interface Store {
   projects(): Project[]
   addProject(p: Omit<Project, 'id'>): Project
   patchProject(id: number, patch: Partial<Project>): void
+  /** The project and its goals, tickets and journal. */
+  removeProject(id: number): void
   goals(): Goal[]
   addGoal(g: Omit<Goal, 'id'>): Goal
   patchGoal(id: number, patch: Partial<Goal>): void

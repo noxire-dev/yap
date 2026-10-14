@@ -185,6 +185,20 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 kumi: t1 "first" needs a human.', 'move 9 blocked'])
 }
 
+// Forgetting a project is refused while a ticket is queued, and takes its goals, tickets and journal with it.
+{
+  const { store, crew } = rig([])
+  const p = await crew.openProject('.')
+  store.patchProject(p.id, { running: false })
+  crew.addTicket(p.id, { title: 'busy' })
+  await assert.rejects(crew.forgetProject(p.name, ''), /1 ticket queued or running/)
+  for (const t of store.tickets()) store.patchTicket(t.id, { status: 'dropped' })
+  store.log(p.id, null, 'human', {})
+  await crew.forgetProject('', '.')
+  assert.deepEqual([store.projects(), store.tickets(), store.events({})], [[], [], []])
+  await assert.rejects(crew.forgetProject('nope', ''), /no project nope/)
+}
+
 // Sessions: each one hears about the others in its repo, and is warned once before touching a file another
 // session in the same working tree just edited. A worktree of the same repo is visible but never warned.
 {
