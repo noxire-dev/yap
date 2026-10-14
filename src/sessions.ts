@@ -32,10 +32,40 @@ interface Session {
   inbox: string[]
   /** When its running shell command started, to tell which files the command changed. */
   shell: number
+  /** The directory it last reported from; a session that moves (into a worktree, say) is re-rooted. */
+  cwd: string
+  /** When it last did something the others should hear about: started, prompted, edited. */
+  news: number
 }
 
-/** Git commands that move or discard the shared working tree under whoever else is editing it. */
-const CLOBBER = /\bgit\s+(checkout|switch|stash|clean|rebase|restore|pull|merge|reset\s+(?:\S+\s+)*--hard)\b/
+const RESUME = new Set(['--abort', '--continue', '--skip', '--quit'])
+
+/**
+ * What a shell command would do to a working tree others are editing: 'moves' (switches, rewrites or discards
+ * files), 'sweeps' (stages or commits everything, theirs included), or null. Quoted strings are one word, so
+ * `echo "git merge"` is not a merge.
+ */
+export function gitRisk(command: string): 'moves' | 'sweeps' | null {
+  let risk: 'moves' | 'sweeps' | null = null
+  for (const part of command.split(/&&|\|\||[;|\n]/)) {
+    const w = part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []
+    let i = w.findIndex(x => /^(?:.*[\\/])?git(?:\.exe)?$/i.test(x))
+    if (i < 0) continue
+    // Global options before the subcommand, and the ones that take a value.
+    for (i++; i < w.length && w[i].startsWith('-'); i++) if (['-C', '-c', '--git-dir', '--work-tree', '--namespace'].includes(w[i])) i++
+    const sub = w[i]
+    const args = w.slice(i + 1)
+    const has = (...f: string[]) => args.some(a => f.includes(a))
+    if (['checkout', 'switch', 'clean', 'pull', 'read-tree'].includes(sub)) return 'moves'
+    if (['rebase', 'merge', 'cherry-pick', 'revert', 'am'].includes(sub) && !args.some(a => RESUME.has(a))) return 'moves'
+    if (sub === 'stash' && !['list', 'show'].includes(args[0])) return 'moves'
+    if (sub === 'reset' && has('--hard', '--keep', '--merge')) return 'moves'
+    if (sub === 'restore' && (!has('--staged', '-S') || has('--worktree', '-W'))) return 'moves'
+    if ((sub === 'add' && has('-A', '--all', '.', ':/', '-u', '--update')) || (sub === 'commit' && has('-a', '--all') || (sub === 'commit' && args.some(a => /^-[a-zA-Z]*a/.test(a) && !a.startsWith('--')))))
+      risk = 'sweeps'
+  }
+  return risk
+}
 
 /** What Claude Code sends a hook on stdin; only the fields used here. */
 export interface HookInput {
@@ -83,8 +113,10 @@ export class Sessions {
     let s = this.all.get(id)
     if (!s) {
       const { top, repo } = await this.root(input.cwd)
-      s = { id, top, repo, intent: '', started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0 }
+      s = { id, top, repo, intent: '', started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
       this.all.set(id, s)
+    } else if (s.cwd !== input.cwd) {
+      Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
     s.at = now
     return s
@@ -164,6 +196,7 @@ export class Sessions {
     const now = this.now()
     const them = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id && now - o.at <= LIVE && (!to || o.id.startsWith(to)))
     if (!them.length) throw new Error(to ? `no live session ${to} in this repo` : 'nobody else is working in this repo')
+    if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => o.id.slice(0, 8)).join(' or ')}; give more of the id`)
     for (const o of them) o.inbox.push(`From ${this.label(s)}: ${text}`)
     return them.map(o => o.id.slice(0, 8))
   }
@@ -199,30 +232,43 @@ export class Sessions {
 
     if (event === 'prompt') {
       s.intent = String(input.prompt ?? '').trim().split(/\r?\n/)[0].slice(0, 100)
-      // Only when something moved since this session last heard, so a quiet repo costs no context.
-      const moved = this.others(s).some(o => o.at > s.told) || (this.crew(s).length > 0 && s.told === 0)
+      s.news = this.now()
+      // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
+      // neighbour merely reading, costs no context.
+      const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
       return say('UserPromptSubmit', both(moved ? this.overview(s) : '', this.drain(s)))
     }
 
     const command = input.tool_input?.command
     if (input.tool_name === 'Bash' && typeof command === 'string') {
       if (event === 'post') {
-        // A shell command edits too (sed, codegen, a formatter): what it touched counts as this session's.
-        for (const f of await this.ws.changed(s.top)) if (f.mtime >= s.shell - 1000) s.files.set(norm(f.path), this.now())
+        // A shell command edits too (sed, codegen, a formatter): what changed while it ran counts as this
+        // session's, unless another session's edit tool wrote the file in that window.
+        const theirs = (f: string) => this.others(s).some(o => o.top === s.top && (o.files.get(f) ?? 0) >= s.shell - 1000)
+        for (const f of await this.ws.changed(s.top)) {
+          const file = norm(f.path)
+          if (f.mtime >= s.shell - 1000 && !theirs(file)) s.files.set(file, (s.news = this.now()))
+        }
         return {}
       }
       if (event !== 'pre') return {}
       s.shell = this.now()
       const mail = this.drain(s)
-      const busy = this.others(s).filter(o => o.top === s.top && this.now() - o.at < RECENT && o.files.size)
-      if (!CLOBBER.test(command) || !busy.length) return say('PreToolUse', mail, mail ? { systemMessage: 'kumi: a message arrived' } : {})
-      const who = busy.map(o => `${this.label(o)}, editing ${[...o.files.keys()].slice(-3).map(f => relative(s.top, f).replace(/\\/g, '/')).join(', ')}`)
+      const risk = gitRisk(command)
+      const recent = (o: Session) => [...o.files].filter(([, at]) => this.now() - at < RECENT).map(([f]) => f)
+      const busy = risk ? this.others(s).filter(o => o.top === s.top && recent(o).length) : []
+      if (!busy.length) return say('PreToolUse', mail, mail ? { systemMessage: 'kumi: a message arrived' } : {})
+      const who = busy.map(o => `${this.label(o)}, editing ${recent(o).slice(-3).map(f => relative(s.top, f).replace(/\\/g, '/')).join(', ')}`)
+      const why =
+        risk === 'moves'
+          ? `This git command can switch, rewrite or discard the files under it. Don't run it. Ask that session first with \`kumi say @<session> <text>\`, use a separate worktree, or ask the user to run it if they asked for it.`
+          : `This command stages or commits every change in the tree, theirs included. Stage your own files by name instead (\`git add <file>...\`), then commit.`
       return {
-        systemMessage: `kumi: held back a git command that would move the tree under ${busy.map(o => o.id.slice(0, 8)).join(', ')}`,
+        systemMessage: `kumi: held back a git command that would ${risk === 'moves' ? 'move the tree' : 'sweep up the work'} of ${busy.map(o => o.id.slice(0, 8)).join(', ')}`,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
-          permissionDecisionReason: `kumi: another session is working in this same working tree right now (${who.join('; ')}). This git command can switch, rewrite or discard the files under it. Don't run it. Ask that session first with \`kumi say @<session> <text>\`, use a separate worktree, or ask the user to run it if they asked for it.`,
+          permissionDecisionReason: `kumi: another session is working in this same working tree right now (${who.join('; ')}). ${why}`,
           ...(mail ? { additionalContext: mail } : {}),
         },
       }
@@ -230,7 +276,7 @@ export class Sessions {
 
     const path = input.tool_input?.file_path ?? input.tool_input?.notebook_path
     if (event === 'post') {
-      if (path) s.files.set(norm(resolve(input.cwd ?? '', path)), this.now())
+      if (path) s.files.set(norm(resolve(input.cwd ?? '', path)), (s.news = this.now()))
       return {}
     }
     if (event !== 'pre') return {}

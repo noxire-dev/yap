@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { Crew, ROUNDS } from './crew'
 import type { AgentRunner, Tracker, Workspace } from './ports'
-import { Sessions } from './sessions'
+import { Sessions, gitRisk } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 
@@ -275,5 +275,12 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.unnote('/repo', n.id)
   assert.deepEqual(await reg.notes('/repo'), [])
 }
+
+// The git guard's reading of a command: the forms that slipped past it, and the ones it wrongly blocked.
+for (const c of ['git -C . checkout main', 'git -c x=1 switch main', 'git reset --keep HEAD~1', 'git cherry-pick abc', 'git.exe checkout x', 'ls && git stash', 'git restore src/a.ts'])
+  assert.equal(gitRisk(c), 'moves', c)
+for (const c of ['git add -A && git commit -m x', 'git commit -am x', 'git add .']) assert.equal(gitRisk(c), 'sweeps', c)
+for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', 'git restore --staged a.ts', 'git checkout-index -a', 'echo "git merge"', 'git add src/a.ts', 'git status'])
+  assert.equal(gitRisk(c), null, c)
 
 console.log('crew ok')
