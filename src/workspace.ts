@@ -104,8 +104,17 @@ export class LocalWorkspace implements Workspace {
     return (await git(repo, 'diff', `${base}...${branch}`)).log
   }
 
-  async discard(dir: string) {
-    await git(dir, 'reset', '--hard')
+  async head(dir: string) {
+    return (await git(dir, 'rev-parse', 'HEAD')).log
+  }
+
+  async landed(repo: string, base: string, id: number) {
+    const r = await git(repo, 'log', base, '-n', '1', '--format=%H', `--grep=^Ticket: ${id}$`)
+    return (r.ok && r.log) || null
+  }
+
+  async discard(dir: string, to?: string) {
+    await git(dir, 'reset', '--hard', ...(to ? [to] : []))
     await git(dir, 'clean', '-fd')
   }
 
@@ -130,15 +139,35 @@ export class LocalWorkspace implements Workspace {
     return { ok: true, log: '', sha: (await git(scratch, 'rev-parse', 'HEAD')).log }
   }
 
-  // ponytail: cmd/sh with a flat timeout. On Windows a killed `cmd /c` can orphan
-  // its children; switch to a job object if gates start leaking processes.
-  exec(dir: string, command: string) {
-    const shell = process.platform === 'win32' ? ['cmd', '/d', '/s', '/c', command] : ['sh', '-c', command]
-    return sh(shell, dir, AbortSignal.timeout(GATE_TIMEOUT))
+  /**
+   * The gate. On timeout the whole process tree goes, not just the shell. A process the gate leaves running
+   * (a dev server) can hold the output open forever, so the output is read for two seconds past exit at most.
+   */
+  async exec(dir: string, command: string) {
+    const win = process.platform === 'win32'
+    const p = Bun.spawn(win ? ['cmd', '/d', '/s', '/c', command] : ['sh', '-c', command], { cwd: dir, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', windowsHide: true })
+    let buf = ''
+    const dec = new TextDecoder()
+    const pump = async (s: ReadableStream<Uint8Array>) => {
+      for await (const c of s) buf += dec.decode(c, { stream: true })
+    }
+    const out = Promise.all([pump(p.stdout), pump(p.stderr)]).then(() => true)
+    const timer = setTimeout(() => {
+      // ponytail: POSIX kills the shell only; a process group needs a detached spawn if gates leak there too.
+      if (win) Bun.spawnSync(['taskkill', '/T', '/F', '/PID', String(p.pid)], { windowsHide: true })
+      else p.kill('SIGKILL')
+    }, GATE_TIMEOUT)
+    const code = await p.exited
+    clearTimeout(timer)
+    const whole = await Promise.race([out, Bun.sleep(2000).then(() => false)])
+    return { ok: code === 0, log: buf.trim() + (whole ? '' : '\n(a process the gate started is still running)') }
   }
 
   async advance(repo: string, base: string, sha: string) {
-    if ((await this.branch(repo)) === base) return git(repo, 'merge', '--ff-only', sha)
+    // Wherever base is checked out (the main checkout or another worktree), move it there, so that tree follows.
+    const list = (await git(repo, 'worktree', 'list', '--porcelain')).log.split(/\r?\n\r?\n/)
+    const at = list.find(w => w.includes(`\nbranch refs/heads/${base}`))?.match(/^worktree (.+)$/m)?.[1]
+    if (at) return git(at, 'merge', '--ff-only', sha)
     // base isn't checked out: compare-and-swap the ref against the commit the gate built on.
     const parent = (await git(repo, 'rev-parse', `${sha}^`)).log
     return git(repo, 'update-ref', `refs/heads/${base}`, sha, parent)

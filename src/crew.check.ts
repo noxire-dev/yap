@@ -11,9 +11,10 @@ const ok = { ok: true, log: '' }
 const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string } = {}) {
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
+  const squashed: string[] = []
   // What `git status` would list, for shell-edit tracking.
   const dirty: { path: string; mtime: number }[] = []
   const ws: Workspace = {
@@ -28,9 +29,12 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     worktree: async () => {},
     mergeBase: async () => true,
     commitAll: async () => ok,
-    diff: async () => 'diff --git a/x b/x',
+    diff: async () => o.diff ?? 'diff --git a/x b/x',
+    head: async () => 'reviewed1',
+    landed: async () => o.landed ?? null,
     discard: async () => {},
-    squash: async (_r, _s, _b, _br, message) => {
+    squash: async (_r, _s, _b, pick, message) => {
+      squashed.push(pick)
       merged.push(message)
       return { ...ok, sha: 'abc123' }
     },
@@ -74,7 +78,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`),
   }
   const crew = new Crew(store, ws, agent, tracker, '/tmp/kumi')
-  return { store, crew, merged, prompts, told, ws, dirty }
+  return { store, crew, merged, squashed, prompts, told, ws, dirty }
 }
 
 async function until<T>(get: () => T | undefined | false) {
@@ -274,6 +278,41 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await assert.rejects(reg.unnote('/repo', 99), /no note #99/)
   await reg.unnote('/repo', n.id)
   assert.deepEqual(await reg.notes('/repo'), [])
+}
+
+// The gate squashes the commit the reviewer saw, never whatever the branch points at by then.
+{
+  const { store, crew, squashed } = rig([true], { plan: { tickets: [TWO.tickets[0]] } })
+  const p = await crew.openProject('.')
+  const g = crew.plan(p.id, 'one')
+  await until(() => store.goals()[0].status === 'ready')
+  crew.startGoal(g.id)
+  assert.equal((await settled(store, store.tickets()[0].id)).status, 'merged')
+  assert.deepEqual(squashed, ['reviewed1'])
+}
+
+// A diff that touches agent config the ticket never named goes to a human before any reviewer runs in it.
+{
+  const { store, crew, prompts } = rig([true], { plan: { tickets: [TWO.tickets[0]] }, diff: 'diff --git a/.claude/settings.json b/.claude/settings.json' })
+  const p = await crew.openProject('.')
+  const g = crew.plan(p.id, 'one')
+  await until(() => store.goals()[0].status === 'ready')
+  crew.startGoal(g.id)
+  const t = await settled(store, store.tickets()[0].id)
+  assert.equal(t.status, 'escalated')
+  assert.match(t.note, /agent config.*\.claude\/settings\.json/)
+  assert.ok(!prompts.some(x => x.startsWith('You are reviewing')), 'no reviewer ran')
+}
+
+// A daemon that died after the base moved: the receipt on the base marks the ticket merged on restart.
+{
+  const { store, crew } = rig([], { landed: 'feed123' })
+  const p = await crew.openProject('.')
+  store.patchProject(p.id, { running: false })
+  const t = crew.addTicket(p.id, { title: 'mid-gate' })
+  store.patchTicket(t.id, { status: 'gate', round: 1 })
+  await crew.recover()
+  assert.deepEqual([store.tickets()[0].status, store.tickets()[0].sha], ['merged', 'feed123'])
 }
 
 // The git guard's reading of a command: the forms that slipped past it, and the ones it wrongly blocked.

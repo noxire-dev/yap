@@ -5,6 +5,8 @@ import type { AgentRunner, Goal, Project, Store, Ticket, Tracker, Workspace } fr
 /** Review rounds a ticket gets before it lands in front of a human. */
 export const ROUNDS = 4
 const DIFF_CAP = 150_000
+/** Files that configure Claude Code itself, for the reviewer and every later session. */
+const AGENT_CONFIG = /^diff --git a\/(\S*?(?:\.claude\/\S+|CLAUDE\.md|AGENTS\.md|\.mcp\.json)) /m
 
 interface Check {
   criterion: string
@@ -273,10 +275,18 @@ export class Crew {
   }
 
   /** Whatever a dead process left mid-flight goes back on the board. Branches survive. */
-  recover() {
-    for (const t of this.store.tickets())
-      if (['working', 'review', 'gate'].includes(t.status))
-        this.store.patchTicket(t.id, { status: 'todo', round: Math.max(0, t.round - 1), tries: t.tries + 1 })
+  async recover() {
+    for (const t of this.store.tickets()) {
+      if (!['working', 'review', 'gate'].includes(t.status)) continue
+      const p = this.project(t.project_id)
+      // The daemon died after the base moved but before the ticket said so: the receipt on the base proves it.
+      const sha = t.status === 'gate' ? await this.ws.landed(p.path, p.base, t.id) : null
+      if (sha) {
+        this.store.patchTicket(t.id, { status: 'merged', sha, findings: [] })
+        this.store.log(p.id, t.id, 'merge', { sha, rounds: t.round, recovered: true })
+        void this.ws.cleanup(p.path, this.dir(p, t.id), this.branchOf(t.id))
+      } else this.store.patchTicket(t.id, { status: 'todo', round: Math.max(0, t.round - 1), tries: Math.min(ROUNDS, t.tries + 1) })
+    }
     for (const g of this.store.goals())
       if (g.status === 'planning') this.store.patchGoal(g.id, { status: 'failed', note: 'interrupted' })
     // Projects added before the tracker existed.
@@ -302,7 +312,7 @@ export class Crew {
       name: basename(path),
       path,
       base,
-      gate: '',
+      gate: this.ws.gateHint(path),
       workers: 2,
       running: true,
       tracker: await this.ws.slug(path),
@@ -553,6 +563,8 @@ export class Crew {
     for (;;) {
       let t = this.ticket(id)
       let checks: Check[] | null = null
+      // What the gate squashes: the commit the reviewer saw, or the branch tip on a human override.
+      let pick = branch
 
       if (!t.override) {
         if (t.tries <= 0) {
@@ -577,11 +589,16 @@ export class Crew {
           send(round, `the commit was rejected:\n${tail(commit.log)}`)
           continue
         }
-        const diff = await this.ws.diff(p.path, p.base, branch)
+        const head = await this.ws.head(dir)
+        const diff = await this.ws.diff(p.path, p.base, head)
         if (!diff) {
           send(round, 'no changes were produced on the branch')
           continue
         }
+        // Agent config in the diff steers the reviewer now and every Claude session in the repo once merged.
+        const config = diff.match(AGENT_CONFIG)
+        if (config && !`${t.title}\n${t.body}`.includes(config[1]))
+          throw new Error(`the change touches agent config the ticket never mentions (${config[1]}); a human should look before a reviewer runs in it`)
         const report = work.text.trim().slice(0, 4000)
         set({ summary: report })
         // The author stopped on purpose: a human decides, the reviewer never sees it.
@@ -598,13 +615,18 @@ export class Crew {
           onActivity,
         })
         if (signal.aborted) return
-        await this.ws.discard(dir)
+        // Back to exactly what was reviewed: the reviewer's edits and any commit it made are gone.
+        await this.ws.discard(dir, head)
+        pick = head
         const got: any[] = Array.isArray(review.data?.criteria) ? review.data.criteria : []
         if (got.length < t.criteria.length) throw new Error(`reviewer returned no verdict: ${tail(review.text, 500)}`)
         // Pair by position and take approval from the rows, never from the reviewer's say-so.
         checks = t.criteria.map((criterion, i) => ({ criterion, pass: got[i].pass === true, reason: String(got[i].reason ?? '') }))
         const previous: { finding: string; evidence: string; addressed: boolean }[] = Array.isArray(review.data?.previous) ? review.data.previous : []
         const nits: string[] = Array.isArray(review.data?.nits) ? review.data.nits.map(String) : []
+        // A row past the criteria that fails is a finding too, not something to drop for being out of place.
+        const extra = got.slice(t.criteria.length).filter(r => r?.pass === false)
+        checks.push(...extra.map(r => ({ criterion: String(r.criterion ?? 'extra'), pass: false, reason: String(r.reason ?? '') })))
         const approved = checks.every(c => c.pass)
         log('verdict', { round, approved, criteria: checks, previous, nits })
         if (!approved) {
@@ -618,16 +640,19 @@ export class Crew {
       set({ status: 'gate' })
       onActivity(p.gate)
       const gate = await this.locked(p.id, async (): Promise<{ log: string; sha?: string; human?: boolean }> => {
-        const merged = await this.ws.squash(p.path, this.dir(p, 'gate'), p.base, branch, receipt(t, checks, this.ref(t)))
+        const merged = await this.ws.squash(p.path, this.dir(p, 'gate'), p.base, pick, receipt(t, checks, this.ref(t)))
         if (!merged.sha) return { log: merged.log }
         if (p.gate) {
           const ran = await this.ws.exec(this.dir(p, 'gate'), p.gate)
           if (!ran.ok) return { log: `\`${p.gate}\` failed on the merged result:\n${tail(ran.log, 3000)}` }
         }
+        // Dropped while the gate ran: the base branch never moves for it.
+        if (signal.aborted) return { log: '' }
         const moved = await this.ws.advance(p.path, p.base, merged.sha)
         return moved.ok ? { sha: merged.sha, log: '' } : { log: `could not fast-forward ${p.base}:\n${moved.log}`, human: true }
       })
 
+      if (signal.aborted) return
       if (gate.sha) {
         log('merge', { sha: gate.sha, rounds: t.round })
         set({ status: 'merged', sha: gate.sha, findings: [] })

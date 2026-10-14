@@ -36,7 +36,7 @@ const changed = () => {
 setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
-crew.recover()
+await crew.recover()
 const sessions = new Sessions(ws, store)
 
 // This server runs shell commands, so a web page must not be able to drive it:

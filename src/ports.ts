@@ -120,8 +120,12 @@ export interface Workspace {
   mergeBase(dir: string, base: string): Promise<boolean>
   commitAll(dir: string, message: string): Promise<Ran>
   diff(repo: string, base: string, branch: string): Promise<string>
-  /** Throw away uncommitted changes in a worktree. */
-  discard(dir: string): Promise<void>
+  /** Throw away uncommitted changes in a worktree, and with `to`, reset its branch to that commit. */
+  discard(dir: string, to?: string): Promise<void>
+  /** The commit a worktree has checked out. */
+  head(dir: string): Promise<string>
+  /** The commit on `base` whose receipt names ticket `id`, or null. */
+  landed(repo: string, base: string, id: number): Promise<string | null>
   /** Squash `branch` onto `base` in the scratch worktree. `sha` is set when it committed. */
   squash(repo: string, scratch: string, base: string, branch: string, message: string): Promise<Ran & { sha?: string }>
   exec(dir: string, command: string): Promise<Ran>
