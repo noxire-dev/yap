@@ -191,7 +191,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   crew.startGoal(goal.id)
   await settled(store, store.tickets()[0].id)
   await until(() => told.includes('move 9 blocked'))
-  assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 kumi: t1 "first" needs a human.', 'move 9 blocked'])
+  assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 kumi: t1 "first" needs a human: still failing after 4 rounds. The full story is on the kumi board.', 'move 9 blocked'])
 }
 
 // Forgetting a project is refused while a ticket is queued, and takes its goals, tickets and journal with it.

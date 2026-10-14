@@ -1,5 +1,6 @@
 import { Database } from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ClaudeCli } from './agent'
 import { Crew } from './crew'
@@ -44,13 +45,26 @@ const sessions = new Sessions(ws, store)
 function foreign(req: Request) {
   const host = req.headers.get('host') ?? ''
   const origin = req.headers.get('origin')
-  return !/^(localhost|127\.0\.0\.1):\d+$/.test(host) || (origin !== null && new URL(origin).host !== host)
+  let from = host
+  try {
+    from = origin === null ? host : new URL(origin).host
+  } catch {
+    return true
+  }
+  return !/^(localhost|127\.0\.0\.1):\d+$/.test(host) || from !== host
 }
+
+// A raw local client can send any Host it likes, so the API also wants the token only this user can read.
+// Hooks stay open: they only report, and must work from a bare curl.
+const tokenFile = join(home, 'token')
+if (!existsSync(tokenFile)) writeFileSync(tokenFile, randomBytes(24).toString('hex'), { mode: 0o600 })
+const token = readFileSync(tokenFile, 'utf8').trim()
+const denied = (req: Request) => foreign(req) || req.headers.get('x-kumi-token') !== token
 
 type Handler = (req: Request & { params: Record<string, string> }, body: any) => unknown
 
 const api = (fn: Handler) => async (req: Request & { params: Record<string, string> }) => {
-  if (foreign(req)) return new Response('forbidden', { status: 403 })
+  if (denied(req)) return new Response('forbidden', { status: 403 })
   try {
     const body = req.method === 'GET' ? {} : await req.json().catch(() => ({}))
     const out = (await fn(req, body)) ?? { ok: true }
@@ -82,7 +96,7 @@ Bun.serve({
     }),
 
     '/api/stream': (req, server) => {
-      if (foreign(req)) return new Response('forbidden', { status: 403 })
+      if (denied(req)) return new Response('forbidden', { status: 403 })
       server.timeout(req, 0)
       let me: ReadableStreamDefaultController
       const body = new ReadableStream({

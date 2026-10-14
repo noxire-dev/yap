@@ -305,7 +305,7 @@ export class Crew {
     if (init && !(await this.ws.root(dir))) await this.ws.init(dir)
     const path = await this.ws.root(dir)
     const base = path && (await this.ws.branch(path))
-    if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch`)
+    if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch. \`kumi init\` makes it one`)
     const known = this.store.projects().find(p => p.path === path)
     if (known) return known
     const p = this.store.addProject({
@@ -338,8 +338,17 @@ export class Crew {
   }
 
   /** The tracker's open cards, each marked if a goal already came from it. */
-  async cards(project_id: number) {
+  /** The project, with its tracker looked up again if it had none (a remote added since). */
+  private async tracked(project_id: number) {
     const p = this.project(project_id)
+    if (p.tracker) return p
+    const tracker = await this.ws.slug(p.path)
+    if (tracker) this.store.patchProject(p.id, { tracker })
+    return { ...p, tracker }
+  }
+
+  async cards(project_id: number) {
+    const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no GitHub remote, so there is no board to read')
     const taken = new Set(this.store.goals().filter(g => g.project_id === p.id && g.status !== 'failed').map(g => g.issue))
     return (await this.tracker.cards(p.tracker)).map(c => ({ ...c, onRail: taken.has(c.number) }))
@@ -347,7 +356,7 @@ export class Crew {
 
   /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. */
   async take(project_id: number, issue: number, title: string) {
-    const p = this.project(project_id)
+    const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no board')
     if (this.store.goals().some(g => g.project_id === p.id && g.issue === issue && g.status !== 'failed'))
       throw new Error(`#${issue} is already on the rail`)
@@ -356,7 +365,7 @@ export class Crew {
 
   /** A goal typed by the human, optionally filed on the tracker first so the board knows about it. */
   async compose(project_id: number, text: string, file: boolean) {
-    const p = this.project(project_id)
+    const p = await this.tracked(project_id)
     if (!text.trim()) throw new Error('say what you want done')
     if (!file) return this.plan(p.id, text)
     if (!p.tracker) throw new Error('this repo has no board to file on')
@@ -372,7 +381,7 @@ export class Crew {
     if (!repo || !issue) return
     const say = async () => {
       if (what === 'start') return this.tracker.claim(repo, issue)
-      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human.\n\n${detail}`)
+      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human: ${first(detail)}. The full story is on the kumi board.`)
       return this.tracker.move(repo, issue, 'blocked')
     }
     say().then(

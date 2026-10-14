@@ -23,15 +23,20 @@ Criterion: [pass] slugify strips leading and trailing dashes
 
 ## Run
 
-Needs [Bun](https://bun.sh), git, and [Claude Code](https://claude.com/claude-code) signed in. For the Rinai
-board, the GitHub CLI signed in too.
+Needs [Bun](https://bun.sh) 1.2.3 or later, git 2.28 or later, and a recent [Claude Code](https://claude.com/claude-code)
+signed in (2.1 or later: the agents use `--permission-prompts` and `--json-schema`). For the Rinai board, the
+GitHub CLI signed in too.
 
 ```
 bun install
-bun link        # puts `kumi` in bun's global bin
+bun link            # puts `kumi` in bun's global bin (~/.bun/bin, which has to be on PATH)
+kumi hooks --install  # optional: parallel Claude Code sessions see and message each other
 cd ~/some/repo
-kumi            # the repo becomes a project; the daemon starts if it isn't running
+kumi                # the repo becomes a project; the daemon starts if it isn't running
 ```
+
+A new project's gate is the test command kumi guesses from the repo (`c` on the board changes it). With no
+gate, the reviewer is the only check and merged tickets are never run together.
 
 | Command | |
 |---|---|
@@ -95,13 +100,14 @@ kumi go                                              # starts the drafts
 kumi status · kumi show 12 · kumi init
 ```
 
-Install it for every session with a junction (or copy) into `~/.claude/skills`, or load the repo as a plugin
-for one session with `claude --plugin-dir <this repo>`.
+Install it for every session with a symlink, `ln -s "$PWD/skills/kumi" ~/.claude/skills/kumi` (a junction on
+Windows: `mklink /J`), or load the repo as a plugin for one session with `claude --plugin-dir <this repo>`.
 
 ## Parallel sessions
 
 Every Claude Code session on this machine reports to the daemon through five hooks in `~/.claude/settings.json`
-(a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). Sessions are grouped by repo,
+(a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). `kumi hooks --install` puts them
+there, replacing kumi's earlier ones and keeping a `.bak-kumi` copy; `kumi hooks` prints them instead. Sessions are grouped by repo,
 worktrees included, and kumi's own crew counts as one more worker.
 
 - A new session is told who else is in the repo, what each is doing (its latest prompt), and which files they
@@ -156,11 +162,20 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 ## Things to know
 
 - **No sandbox.** Authors and reviewers run under Claude Code's `auto` permission mode on your machine, in
-  worktrees. The planner runs in your checkout with read-only tools.
+  worktrees, with your environment. The planner runs in your checkout with read-only tools. An issue you take
+  from a public tracker is text an agent acts on; read it first.
+- **The API wants a token.** The daemon writes `~/.kumi/token` on first start and every client sends it. The
+  hook endpoints stay open so a bare `curl` works; they only report and read.
+- **The tracker only hears kumi's own words.** A stuck ticket's comment names the ticket and the first line of
+  why; author reports stay local.
+- **A change to agent config goes to you.** A diff that touches `.claude/`, `CLAUDE.md`, `AGENTS.md` or
+  `.mcp.json` without the ticket naming it escalates before any reviewer runs in it.
 - **The gate runs in a fresh worktree.** If your checks need installed dependencies, put the install in the
   gate: `bun install --frozen-lockfile && bun test`. `c` suggests one from the repo's lockfile.
-- **Your checkout is only ever fast-forwarded.** If the base branch moved or your tree has conflicting local
-  changes, the ticket escalates instead.
+- **Your checkout is only ever fast-forwarded,** in whichever worktree has the base branch checked out. If the
+  base branch moved or that tree has conflicting local changes, the ticket escalates instead.
+- **What merges is what was reviewed.** The gate squashes the commit the reviewer saw; anything committed on
+  the branch after it is thrown away.
 
 ## Layout
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
 import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { build, home, url } from './env'
 import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
@@ -14,6 +15,7 @@ kumi go              start this repo's drafted tickets
 kumi init            make this directory a git repo so the crew can work in it
 kumi forget [name]   take this repo's project (or the named one) off the board
 kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
+kumi hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
 kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
 kumi say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 kumi note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
@@ -21,17 +23,28 @@ kumi notes           this repo's board
 kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 kumi serve           the daemon in the foreground`
 
+// Written by the daemon on its first start; read on every call, so a fresh daemon's token is picked up.
+const auth = (): Record<string, string> => {
+  try {
+    return { 'x-kumi-token': readFileSync(join(home, 'token'), 'utf8').trim() }
+  } catch {
+    return {}
+  }
+}
+
 class HttpClient implements Client {
   async get<T>(path: string) {
-    return this.read(await fetch(url + path)) as Promise<T>
+    return this.read(await fetch(url + path, { headers: auth() })) as Promise<T>
   }
 
   async send(method: 'POST' | 'PATCH' | 'DELETE', path: string, body: object = {}) {
-    return this.read(await fetch(url + path, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }))
+    return this.read(await fetch(url + path, { method, headers: { 'content-type': 'application/json', ...auth() }, body: JSON.stringify(body) }))
   }
 
   private async read(res: Response) {
-    const data: any = await res.json()
+    const data: any = await res.json().catch(() => {
+      throw new Error(res.status === 403 ? 'the daemon refused the request: ~/.kumi/token is missing or stale' : `something that isn't kumi answers on ${url}; set KUMI_PORT`)
+    })
     if (!res.ok) throw new Error(data?.error ?? res.statusText)
     return data
   }
@@ -40,7 +53,7 @@ class HttpClient implements Client {
     void (async () => {
       for (;;) {
         try {
-          const res = await fetch(`${url}/api/stream`)
+          const res = await fetch(`${url}/api/stream`, { headers: auth() })
           down(false)
           for await (const _ of res.body!) ping()
         } catch {
@@ -54,8 +67,13 @@ class HttpClient implements Client {
 
 const api = new HttpClient()
 const running = () =>
-  fetch(`${url}/api/state`, { signal: AbortSignal.timeout(500) }).then(
-    r => (r.ok ? (r.json() as Promise<State>) : null),
+  fetch(`${url}/api/state`, { signal: AbortSignal.timeout(500), headers: auth() }).then(
+    async r => {
+      if (r.ok) return r.json().catch(() => null) as Promise<State | null>
+      // 403 is a kumi daemon whose token this client can't read; anything else on the port isn't kumi.
+      if (r.status === 403) throw new Error('the daemon refused the request: ~/.kumi/token is missing or stale')
+      throw new Error(`something that isn't kumi answers on ${url}; set KUMI_PORT`)
+    },
     () => null,
   )
 
@@ -181,6 +199,45 @@ async function here(init = false) {
   return api.send('POST', '/api/projects', { path: target(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
 }
 
+/**
+ * The Claude Code hooks that report every session to the daemon. A bare curl, so a hook costs milliseconds and
+ * says nothing when the daemon is down; crew agents (KUMI_AGENT) stay out. Messages land on edits, shell
+ * commands and prompts, not on reads, which keeps the per-call cost off the busiest tools.
+ */
+function hooks() {
+  const post = (ev: string) => `curl -s -m 2 -H content-type:application/json --data-binary @- http://127.0.0.1:\${KUMI_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
+  const run = (ev: string, timeout: number, extra: object = {}) => [
+    { ...extra, hooks: [{ type: 'command', command: `[ -n "$KUMI_AGENT" ] || ${ev === 'start' ? `{ kumi start >/dev/null 2>&1; ${post(ev)}; }` : post(ev)}`, timeout, ...(ev === 'post' || ev === 'end' ? { async: true } : {}) }] },
+  ]
+  const tools = { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash' }
+  return {
+    SessionStart: run('start', 15),
+    UserPromptSubmit: run('prompt', 5),
+    PreToolUse: run('pre', 5, tools),
+    PostToolUse: run('post', 5, tools),
+    SessionEnd: run('end', 5),
+  }
+}
+
+/** Merge the hooks into the user's Claude Code settings, replacing kumi's earlier ones. Returns the file. */
+function install(block: ReturnType<typeof hooks>) {
+  const file = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
+  let settings: any = {}
+  try {
+    const text = readFileSync(file, 'utf8')
+    settings = JSON.parse(text)
+    writeFileSync(`${file}.bak-kumi`, text)
+  } catch (e: any) {
+    if (e?.code !== 'ENOENT') throw new Error(`${file} isn't JSON this can safely rewrite: ${e?.message ?? e}`)
+  }
+  settings.hooks ??= {}
+  const ours = (g: any) => JSON.stringify(g).includes('/api/hook/')
+  for (const [event, groups] of Object.entries(block)) settings.hooks[event] = [...(settings.hooks[event] ?? []).filter((g: any) => !ours(g)), ...groups]
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(settings, null, 2) + '\n')
+  return file
+}
+
 const [cmd, ...rest] = process.argv.slice(2)
 const cols = process.stdout.columns || 100
 try {
@@ -247,6 +304,10 @@ try {
       const ago = (ts: number) => `${Math.round((Date.now() - ts) / 60_000)}m`
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts).padStart(5)}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
+  } else if (cmd === 'hooks') {
+    const block = hooks()
+    if (rest[0] !== '--install') console.log(JSON.stringify({ hooks: block }, null, 2))
+    else console.log(`kumi's hooks are in ${install(block)}. Sessions started from now on report to the daemon.`)
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'init') {
