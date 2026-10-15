@@ -397,7 +397,8 @@ export class Crew {
 
   /**
    * The last merge of a goal: a reporter reads everything that landed and writes the goal's summary for the
-   * human, which also goes to the tracker. Never blocks or fails the crew.
+   * human. The tracker gets only the receipt: agent prose shaped by an issue's text stays local, as with stuck
+   * tickets. Never blocks or fails the crew.
    */
   private async landed(p: Project, t: Ticket) {
     const goal = this.store.goals().find(g => g.id === t.goal_id)
@@ -413,7 +414,7 @@ export class Crew {
     if (!p.tracker || !goal.issue) return
     const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
     this.tracker
-      .comment(p.tracker, goal.issue, `kumi merged this on local ${p.base}. Pushing closes the issue.\n\n${summary}\n\n${lines.join('\n')}`)
+      .comment(p.tracker, goal.issue, `kumi merged this on local ${p.base}. Pushing closes the issue. The summary is on the kumi board.\n\n${lines.join('\n')}`)
       .then(() => this.tracker.move(p.tracker!, goal.issue!, 'in-review'))
       .then(
         () => this.store.log(p.id, t.id, 'tracker', { did: 'landed', issue: goal.issue }),

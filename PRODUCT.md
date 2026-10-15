@@ -66,7 +66,6 @@ Known gaps, roughly in the order they bite. Fix from the top.
   not. With the token an agent can drive the API, but skipping a check needs a yes on the desktop, unless
   KUMI_YOLO. An agent set on it could still restart the daemon with KUMI_YOLO=1 or kill it.
 - Hook endpoints take no token. They only report and read, but anything local can post as any session.
-- The goal digest, agent-written, is still posted to the tracker. The stuck comment is kumi's own words only.
 - The session registry (who is live, what each edited, inboxes) is in memory and lost on a daemon restart.
   Notes survive; undelivered messages do not.
 - Outside Herdr, an idle session hears a message only on its next prompt. The PreToolUse hook skips Read and

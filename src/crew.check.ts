@@ -82,7 +82,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     file: async (_r, title) => (told.push(`file ${title}`), { number: 9, title, column: 'todo', priority: 'normal', cycle: false }),
     claim: async (_r, n) => void told.push(`claim ${n}`),
     move: async (_r, n, column) => void told.push(`move ${n} ${column}`),
-    comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`),
+    comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`, ...(text.includes('The crew did') ? ['the reporter summary leaked'] : [])),
   }
   const crew = new Crew(store, ws, agent, tracker, '/tmp/kumi')
   return { store, crew, merged, squashed, prompts, told, ws, dirty }
@@ -185,7 +185,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match(merged[0], /Refs #7\./)
   assert.match(merged[1], /Fixes #7\./)
   await until(() => told.includes('move 7 in-review'))
-  assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 kumi merged this on local main. Pushing closes the issue.', 'move 7 in-review'])
+  assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 kumi merged this on local main. Pushing closes the issue. The summary is on the kumi board.', 'move 7 in-review'])
   assert.equal(store.goals()[0].summary, 'The crew did the thing in x.', 'the goal carries the reporter\'s summary')
   assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
 }

@@ -177,7 +177,8 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `KUMI_YOLO=1`
   where the daemon starts (`setx KUMI_YOLO 1` on Windows, then restart it) and the token is enough.
 - **The tracker only hears kumi's own words.** A stuck ticket's comment names the ticket and the first line of
-  why; author reports stay local.
+  why. A finished goal's comment lists each commit, its title and how it passed. Author reports and the goal
+  summary stay on the board.
 - **A change to agent config goes to you.** A diff that touches `.claude/`, `CLAUDE.md`, `AGENTS.md` or
   `.mcp.json` without the ticket naming it escalates before any reviewer runs in it.
 - **The gate runs in a fresh worktree.** If your checks need installed dependencies, put the install in the
