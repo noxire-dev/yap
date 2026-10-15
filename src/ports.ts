@@ -176,3 +176,8 @@ export interface Panes {
   /** Submit `text` as a prompt to session `id` if it sits idle in a pane nobody is looking at. False if it can't. */
   wake(id: string, text: string): Promise<boolean>
 }
+
+/** The person at the screen, asked somewhere a crew agent holding the API token can't answer for them. */
+export interface Human {
+  confirm(question: string): Promise<boolean>
+}

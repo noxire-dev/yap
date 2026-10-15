@@ -8,6 +8,7 @@ import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
 import { Sessions } from './sessions'
 import { SqliteStore } from './store'
+import { Dialog } from './dialog'
 import { Herdr } from './herdr'
 import { LocalWorkspace } from './workspace'
 
@@ -78,9 +79,19 @@ const api = (fn: Handler) => async (req: Request & { params: Record<string, stri
 
 const EDITABLE = ['draft', 'todo', 'escalated']
 
+// What would let work merge that nobody checked asks the person at the desktop: the API token is a file any crew
+// agent can read, a dialog is not something it can answer. KUMI_YOLO=1 trusts whoever holds the token.
+const human = process.env.KUMI_YOLO === '1' ? { confirm: async () => true } : new Dialog()
+async function vouch(question: string) {
+  if (!(await human.confirm(`${question}\n\nSay yes only if you asked for this just now. A crew agent can't answer this dialog; it can call kumi's API.`)))
+    throw new Error('not confirmed on the desktop')
+}
+
 Bun.serve({
   hostname: '127.0.0.1',
   port,
+  // A request can wait on the desktop dialog for two minutes.
+  idleTimeout: 150,
   routes: {
     '/api/state': api(() => ({
       build,
@@ -140,12 +151,21 @@ Bun.serve({
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
-    '/api/projects/forget': { POST: api((_, b) => crew.forgetProject(String(b.name ?? ''), String(b.path ?? ''))) },
+    '/api/projects/forget': {
+      POST: api(async (_, b) => {
+        await vouch(`Take ${b.name || b.path} off kumi's board, with its goals, tickets and history?`)
+        return crew.forgetProject(String(b.name ?? ''), String(b.path ?? ''))
+      }),
+    },
 
     '/api/projects/:id': {
-      PATCH: api((req, b) => {
+      PATCH: api(async (req, b) => {
         const patch: Record<string, unknown> = {}
-        if (typeof b.gate === 'string') patch.gate = b.gate.trim()
+        const p = store.projects().find(p => p.id === Number(req.params.id))
+        if (typeof b.gate === 'string' && p && b.gate.trim() !== p.gate) {
+          await vouch(b.gate.trim() ? `Change ${p.name}'s gate to: ${b.gate.trim()}` : `Turn off ${p.name}'s gate? Merged work would no longer be run before the base moves.`)
+          patch.gate = b.gate.trim()
+        }
         if (Number.isInteger(b.workers) && b.workers > 0) patch.workers = b.workers
         if (typeof b.running === 'boolean') patch.running = b.running
         store.patchProject(Number(req.params.id), patch)
@@ -166,10 +186,14 @@ Bun.serve({
     '/api/goals/:id/start': { POST: api(req => crew.startGoal(Number(req.params.id))) },
 
     '/api/tickets/:id': {
-      PATCH: api((req, b) => {
+      PATCH: api(async (req, b) => {
         const id = Number(req.params.id)
         const t = store.tickets().find(t => t.id === id)
         if (!t || !EDITABLE.includes(t.status)) throw new Error('only draft, todo and escalated tickets can be edited')
+        // An escalated ticket failed review: changing what it is judged against is a way past the reviewer.
+        const criteria = Array.isArray(b.criteria) ? b.criteria.map((c: string) => String(c).trim()).filter(Boolean) : t.criteria
+        if (t.status === 'escalated' && ((typeof b.body === 'string' && b.body !== t.body) || String(criteria) !== String(t.criteria)))
+          await vouch(`Change what t${t.id} "${t.title}" is reviewed against, after it failed review?`)
         const patch: Record<string, unknown> = {}
         if (typeof b.title === 'string' && b.title.trim()) patch.title = b.title.trim()
         if (typeof b.body === 'string') patch.body = b.body
@@ -188,9 +212,11 @@ Bun.serve({
     }),
 
     '/api/tickets/:id/:action': {
-      POST: api((req, b) => {
+      POST: api(async (req, b) => {
         const action = req.params.action
         if (!['start', 'retry', 'approve', 'restart', 'drop'].includes(action)) throw new Error('unknown action')
+        const t = store.tickets().find(t => t.id === Number(req.params.id))
+        if (action === 'approve' && t) await vouch(`Send t${t.id} "${t.title}" to the gate without the reviewer's approval?`)
         return crew.act(Number(req.params.id), action as 'start', String(b.note ?? ''))
       }),
     },
