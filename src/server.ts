@@ -130,10 +130,12 @@ Bun.serve({
       }),
     },
 
-    // Claude Code hooks from every session on this machine. Never fails: a hook must not break the session.
+    // Claude Code hooks from every session on this machine. Never fails: a hook must not break the session. The
+    // token too: a hook's answer carries other sessions' prompts and messages, and a post can speak as any session.
     '/api/hook/:event': {
       POST: async req => {
-        if (foreign(req)) return new Response('forbidden', { status: 403 })
+        // Empty: hooks installed before the token carry no -f, and a body would land in their session as text.
+        if (denied(req)) return new Response(null, { status: 403 })
         try {
           return Response.json(await sessions.hook(req.params.event, await req.json()))
         } catch {

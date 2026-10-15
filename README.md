@@ -171,7 +171,8 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   not the commands it runs. A gate that needs a variable: `KUMI_PASS=DATABASE_URL,REDIS_URL` on the daemon.
   Files are another matter: an agent can still read anything you can.
 - **The API wants a token.** The daemon writes `~/.kumi/token` on first start and every client sends it. The
-  hook endpoints stay open so a bare `curl` works; they only report and read.
+  hooks send it too, read from the file on each call. Hooks installed before that are refused silently: run
+  `kumi hooks --install` again and restart open sessions.
 - **What skips a check asks you on the desktop.** Approving past the reviewer, changing or clearing a gate,
   editing an escalated ticket's body or criteria, and `kumi forget` pop a native yes/no dialog (No by default,
   gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `KUMI_YOLO=1`

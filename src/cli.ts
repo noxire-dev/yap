@@ -202,11 +202,13 @@ async function here(init = false) {
 
 /**
  * The Claude Code hooks that report every session to the daemon. A bare curl, so a hook costs milliseconds and
- * says nothing when the daemon is down; crew agents (KUMI_AGENT) stay out. Messages land on edits, shell
+ * says nothing when the daemon is down or refuses; crew agents (KUMI_AGENT) stay out. Messages land on edits, shell
  * commands and prompts, not on reads, which keeps the per-call cost off the busiest tools.
  */
 function hooks() {
-  const post = (ev: string) => `curl -s -m 2 -H content-type:application/json --data-binary @- http://127.0.0.1:\${KUMI_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
+  // -f: a refusal prints nothing, where its body would land in the session's context as text.
+  const post = (ev: string) =>
+    `curl -sf -m 2 -H content-type:application/json -H "x-kumi-token: $(cat "\${KUMI_HOME:-$HOME/.kumi}/token" 2>/dev/null)" --data-binary @- http://127.0.0.1:\${KUMI_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
   const run = (ev: string, timeout: number, extra: object = {}) => [
     { ...extra, hooks: [{ type: 'command', command: `[ -n "$KUMI_AGENT" ] || ${ev === 'start' ? `{ kumi start >/dev/null 2>&1; ${post(ev)}; }` : post(ev)}`, timeout, ...(ev === 'post' || ev === 'end' ? { async: true } : {}) }] },
   ]
