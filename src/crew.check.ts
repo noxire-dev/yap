@@ -2,6 +2,7 @@
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { Crew, ROUNDS } from './crew'
+import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk } from './sessions'
 import { resolve } from 'node:path'
@@ -292,6 +293,12 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['aaaa1111', 'bbbb2222'], woke: ['aaaa1111'] })
   assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: prompts[0] })), /From the user: pull before you push/)
   assert.equal(reg.list().find(s => s.id === 'aaaa1111')!.intent, 'fix the login redirect')
+}
+
+// A crew agent or a gate gets the machine's basics, not the ids and tokens of whatever started the daemon.
+{
+  const env = childEnv({ Path: 'p', USERPROFILE: 'u', CLAUDE_CODE_SESSION_ID: 's', HERDR_SOCKET_PATH: 'h', GH_TOKEN: 't', KUMI_PASS: 'database_url', DATABASE_URL: 'd' })
+  assert.deepEqual(env, { Path: 'p', USERPROFILE: 'u', DATABASE_URL: 'd' })
 }
 
 // The board: a note outlives its author and greets the next session, live sessions hear of it at once, and it

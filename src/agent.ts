@@ -1,3 +1,4 @@
+import { childEnv } from './env'
 import type { AgentRun, AgentRunner } from './ports'
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
@@ -11,7 +12,7 @@ export class ClaudeCli implements AgentRunner {
     if (schema) args.push('--json-schema', JSON.stringify(schema))
 
     // KUMI_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet.
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...process.env, KUMI_AGENT: '1' } })
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1', KUMI_AGENT: '1' } })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()
@@ -50,6 +51,11 @@ export class ClaudeCli implements AgentRunner {
     if (!ok && !text) text = (await stderr).trim() || `claude exited ${p.exitCode}`
     return { ok, text, data }
   }
+}
+
+/** Claude's own credentials, if it signs in with one. The scrub keeps them out of the shell commands it runs. */
+function auth() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(anthropic_\w+|claude_code_oauth_token)$/i.test(k)))
 }
 
 function activity(tool: string, input: Record<string, unknown>) {

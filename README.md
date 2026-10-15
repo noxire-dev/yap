@@ -164,8 +164,12 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 ## Things to know
 
 - **No sandbox.** Authors and reviewers run under Claude Code's `auto` permission mode on your machine, in
-  worktrees, with your environment. The planner runs in your checkout with read-only tools. An issue you take
-  from a public tracker is text an agent acts on; read it first.
+  worktrees. Claude Code has no sandbox on native Windows. The planner runs in your checkout with read-only
+  tools. An issue you take from a public tracker is text an agent acts on; read it first.
+- **Agents and the gate get a trimmed environment.** System paths, your profile dirs and toolchain homes; not
+  tokens, not the Claude Code or Herdr session the daemon was started from. Claude's own key reaches Claude but
+  not the commands it runs. A gate that needs a variable: `KUMI_PASS=DATABASE_URL,REDIS_URL` on the daemon.
+  Files are another matter: an agent can still read anything you can.
 - **The API wants a token.** The daemon writes `~/.kumi/token` on first start and every client sends it. The
   hook endpoints stay open so a bare `curl` works; they only report and read.
 - **The tracker only hears kumi's own words.** A stuck ticket's comment names the ticket and the first line of

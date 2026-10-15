@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { childEnv } from './env'
 import type { Ran, Workspace } from './ports'
 
 // windowsHide: the daemon has no console, so without it every child would open a visible one.
@@ -154,6 +155,8 @@ export class LocalWorkspace implements Workspace {
       stdin: 'ignore',
       windowsHide: true,
       windowsVerbatimArguments: true,
+      // It runs code an agent wrote.
+      env: { ...childEnv(), KUMI_AGENT: '1' },
     })
     let buf = ''
     const dec = new TextDecoder()

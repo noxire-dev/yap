@@ -53,15 +53,17 @@ Windows build.
 - Human actions on an escalated ticket: retry with a note, approve past the reviewer (goes to the gate), drop.
 - Tickets can depend on other tickets and wait for them to merge.
 - Reviewer is Claude in a fresh context. A different-vendor reviewer is not built.
-- No sandbox: agents run under Claude Code's auto permission mode on the owner's machine.
+- No sandbox: agents run under Claude Code's auto permission mode on the owner's machine, with an allowlisted
+  environment.
 - Terminology: goal, ticket, criterion, round, verdict, gate, receipt, journal, escalation.
 
 ## Open
 
 Known gaps, roughly in the order they bite. Fix from the top.
 
-- Crew agents get the owner's full environment: no allowlist, no sandbox. Not for a laptop holding credentials.
-- The token in `~/.kumi/token` is readable by anything running as the owner, crew agents included.
+- No sandbox: crew agents can read any file the owner can (`~/.ssh`, the gh token, `~/.kumi/token`), and with
+  the kumi token could drive the API, approvals included. Claude Code sandboxes only on macOS, Linux and WSL2.
+  Their environment is trimmed to an allowlist; files are not.
 - Hook endpoints take no token. They only report and read, but anything local can post as any session.
 - The goal digest, agent-written, is still posted to the tracker. The stuck comment is kumi's own words only.
 - The session registry (who is live, what each edited, inboxes) is in memory and lost on a daemon restart.
