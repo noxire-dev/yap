@@ -172,6 +172,10 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   Files are another matter: an agent can still read anything you can.
 - **The API wants a token.** The daemon writes `~/.kumi/token` on first start and every client sends it. The
   hook endpoints stay open so a bare `curl` works; they only report and read.
+- **What skips a check asks you on the desktop.** Approving past the reviewer, changing or clearing a gate,
+  editing an escalated ticket's body or criteria, and `kumi forget` pop a native yes/no dialog (No by default,
+  gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `KUMI_YOLO=1`
+  where the daemon starts (`setx KUMI_YOLO 1` on Windows, then restart it) and the token is enough.
 - **The tracker only hears kumi's own words.** A stuck ticket's comment names the ticket and the first line of
   why; author reports stay local.
 - **A change to agent config goes to you.** A diff that touches `.claude/`, `CLAUDE.md`, `AGENTS.md` or

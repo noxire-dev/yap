@@ -61,9 +61,10 @@ Windows build.
 
 Known gaps, roughly in the order they bite. Fix from the top.
 
-- No sandbox: crew agents can read any file the owner can (`~/.ssh`, the gh token, `~/.kumi/token`), and with
-  the kumi token could drive the API, approvals included. Claude Code sandboxes only on macOS, Linux and WSL2.
-  Their environment is trimmed to an allowlist; files are not.
+- No sandbox: crew agents can read any file the owner can (`~/.ssh`, the gh token, `~/.kumi/token`).
+  Claude Code sandboxes only on macOS, Linux and WSL2. Their environment is trimmed to an allowlist; files are
+  not. With the token an agent can drive the API, but skipping a check needs a yes on the desktop, unless
+  KUMI_YOLO. An agent set on it could still restart the daemon with KUMI_YOLO=1 or kill it.
 - Hook endpoints take no token. They only report and read, but anything local can post as any session.
 - The goal digest, agent-written, is still posted to the tracker. The stuck comment is kumi's own words only.
 - The session registry (who is live, what each edited, inboxes) is in memory and lost on a daemon restart.
