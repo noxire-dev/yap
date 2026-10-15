@@ -56,6 +56,23 @@ Windows build.
 - No sandbox: agents run under Claude Code's auto permission mode on the owner's machine.
 - Terminology: goal, ticket, criterion, round, verdict, gate, receipt, journal, escalation.
 
+## Open
+
+Known gaps, roughly in the order they bite. Fix from the top.
+
+- Crew agents get the owner's full environment: no allowlist, no sandbox. Not for a laptop holding credentials.
+- The token in `~/.kumi/token` is readable by anything running as the owner, crew agents included.
+- Hook endpoints take no token. They only report and read, but anything local can post as any session.
+- The goal digest, agent-written, is still posted to the tracker. The stuck comment is kumi's own words only.
+- The session registry (who is live, what each edited, inboxes) is in memory and lost on a daemon restart.
+  Notes survive; undelivered messages do not.
+- Outside Herdr, an idle session hears a message only on its next prompt. The PreToolUse hook skips Read and
+  Grep (about 67 ms a call), so a session that only reads hears nothing until it edits or runs a command.
+- `kumi show` is about 110 lines a ticket. `kumi status` lists every project and prints the board's key hint.
+- One-shot commands (`kumi gate`, `status` in a repo) register the current repo as a project as a side effect.
+- `seen` can't be reset from the CLI. Deliberate for now: agents run `kumi status`.
+- The `issues` project has no gate.
+
 ## Brand Commitments
 
 Name: kumi (組, a crew). Lowercase.

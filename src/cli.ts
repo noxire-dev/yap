@@ -290,7 +290,8 @@ try {
     const to = rest[0]?.startsWith('@') ? rest.shift() : undefined
     await daemon()
     const r = await api.send('POST', '/api/say', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), to, text: rest.join(' ') })
-    console.log(`left for ${r.to.join(', ')}: they read it on their next tool call or prompt`)
+    const asleep = r.to.filter((id: string) => !r.woke.includes(id))
+    console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
   } else if (cmd === 'note' || cmd === 'notes') {
     await daemon()
     const cwd = target()

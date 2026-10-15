@@ -170,3 +170,9 @@ export interface Tracker {
   move(repo: string, n: number, column: 'in-review' | 'blocked'): Promise<void>
   comment(repo: string, n: number, text: string): Promise<void>
 }
+
+/** The terminal multiplexer the Claude Code sessions run in, when there is one. */
+export interface Panes {
+  /** Submit `text` as a prompt to session `id` if it sits idle in a pane nobody is looking at. False if it can't. */
+  wake(id: string, text: string): Promise<boolean>
+}

@@ -117,6 +117,8 @@ worktrees included, and kumi's own crew counts as one more worker.
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
 - Sessions talk: `kumi say @<id> <text>` to one, `kumi say <text>` to all of them in the repo. A message lands
   on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
+  A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
+  be typing in it. A woken session answers but is told not to start work on another session's word.
 - A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
   `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.

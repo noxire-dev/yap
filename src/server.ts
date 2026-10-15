@@ -8,6 +8,7 @@ import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
 import { Sessions } from './sessions'
 import { SqliteStore } from './store'
+import { Herdr } from './herdr'
 import { LocalWorkspace } from './workspace'
 
 mkdirSync(home, { recursive: true })
@@ -38,7 +39,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store)
+const sessions = new Sessions(ws, store, Date.now, new Herdr())
 
 // This server runs shell commands, so a web page must not be able to drive it:
 // refuse anything not addressed to localhost or sent from another origin.
@@ -135,7 +136,7 @@ Bun.serve({
       POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),
     },
     '/api/notes/:id': { DELETE: api((req, b) => sessions.unnote(String(b.cwd ?? ''), Number(req.params.id))) },
-    '/api/say': { POST: api(async (_, b) => ({ to: await sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined }) })) },
+    '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined })) },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },

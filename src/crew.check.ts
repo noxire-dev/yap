@@ -259,7 +259,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const bash = (id: string, command: string, event = 'pre') => reg.hook(event, { session_id: id, cwd: '/repo', tool_name: 'Bash', tool_input: { command } })
   await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
   assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session bbbb2222.*kumi say/s)
-  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), ['aaaa1111'])
+  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), { to: ['aaaa1111'], woke: [] })
   assert.match(ctx(await bash('aaaa1111', 'ls')), /From session bbbb2222: leave auth\.ts to me/)
   assert.deepEqual(await bash('aaaa1111', 'ls'), {}, 'delivered once')
   await assert.rejects(reg.say({ from: 'bbbb2222', cwd: '/repo', to: 'zzzz', text: 'hi' }), /no live session zzzz/)
@@ -279,6 +279,19 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match(held.hookSpecificOutput.permissionDecisionReason, /session aaaa1111.*src\/auth\.ts/)
   assert.deepEqual(await bash('bbbb2222', 'git status && git diff'), {}, 'reading git is fine')
   assert.equal(((await bash('aaaa1111', 'git reset --hard')) as any).hookSpecificOutput, undefined, 'bbbb edited nothing')
+}
+
+// A message wakes a session idle in a pane: the wake prompt carries the message and isn't the session's new intent.
+{
+  const { store, ws } = rig([])
+  const prompts: string[] = []
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (id, text) => (prompts.push(text), id === 'aaaa1111') })
+  const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
+  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
+  await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
+  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['aaaa1111', 'bbbb2222'], woke: ['aaaa1111'] })
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: prompts[0] })), /From the user: pull before you push/)
+  assert.equal(reg.list().find(s => s.id === 'aaaa1111')!.intent, 'fix the login redirect')
 }
 
 // The board: a note outlives its author and greets the next session, live sessions hear of it at once, and it
