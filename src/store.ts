@@ -13,6 +13,7 @@ export class SqliteStore implements Store {
     db.run(`CREATE TABLE IF NOT EXISTS event (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, ticket_id INTEGER,
       ts INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`)
+    db.run('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, ts INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL)')
   }
 
@@ -75,4 +76,8 @@ export class SqliteStore implements Store {
   notes = (repo: string) => this.db.query('SELECT * FROM note WHERE repo = ? ORDER BY id DESC').all(repo) as Note[]
 
   removeNote = (repo: string, id: number) => this.db.query('DELETE FROM note WHERE repo = ? AND id = ?').run(repo, id).changes > 0
+
+  sessions = () => (this.db.query('SELECT data FROM session').all() as { data: string }[]).map(r => r.data)
+  saveSession = (id: string, data: string) => void this.db.query('INSERT OR REPLACE INTO session (id, data) VALUES (?, ?)').run(id, data)
+  dropSession = (id: string) => void this.db.query('DELETE FROM session WHERE id = ?').run(id)
 }

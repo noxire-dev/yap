@@ -91,6 +91,10 @@ export interface Store {
   notes(repo: string): Note[]
   /** False when the repo has no such note. */
   removeNote(repo: string, id: number): boolean
+  /** Live Claude Code sessions, each an opaque JSON blob by session id. */
+  sessions(): string[]
+  saveSession(id: string, data: string): void
+  dropSession(id: string): void
 }
 
 export interface Ran {
