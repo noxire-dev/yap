@@ -1,4 +1,4 @@
-import { dirname, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { Panes, Store, Workspace } from './ports'
 
 /** A session silent this long has gone away without saying so. */
@@ -7,6 +7,12 @@ const LIVE = 2 * 60 * 60_000
 const RECENT = 30 * 60_000
 /** Notes shown to a session; the rest stay on the board for `kumi notes`. */
 const BOARD = 10
+/** A note this old is marked as maybe no longer true. */
+export const STALE = 3 * 24 * 60 * 60_000
+/** Words that say nothing about the work, skipped when a session is named from its first prompt. */
+const FILLER = new Set('a an the to of in on for and or with is are be it this that these those i we you me my our your can could would should will please pls lets let let\'s hey hi hello ok okay alr alright so now just also chief do make get go some there here what how why when about into from at as by up'.split(' '))
+/** Harness markup Claude Code feeds in as a prompt (another agent's message, a task notification): not what the user asked. */
+const MARKUP = /^<[\w-]+[\s>]/
 /**
  * An idle session in a pane is woken with a prompt the user sees, so it is one plain line; the message and what
  * to do with it come with it as context, which only the model reads.
@@ -22,6 +28,8 @@ const norm = (p: string) => {
 
 interface Session {
   id: string
+  /** Short, from its first prompt (`fix-login-redirect`), so it can be told apart and addressed. Empty until then. */
+  name: string
   /** Working tree the session edits in. */
   top: string
   /** The repo it belongs to: worktrees of one repo share it. */
@@ -83,9 +91,9 @@ export interface HookInput {
   tool_input?: { file_path?: string; notebook_path?: string; command?: string }
 }
 
-function ago(ts: number, now: number) {
+export function ago(ts: number, now = Date.now()) {
   const m = Math.max(0, Math.round((now - ts) / 60_000))
-  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 48 * 60 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`
 }
 
 /**
@@ -104,7 +112,7 @@ export class Sessions {
   ) {
     for (const row of store.sessions()) {
       const s = JSON.parse(row)
-      this.all.set(s.id, { ...s, files: new Map(s.files), warned: new Map(s.warned) })
+      this.all.set(s.id, { name: '', ...s, files: new Map(s.files), warned: new Map(s.warned) })
     }
   }
 
@@ -136,13 +144,29 @@ export class Sessions {
     let s = this.all.get(id)
     if (!s) {
       const { top, repo } = await this.root(input.cwd)
-      s = { id, top, repo, intent: '', started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
+      s = { id, name: '', top, repo, intent: '', started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
       this.all.set(id, s)
     } else if (s.cwd !== input.cwd) {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
     s.at = now
     return s
+  }
+
+  /** How a session is called: its name, or its id until it has one. */
+  private tag(s: Session) {
+    return s.name || s.id.slice(0, 8)
+  }
+
+  /** A name from the first prompt, unique among the sessions in its repo. */
+  private naming(s: Session, prompt: string) {
+    const words = (prompt.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(w => !FILLER.has(w)).slice(0, 3)
+    const base = words.join('-').slice(0, 24).replace(/-$/, '')
+    if (!base) return ''
+    const taken = new Set(this.others(s).map(o => o.name))
+    let name = base
+    for (let i = 2; taken.has(name); i++) name = `${base}-${i}`
+    return name
   }
 
   private others(s: Session) {
@@ -154,7 +178,7 @@ export class Sessions {
     const files = [...o.files.keys()].map(f => relative(o.top, f).replace(/\\/g, '/'))
     const edited = files.length ? ` · edited ${files.slice(-4).join(', ')}${files.length > 4 ? ` and ${files.length - 4} more` : ''}` : ''
     const where = o.top === from.top ? '' : ' · in another worktree'
-    return `- session ${o.id.slice(0, 8)}, active ${ago(o.at, now)}: ${o.intent ? `"${o.intent}"` : 'no prompt yet'}${edited}${where}`
+    return `- @${this.tag(o)}${o.name ? ` (${o.id.slice(0, 8)})` : ''}, active ${ago(o.at, now)}: ${o.intent ? `"${o.intent}"` : 'no prompt yet'}${edited}${where}`
   }
 
   /** kumi's own crew on the same repo: running tickets, each in its own worktree. */
@@ -170,7 +194,10 @@ export class Sessions {
 
   private overview(s: Session) {
     const lines = [...this.others(s).map(o => this.line(o, s)), ...this.crew(s)]
-    const board = this.store.notes(s.repo).slice(0, BOARD).map(n => `- #${n.id} ${ago(n.ts, this.now())}, ${n.author}: ${n.text.slice(0, 300)}`)
+    const notes = this.store.notes(s.repo).slice(0, BOARD)
+    const stale = notes.some(n => this.now() - n.ts > STALE)
+    const board = notes.map(n => `- #${n.id} ${ago(n.ts, this.now())}${this.now() - n.ts > STALE ? ', may be stale' : ''}, ${n.author}: ${n.text.slice(0, 300)}`)
+    if (stale) board.push(`Notes marked "may be stale" are over 3 days old. If you can tell one no longer holds, take it down; if you can't, don't act on it without checking.`)
     s.told = this.now()
     if (!lines.length && !board.length) return ''
     return [
@@ -178,7 +205,7 @@ export class Sessions {
         ? [`Other agents are working in this repository right now. Don't redo their work, and re-read any file they touched before you edit it:`, ...lines]
         : []),
       ...(board.length ? [`This repository's kumi board, what sessions and the user left for whoever works here next:`, ...board] : []),
-      `You are session ${s.id.slice(0, 8)}. Message the others with \`kumi say @<session> <text>\` or \`kumi say <text>\` for all of them. Leave something on the board for later sessions (a claim on an area, a decision, a warning, a handoff) with \`kumi note <text>\`, and take a note down with \`kumi note -d <id>\` once it no longer holds.`,
+      `You are session @${this.tag(s)}. Message the others with \`kumi say @<session> <text>\` or \`kumi say <text>\` for all of them. Leave something on the board for later sessions (a claim on an area, a decision, a warning, a handoff) with \`kumi note <text>\`, and take a note down with \`kumi note -d <id>\` once it no longer holds.`,
     ].join('\n')
   }
 
@@ -205,7 +232,7 @@ export class Sessions {
 
   /** Who a message is from, as the recipient reads it. */
   private label(s: Session | null) {
-    return s ? `session ${s.id.slice(0, 8)}${s.intent ? ` ("${s.intent}")` : ''}` : 'the user'
+    return s ? `session @${this.tag(s)}${s.intent ? ` ("${s.intent}")` : ''}` : 'the user'
   }
 
   /**
@@ -220,13 +247,16 @@ export class Sessions {
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const to = m.to?.replace(/^@/, '').toLowerCase()
     const now = this.now()
-    const them = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id && now - o.at <= LIVE && (!to || o.id.startsWith(to)))
-    if (!them.length) throw new Error(to ? `no live session ${to} in this repo` : 'nobody else is working in this repo')
-    if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => o.id.slice(0, 8)).join(' or ')}; give more of the id`)
+    const live = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id && now - o.at <= LIVE)
+    // An exact name wins over a prefix, so @auth reaches `auth` even with `auth-tests` around.
+    const exact = live.filter(o => o.name === to)
+    const them = exact.length ? exact : live.filter(o => !to || o.name.startsWith(to) || o.id.startsWith(to))
+    if (!them.length) throw new Error(to ? `no live session @${to} in this repo` : 'nobody else is working in this repo')
+    if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => `@${this.tag(o)}`).join(' or ')}; give more of it`)
     for (const o of them) o.inbox.push(`From ${this.label(s)}: ${text}`)
     this.save(s, ...them)
-    const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + (s ? `session ${s.id.slice(0, 8)}` : 'the user'))))
-    return { to: them.map(o => o.id.slice(0, 8)), woke: them.filter((_, i) => woke[i]).map(o => o.id.slice(0, 8)) }
+    const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + (s ? `session @${this.tag(s)}` : 'the user'))))
+    return { to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
   }
 
   /** Everything waiting for `s`, emptied. */
@@ -241,7 +271,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, top: s.top, intent: s.intent, started: s.started, at: s.at, files: [...s.files.keys()] }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, intent: s.intent, started: s.started, at: s.at, files: [...s.files.keys()] }))
   }
 
   /** One hook call. Returns what Claude Code should get back; `{}` means say nothing. */
@@ -266,8 +296,12 @@ export class Sessions {
 
     if (event === 'prompt' && input.prompt?.startsWith(WAKE)) return say('UserPromptSubmit', both(WOKEN, this.drain(s)))
     if (event === 'prompt') {
-      s.intent = String(input.prompt ?? '').trim().split(/\r?\n/)[0].slice(0, 100)
-      s.news = this.now()
+      const first = String(input.prompt ?? '').trim().split(/\r?\n/)[0]
+      if (!MARKUP.test(first)) {
+        s.intent = first.slice(0, 100)
+        s.name ||= this.naming(s, first)
+        s.news = this.now()
+      }
       // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
       // neighbour merely reading, costs no context.
       const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
@@ -311,7 +345,10 @@ export class Sessions {
 
     const path = input.tool_input?.file_path ?? input.tool_input?.notebook_path
     if (event === 'post') {
-      if (path) s.files.set(norm(resolve(input.cwd ?? '', path)), (s.news = this.now()))
+      const file = path && norm(resolve(input.cwd ?? '', path))
+      // Outside its working tree (a scratchpad, a temp file) is nobody's conflict.
+      const rel = file && relative(s.top, file)
+      if (file && rel && !rel.startsWith('..') && !isAbsolute(rel)) s.files.set(file, (s.news = this.now()))
       return {}
     }
     if (event !== 'pre') return {}

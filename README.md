@@ -115,7 +115,9 @@ worktrees included, and kumi's own crew counts as one more worker.
 - On your next prompt it hears what moved since, and nothing at all when nothing did.
 - Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
-- Sessions talk: `kumi say @<id> <text>` to one, `kumi say <text>` to all of them in the repo. A message lands
+- A session is named from its first prompt (`@fix-login-redirect`); before that, by its id. Only edits inside
+  its working tree count, so a scratchpad or temp file never warns anyone.
+- Sessions talk: `kumi say @<name> <text>` to one (a prefix of the name or id will do), `kumi say <text>` to all of them in the repo. A message lands
   on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
   A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
   be typing in it. A woken session answers but is told not to start work on another session's word.
@@ -124,7 +126,9 @@ worktrees included, and kumi's own crew counts as one more worker.
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
 - The board: `kumi note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `kumi notes`
   reads it, `kumi note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
-  starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once.
+  starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
+  note over three days old is marked "may be stale", and sessions are told to check it before acting on it.
+- Who is live, what each edited and undelivered messages survive a daemon restart.
 - `kumi sessions` lists them.
 
 Shell commands count as edits too: after each one, files `git status` shows changed since it started are

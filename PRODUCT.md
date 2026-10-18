@@ -65,8 +65,6 @@ Known gaps, roughly in the order they bite. Fix from the top.
   Claude Code sandboxes only on macOS, Linux and WSL2. Their environment is trimmed to an allowlist; files are
   not. With the token an agent can drive the API, but skipping a check needs a yes on the desktop, unless
   KUMI_YOLO. An agent set on it could still restart the daemon with KUMI_YOLO=1 or kill it.
-- The session registry (who is live, what each edited, inboxes) is in memory and lost on a daemon restart.
-  Notes survive; undelivered messages do not.
 - Outside Herdr, an idle session hears a message only on its next prompt. The PreToolUse hook skips Read and
   Grep (about 67 ms a call), so a session that only reads hears nothing until it edits or runs a command.
 - `kumi show` is about 110 lines a ticket. `kumi status` lists every project and prints the board's key hint.

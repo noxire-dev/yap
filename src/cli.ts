@@ -4,6 +4,7 @@ import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { build, home, url } from './env'
+import { STALE, ago } from './sessions'
 import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
 const USAGE = `kumi                 open the board (starts the daemon if it isn't running)
@@ -279,11 +280,10 @@ try {
     console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
   } else if (cmd === 'sessions') {
     if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
-    const list = await api.get<{ id: string; top: string; intent: string; at: number; files: string[] }[]>('/api/sessions')
-    const ago = (ts: number) => `${Math.round((Date.now() - ts) / 60_000)}m`
+    const list = await api.get<{ id: string; name: string; top: string; intent: string; at: number; files: string[] }[]>('/api/sessions')
     const show = (s: (typeof list)[number]) =>
       [
-        `${s.id.slice(0, 8)}  ${ago(s.at).padStart(4)}  ${s.top}`,
+        `${s.id.slice(0, 8)}  ${ago(s.at).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.top}`,
         `          ${s.intent || '(no prompt yet)'}`,
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
       ].join('\n')
@@ -305,8 +305,7 @@ try {
       console.log(`pinned #${n.id}: every session in this repo sees it`)
     } else {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
-      const ago = (ts: number) => `${Math.round((Date.now() - ts) / 60_000)}m`
-      console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts).padStart(5)}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
+      console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
   } else if (cmd === 'hooks') {
     const block = hooks()
