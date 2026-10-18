@@ -8,7 +8,7 @@ const RECENT = 30 * 60_000
 /** Notes shown to a session; the rest stay on the board for `kumi notes`. */
 const BOARD = 10
 /** A note this old is marked as maybe no longer true. */
-export const STALE = 3 * 24 * 60 * 60_000
+export const STALE = 24 * 60 * 60_000
 /** Words that say nothing about the work, skipped when a session is named from its first prompt. */
 const FILLER = new Set('a an the to of in on for and or with is are be it this that these those i we you me my our your can could would should will please pls lets let let\'s hey hi hello ok okay alr alright so now just also chief do make get go some there here what how why when about into from at as by up'.split(' '))
 /** Harness markup Claude Code feeds in as a prompt (another agent's message, a task notification): not what the user asked. */
@@ -34,7 +34,6 @@ interface Session {
   top: string
   /** The repo it belongs to: worktrees of one repo share it. */
   repo: string
-  intent: string
   started: number
   at: number
   /** When this session was last told about the others. */
@@ -144,7 +143,7 @@ export class Sessions {
     let s = this.all.get(id)
     if (!s) {
       const { top, repo } = await this.root(input.cwd)
-      s = { id, name: '', top, repo, intent: '', started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
+      s = { id, name: '', top, repo, started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
       this.all.set(id, s)
     } else if (s.cwd !== input.cwd) {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
@@ -176,9 +175,10 @@ export class Sessions {
   private line(o: Session, from: Session) {
     const now = this.now()
     const files = [...o.files.keys()].map(f => relative(o.top, f).replace(/\\/g, '/'))
-    const edited = files.length ? ` · edited ${files.slice(-4).join(', ')}${files.length > 4 ? ` and ${files.length - 4} more` : ''}` : ''
+    // What it edited, not what it was asked: a prompt is the user's words, and says less than the files do.
+    const edited = files.length ? `edited ${files.slice(-6).join(', ')}${files.length > 6 ? ` and ${files.length - 6} more` : ''}` : 'no edits yet'
     const where = o.top === from.top ? '' : ' · in another worktree'
-    return `- @${this.tag(o)}${o.name ? ` (${o.id.slice(0, 8)})` : ''}, active ${ago(o.at, now)}: ${o.intent ? `"${o.intent}"` : 'no prompt yet'}${edited}${where}`
+    return `- @${this.tag(o)}${o.name ? ` (${o.id.slice(0, 8)})` : ''}, active ${ago(o.at, now)}: ${edited}${where}`
   }
 
   /** kumi's own crew on the same repo: running tickets, each in its own worktree. */
@@ -197,12 +197,12 @@ export class Sessions {
     const notes = this.store.notes(s.repo).slice(0, BOARD)
     const stale = notes.some(n => this.now() - n.ts > STALE)
     const board = notes.map(n => `- #${n.id} ${ago(n.ts, this.now())}${this.now() - n.ts > STALE ? ', may be stale' : ''}, ${n.author}: ${n.text.slice(0, 300)}`)
-    if (stale) board.push(`Notes marked "may be stale" are over 3 days old. If you can tell one no longer holds, take it down; if you can't, don't act on it without checking.`)
+    if (stale) board.push(`Notes marked "may be stale" are over a day old. If you can tell one no longer holds, take it down; if you can't, don't act on it without checking.`)
     s.told = this.now()
     if (!lines.length && !board.length) return ''
     return [
       ...(lines.length
-        ? [`Other agents are working in this repository right now. Don't redo their work, and re-read any file they touched before you edit it:`, ...lines]
+        ? [`Other agents are working in this repository right now. Don't redo their work, and re-read a file listed here before you edit it:`, ...lines]
         : []),
       ...(board.length ? [`This repository's kumi board, what sessions and the user left for whoever works here next:`, ...board] : []),
       `You are session @${this.tag(s)}. Message the others with \`kumi say @<session> <text>\` or \`kumi say <text>\` for all of them. Leave something on the board for later sessions (a claim on an area, a decision, a warning, a handoff) with \`kumi note <text>\`, and take a note down with \`kumi note -d <id>\` once it no longer holds.`,
@@ -232,7 +232,7 @@ export class Sessions {
 
   /** Who a message is from, as the recipient reads it. */
   private label(s: Session | null) {
-    return s ? `session @${this.tag(s)}${s.intent ? ` ("${s.intent}")` : ''}` : 'the user'
+    return s ? `session @${this.tag(s)}` : 'the user'
   }
 
   /**
@@ -271,7 +271,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, name: s.name, top: s.top, intent: s.intent, started: s.started, at: s.at, files: [...s.files.keys()] }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')) }))
   }
 
   /** One hook call. Returns what Claude Code should get back; `{}` means say nothing. */
@@ -298,7 +298,6 @@ export class Sessions {
     if (event === 'prompt') {
       const first = String(input.prompt ?? '').trim().split(/\r?\n/)[0]
       if (!MARKUP.test(first)) {
-        s.intent = first.slice(0, 100)
         s.name ||= this.naming(s, first)
         s.news = this.now()
       }
@@ -333,7 +332,7 @@ export class Sessions {
           ? `This git command can switch, rewrite or discard the files under it. Don't run it. Ask that session first with \`kumi say @<session> <text>\`, use a separate worktree, or ask the user to run it if they asked for it.`
           : `This command stages or commits every change in the tree, theirs included. Stage your own files by name instead (\`git add <file>...\`), then commit.`
       return {
-        systemMessage: `kumi: held back a git command that would ${risk === 'moves' ? 'move the tree' : 'sweep up the work'} of ${busy.map(o => o.id.slice(0, 8)).join(', ')}`,
+        systemMessage: `kumi: held back a git command that would ${risk === 'moves' ? 'move the tree' : 'sweep up the work'} of ${busy.map(o => `@${this.tag(o)}`).join(', ')}`,
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
@@ -372,7 +371,7 @@ export class Sessions {
         `Another session is working on ${name} in this same working tree: ${who.join('; ')}. Re-read the file before you edit it, keep their change intact, and if your task overlaps theirs, tell them with \`kumi say @<session> <text>\` and tell the user instead of redoing it.`,
         mail,
       ),
-      { systemMessage: `kumi: ${name} was just edited by ${hits.map(h => h.o.id.slice(0, 8)).join(', ')}` },
+      { systemMessage: `kumi: ${name} was just edited by ${hits.map(h => `@${this.tag(h.o)}`).join(', ')}` },
     )
   }
 }

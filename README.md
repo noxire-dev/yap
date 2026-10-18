@@ -110,8 +110,8 @@ Every Claude Code session on this machine reports to the daemon through five hoo
 there, replacing kumi's earlier ones and keeping a `.bak-kumi` copy; `kumi hooks` prints them instead. Sessions are grouped by repo,
 worktrees included, and kumi's own crew counts as one more worker.
 
-- A new session is told who else is in the repo, what each is doing (its latest prompt), and which files they
-  touched, plus any tickets the crew is running.
+- A new session is told who else is in the repo, which files each touched (not what it was asked:
+  a prompt is yours), plus any tickets the crew is running.
 - On your next prompt it hears what moved since, and nothing at all when nothing did.
 - Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
@@ -127,7 +127,7 @@ worktrees included, and kumi's own crew counts as one more worker.
 - The board: `kumi note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `kumi notes`
   reads it, `kumi note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
   starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
-  note over three days old is marked "may be stale", and sessions are told to check it before acting on it.
+  note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
 - Who is live, what each edited and undelivered messages survive a daemon restart.
 - `kumi sessions` lists them.
 
