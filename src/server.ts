@@ -14,7 +14,7 @@ import { LocalWorkspace } from './workspace'
 
 mkdirSync(home, { recursive: true })
 
-const store = new SqliteStore(new Database(join(home, 'kumi.db'), { create: true }))
+const store = new SqliteStore(new Database(join(home, 'yap.db'), { create: true }))
 const ws = new LocalWorkspace()
 
 // Server-sent pings: a client refetches state when one lands.
@@ -61,7 +61,7 @@ function foreign(req: Request) {
 const tokenFile = join(home, 'token')
 if (!existsSync(tokenFile)) writeFileSync(tokenFile, randomBytes(24).toString('hex'), { mode: 0o600 })
 const token = readFileSync(tokenFile, 'utf8').trim()
-const denied = (req: Request) => foreign(req) || req.headers.get('x-kumi-token') !== token
+const denied = (req: Request) => foreign(req) || req.headers.get('x-yap-token') !== token
 
 type Handler = (req: Request & { params: Record<string, string> }, body: any) => unknown
 
@@ -81,10 +81,10 @@ const api = (fn: Handler, quiet = false) => async (req: Request & { params: Reco
 const EDITABLE = ['draft', 'todo', 'escalated']
 
 // What would let work merge that nobody checked asks the person at the desktop: the API token is a file any crew
-// agent can read, a dialog is not something it can answer. KUMI_YOLO=1 trusts whoever holds the token.
-const human = process.env.KUMI_YOLO === '1' ? { confirm: async () => true } : new Dialog()
+// agent can read, a dialog is not something it can answer. YAP_YOLO=1 trusts whoever holds the token.
+const human = process.env.YAP_YOLO === '1' ? { confirm: async () => true } : new Dialog()
 async function vouch(question: string) {
-  if (!(await human.confirm(`${question}\n\nSay yes only if you asked for this just now. A crew agent can't answer this dialog; it can call kumi's API.`)))
+  if (!(await human.confirm(`${question}\n\nSay yes only if you asked for this just now. A crew agent can't answer this dialog; it can call yap's API.`)))
     throw new Error('not confirmed on the desktop')
 }
 
@@ -169,7 +169,7 @@ Bun.serve({
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
     '/api/projects/forget': {
       POST: api(async (_, b) => {
-        await vouch(`Take ${b.name || b.path} off kumi's board, with its goals, tickets and history?`)
+        await vouch(`Take ${b.name || b.path} off yap's board, with its goals, tickets and history?`)
         return crew.forgetProject(String(b.name ?? ''), String(b.path ?? ''))
       }),
     },
@@ -224,7 +224,7 @@ Bun.serve({
       const t = store.tickets().find(t => t.id === id)
       const p = store.projects().find(p => p.id === t?.project_id)
       if (!t || !p) throw new Error('no such ticket')
-      return { diff: t.sha ? await ws.diff(p.path, `${t.sha}^`, t.sha) : await ws.diff(p.path, p.base, `kumi/t${id}`) }
+      return { diff: t.sha ? await ws.diff(p.path, `${t.sha}^`, t.sha) : await ws.diff(p.path, p.base, `yap/t${id}`) }
     }),
 
     '/api/tickets/:id/:action': {
@@ -240,4 +240,4 @@ Bun.serve({
   fetch: () => new Response('not found', { status: 404 }),
 })
 
-console.log(`kumi daemon on ${url}, state in ${home}`)
+console.log(`yap daemon on ${url}, state in ${home}`)

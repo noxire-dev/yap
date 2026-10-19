@@ -22,7 +22,11 @@ someone else could follow.
 
 ## Product Purpose
 
-kumi turns a goal into merged commits without a human in the loop. A planner breaks the goal into tickets with
+yap lets coding agents on one machine see each other, message each other and stay out of each other's way. The
+protocol is YAP (`docs/yap.md`); it is meant to grow into mirako.computer's layer for agents talking, local and
+from the web.
+
+On top of it, a crew turns a goal into merged commits without a human in the loop. A planner breaks the goal into tickets with
 acceptance criteria. An agent takes each ticket on its own branch in its own git worktree. A second agent, in a
 fresh context that never saw the author's reasoning, checks the diff against every criterion. Approved work is
 squashed onto the base branch in a scratch worktree, the project's gate command runs on that merged result, and
@@ -61,20 +65,21 @@ Windows build.
 
 Known gaps, roughly in the order they bite. Fix from the top.
 
-- No sandbox: crew agents can read any file the owner can (`~/.ssh`, the gh token, `~/.kumi/token`).
+- No sandbox: crew agents can read any file the owner can (`~/.ssh`, the gh token, `~/.yap/token`).
   Claude Code sandboxes only on macOS, Linux and WSL2. Their environment is trimmed to an allowlist; files are
   not. With the token an agent can drive the API, but skipping a check needs a yes on the desktop, unless
-  KUMI_YOLO. An agent set on it could still restart the daemon with KUMI_YOLO=1 or kill it.
+  YAP_YOLO. An agent set on it could still restart the daemon with YAP_YOLO=1 or kill it.
 - Outside Herdr, an idle session hears a message only on its next prompt. The PreToolUse hook skips Read and
   Grep (about 67 ms a call), so a session that only reads hears nothing until it edits or runs a command.
-- `kumi show` is about 110 lines a ticket. `kumi status` lists every project and prints the board's key hint.
-- One-shot commands (`kumi gate`, `status` in a repo) register the current repo as a project as a side effect.
-- `seen` can't be reset from the CLI. Deliberate for now: agents run `kumi status`.
+- `yap show` is about 110 lines a ticket. `yap status` lists every project and prints the board's key hint.
+- One-shot commands (`yap gate`, `status` in a repo) register the current repo as a project as a side effect.
+- `seen` can't be reset from the CLI. Deliberate for now: agents run `yap status`.
 - The `issues` project has no gate.
 
 ## Brand Commitments
 
-Name: kumi (組, a crew). Lowercase.
+Name: yap, for the protocol and the tool. YAP in prose about the protocol, `yap` for the command. The crew
+and its board may split off later as kumi (組, a crew), a client of the protocol.
 
 ## Evidence on Hand
 

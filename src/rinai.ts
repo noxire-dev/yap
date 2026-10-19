@@ -22,7 +22,7 @@ export class Rinai implements Tracker {
   }
 
   private async call(method: string, path: string, body?: object | string) {
-    const headers: Record<string, string> = { authorization: `Bearer ${await this.auth()}`, 'user-agent': 'kumi' }
+    const headers: Record<string, string> = { authorization: `Bearer ${await this.auth()}`, 'user-agent': 'yap' }
     if (body !== undefined) headers['content-type'] = typeof body === 'string' ? 'text/plain' : 'application/json'
     const res = await fetch(HOST + path, { method, headers, body: typeof body === 'object' ? JSON.stringify(body) : body })
     const text = await res.text()

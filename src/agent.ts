@@ -11,8 +11,8 @@ export class ClaudeCli implements AgentRunner {
     else args.push('--permission-mode', 'auto')
     if (schema) args.push('--json-schema', JSON.stringify(schema))
 
-    // KUMI_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet.
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1', KUMI_AGENT: '1' } })
+    // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet.
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1', YAP_AGENT: '1' } })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()

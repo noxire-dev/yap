@@ -49,7 +49,7 @@ export class LocalWorkspace implements Workspace {
   }
 
   async init(dir: string) {
-    for (const args of [['init', '-b', 'main'], ['add', '-A'], ['commit', '--allow-empty', '-m', 'kumi: first commit']]) {
+    for (const args of [['init', '-b', 'main'], ['add', '-A'], ['commit', '--allow-empty', '-m', 'yap: first commit']]) {
       const r = await git(dir, ...args)
       if (!r.ok) throw new Error(`git ${args[0]}: ${r.log}`)
     }
@@ -156,7 +156,7 @@ export class LocalWorkspace implements Workspace {
       windowsHide: true,
       windowsVerbatimArguments: true,
       // It runs code an agent wrote.
-      env: { ...childEnv(), KUMI_AGENT: '1' },
+      env: { ...childEnv(), YAP_AGENT: '1' },
     })
     let buf = ''
     const dec = new TextDecoder()

@@ -1,6 +1,6 @@
 # YAP
 
-How coding agents on one machine see each other, message each other and stay out of each other's way. kumi's
+How coding agents on one machine see each other, message each other and stay out of each other's way. The yap
 daemon is the first implementation (`src/sessions.ts`); Claude Code is the first agent wired to it. This file
 is the protocol without either, so another agent, or a web client, can speak it.
 
@@ -45,7 +45,7 @@ Messages queued for a session are delivered with its next answer, on any verb.
 An answer has up to three parts, and an agent maps each to what it has:
 
 - `context`: text for the model only. Peers, warnings, messages. Never shown to the user as if they typed it.
-- `notice`: one line for the user (`kumi: src/auth.ts was just edited by @auth`).
+- `notice`: one line for the user (`yap: src/auth.ts was just edited by @auth`).
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
 
 An agent that can't receive answers on some verb still sends it: the daemon's record stays right, and the
@@ -54,7 +54,7 @@ messages wait for the next verb that can answer.
 ## Wake
 
 A message to an idle session should not wait for the user's next prompt. A **pane host** (Herdr today) is asked
-to submit one plain line to the session, `kumi: a message from session @auth`, as if typed; the session's `turn`
+to submit one plain line to the session, `yap: a message from session @auth`, as if typed; the session's `turn`
 answer then carries the message and instructions in `context`. Rules:
 
 - Only an idle session is woken, and never one in the focused pane: the user may be typing in it.
@@ -64,15 +64,15 @@ answer then carries the message and instructions in `context`. Rules:
 ## Trust
 
 - The daemon listens on `127.0.0.1` only and refuses a foreign `Host` or `Origin`.
-- Every call carries `x-kumi-token`, the contents of `~/.kumi/token` (mode 600, written on first start).
+- Every call carries `x-yap-token`, the contents of `~/.yap/token` (mode 600, written on first start).
 - Answers carry peers' messages, so the token gates them too. A refused call gets an empty 403: an agent that
   prints a hook's output into its context must not print an error into it.
 - What would skip a check (approving past the reviewer, changing a gate, forgetting a project) is confirmed on
-  the desktop, which the token holder can't do. Not part of YAP; it is kumi's.
+  the desktop, which the token holder can't do. Not part of YAP; it belongs to the crew.
 
 ## The wire
 
-`POST http://127.0.0.1:4170/yap/<verb>` (`KUMI_PORT` moves it) with `x-kumi-token` and a JSON body:
+`POST http://127.0.0.1:4170/yap/<verb>` (`YAP_PORT` moves it) with `x-yap-token` and a JSON body:
 
 ```json
 { "session": "codex-1", "cwd": "C:/src/app", "path": "src/auth.ts" }
@@ -84,7 +84,7 @@ The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited),
 verb or a bad argument is a 400 with `{ "error" }`.
 
 ```sh
-curl -s -H content-type:application/json -H "x-kumi-token: $(cat ~/.kumi/token)" \
+curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
   --data-binary '{"session":"codex-2","cwd":"'"$PWD"'","command":"git checkout main"}' \
   http://127.0.0.1:4170/yap/will-run
 ```
@@ -128,4 +128,4 @@ The shape:
 
 The risk is the whole point of the design above: a website that can make your PC run agents is a remote code
 execution channel. A compromised platform account must get no more than "queue a goal on a repo you already
-gave kumi".
+gave yap".

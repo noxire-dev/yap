@@ -251,7 +251,7 @@ function receipt(t: Ticket, checks: Check[] | null, ref: string) {
     ...(ref ? [ref, ''] : []),
     `Ticket: ${t.id}`,
     `Rounds: ${t.round}`,
-    `Reviewed-by: ${checks ? 'kumi reviewer (fresh context, not the author)' : 'human override'}`,
+    `Reviewed-by: ${checks ? 'yap reviewer (fresh context, not the author)' : 'human override'}`,
     ...(checks ?? []).map(c => `Criterion: [pass] ${c.criterion}`),
   ].join('\n')
 }
@@ -305,7 +305,7 @@ export class Crew {
     if (init && !(await this.ws.root(dir))) await this.ws.init(dir)
     const path = await this.ws.root(dir)
     const base = path && (await this.ws.branch(path))
-    if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch. \`kumi init\` makes it one`)
+    if (!path || !base) throw new Error(`${dir} is not inside a git repo on a branch. \`yap init\` makes it one`)
     const known = this.store.projects().find(p => p.path === path)
     if (known) return known
     const p = this.store.addProject({
@@ -378,7 +378,7 @@ export class Crew {
   }
 
   /** Tell the tracker what became of the issue a ticket came from. Never blocks or fails the crew. */
-  // Only kumi's own label for why (the text before the first colon) leaves the machine: what follows it is an
+  // Only yap's own label for why (the text before the first colon) leaves the machine: what follows it is an
   // author's report or a reviewer's finding, which an issue body can talk into carrying anything.
   private report(p: Project, t: Ticket, what: 'start' | 'stuck', detail = '') {
     const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
@@ -386,7 +386,7 @@ export class Crew {
     if (!repo || !issue) return
     const say = async () => {
       if (what === 'start') return this.tracker.claim(repo, issue)
-      await this.tracker.comment(repo, issue, `kumi: t${t.id} "${t.title}" needs a human: ${first(detail).split(/:\s/)[0]}. The full story is on the kumi board.`)
+      await this.tracker.comment(repo, issue, `yap: t${t.id} "${t.title}" needs a human: ${first(detail).split(/:\s/)[0]}. The full story is on the yap board.`)
       return this.tracker.move(repo, issue, 'blocked')
     }
     say().then(
@@ -414,7 +414,7 @@ export class Crew {
     if (!p.tracker || !goal.issue) return
     const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
     this.tracker
-      .comment(p.tracker, goal.issue, `kumi merged this on local ${p.base}. Pushing closes the issue. The summary is on the kumi board.\n\n${lines.join('\n')}`)
+      .comment(p.tracker, goal.issue, `yap merged this on local ${p.base}. Pushing closes the issue. The summary is on the yap board.\n\n${lines.join('\n')}`)
       .then(() => this.tracker.move(p.tracker!, goal.issue!, 'in-review'))
       .then(
         () => this.store.log(p.id, t.id, 'tracker', { did: 'landed', issue: goal.issue }),
@@ -699,7 +699,7 @@ export class Crew {
   }
 
   private dir = (p: Project, leaf: number | 'gate') => join(this.home, 'wt', `p${p.id}`, leaf === 'gate' ? 'gate' : `t${leaf}`)
-  private branchOf = (id: number) => `kumi/t${id}`
+  private branchOf = (id: number) => `yap/t${id}`
 
   private project(id: number) {
     const p = this.store.projects().find(p => p.id === id)

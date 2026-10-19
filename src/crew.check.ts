@@ -84,7 +84,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     move: async (_r, n, column) => void told.push(`move ${n} ${column}`),
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`, ...(text.includes('The crew did') ? ['the reporter summary leaked'] : [])),
   }
-  const crew = new Crew(store, ws, agent, tracker, '/tmp/kumi')
+  const crew = new Crew(store, ws, agent, tracker, '/tmp/yap')
   return { store, crew, merged, squashed, prompts, told, ws, dirty }
 }
 
@@ -107,7 +107,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const t = await settled(store, crew.addTicket(p.id, { title: 'cap retries', criteria: ['a', 'b'] }).id)
   assert.equal(t.status, 'merged')
   assert.equal(t.round, 2)
-  assert.match(merged[0], /Rounds: 2\nReviewed-by: kumi reviewer/)
+  assert.match(merged[0], /Rounds: 2\nReviewed-by: yap reviewer/)
   assert.match(prompts[2], /Round 2[\s\S]*b: no cap/, 'findings reach the author')
   assert.match(prompts[3], /previous round failed on these[\s\S]*b: no cap/, 'and the next reviewer')
   assert.match(prompts[3], /author's report \(claims to check, not evidence\)\ndid the thing/)
@@ -185,7 +185,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match(merged[0], /Refs #7\./)
   assert.match(merged[1], /Fixes #7\./)
   await until(() => told.includes('move 7 in-review'))
-  assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 kumi merged this on local main. Pushing closes the issue. The summary is on the kumi board.', 'move 7 in-review'])
+  assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 yap merged this on local main. Pushing closes the issue. The summary is on the yap board.', 'move 7 in-review'])
   assert.equal(store.goals()[0].summary, 'The crew did the thing in x.', 'the goal carries the reporter\'s summary')
   assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
 }
@@ -210,7 +210,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   crew.startGoal(goal.id)
   await settled(store, store.tickets()[0].id)
   await until(() => told.includes('move 9 blocked'))
-  assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 kumi: t1 "first" needs a human: still failing after 4 rounds. The full story is on the kumi board.', 'move 9 blocked'])
+  assert.deepEqual(told, ['file make retries sane', 'claim 9', 'comment 9 yap: t1 "first" needs a human: still failing after 4 rounds. The full story is on the yap board.', 'move 9 blocked'])
 }
 
 // Forgetting a project is refused while a ticket is queued, and takes its goals, tickets and journal with it.
@@ -257,7 +257,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.yap('edited', { session: 'aaaa1111', cwd: '/repo', path: 'src/auth.ts' })
   await reg.yap('join', { session: 'bbbb2222', cwd: '/repo' })
   const a = await reg.yap('will-edit', { session: 'bbbb2222', cwd: '/repo', path: 'src/auth.ts' })
-  assert.equal(a.notice, 'kumi: src/auth.ts was just edited by @auth')
+  assert.equal(a.notice, 'yap: src/auth.ts was just edited by @auth')
   assert.match(a.context!, /session @auth edited it just now/)
   assert.match((await reg.yap('will-run', { session: 'bbbb2222', cwd: '/repo', command: 'git stash' })).deny!, /session @auth, editing src\/auth\.ts/)
   await reg.yap('leave', { session: 'aaaa1111' })
@@ -274,7 +274,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const bash = (id: string, command: string, event = 'pre') => reg.hook(event, { session_id: id, cwd: '/repo', tool_name: 'Bash', tool_input: { command } })
   await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
-  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session @bbbb2222.*kumi say/s)
+  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session @bbbb2222.*yap say/s)
   assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), { to: ['@auth'], woke: [] })
   assert.match(ctx(await bash('aaaa1111', 'ls')), /From session @bbbb2222: leave auth\.ts to me/)
   // Named from the first file it edits, addressed by it; a prompt names nothing, a generic file takes its directory.
@@ -317,10 +317,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
   assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
-  assert.equal(prompts[0], 'kumi: a message from the user')
+  assert.equal(prompts[0], 'yap: a message from the user')
   const after = new Sessions(ws, store, () => 1_000_000)
   assert.deepEqual(after.list().map(s => s.id).sort(), ['aaaa1111', 'bbbb2222'], 'the restart kept them')
-  assert.match(ctx(await after.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: prompts[0] })), /woken by kumi[\s\S]*From the user: pull before you push/)
+  assert.match(ctx(await after.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: prompts[0] })), /woken by yap[\s\S]*From the user: pull before you push/)
   await after.hook('prompt', { session_id: 'bbbb2222', cwd: '/repo', prompt: prompts[1] })
   assert.equal(after.list().find(s => s.id === 'bbbb2222')!.name, '', "a wake prompt doesn't name a session")
   await after.hook('end', { session_id: 'bbbb2222' })
@@ -329,7 +329,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
 // A crew agent or a gate gets the machine's basics, not the ids and tokens of whatever started the daemon.
 {
-  const env = childEnv({ Path: 'p', USERPROFILE: 'u', CLAUDE_CODE_SESSION_ID: 's', HERDR_SOCKET_PATH: 'h', GH_TOKEN: 't', KUMI_PASS: 'database_url', DATABASE_URL: 'd' })
+  const env = childEnv({ Path: 'p', USERPROFILE: 'u', CLAUDE_CODE_SESSION_ID: 's', HERDR_SOCKET_PATH: 'h', GH_TOKEN: 't', YAP_PASS: 'database_url', DATABASE_URL: 'd' })
   assert.deepEqual(env, { Path: 'p', USERPROFILE: 'u', DATABASE_URL: 'd' })
 }
 
@@ -344,7 +344,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const n = await reg.note({ from: 'aaaa1111', cwd: '/repo', text: 'I own src/auth until tonight' })
   assert.match(ctx(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'ls' } })), /New note on the board, #1 from session @auth: I own src\/auth/)
   await reg.hook('end', { session_id: 'aaaa1111' })
-  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /kumi board[\s\S]*#1 just now, session @auth: I own src\/auth/, 'a worktree shares the board')
+  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /yap board[\s\S]*#1 just now, session @auth: I own src\/auth/, 'a worktree shares the board')
   await assert.rejects(reg.unnote('/repo', 99), /no note #99/)
   // Four days on, it is marked as maybe no longer true.
   const later = new Sessions(ws, store, () => 1_000_000 + 4 * 24 * 60 * 60_000)

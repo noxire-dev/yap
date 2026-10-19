@@ -1,9 +1,84 @@
-# kumi
+# yap
 
-A crew of coding agents that works through a goal without you watching. Modelled on [niwa](https://niwa.build).
-It also lets parallel Claude Code sessions on one repo see and message each other; see "Parallel sessions" below.
+Claude Code sessions on one machine that see each other, message each other and stay out of each other's way.
 
-You type a goal. A planner turns it into tickets with acceptance criteria. Each ticket gets an agent on its own
+Open two sessions on one repo and each knows who else is there and which files they edited. Each is warned
+before it edits a file the other just changed, can't `git checkout` or `git stash` the tree out from under the
+other, and can ask it something: `yap say @auth are you done with the session refactor?`. A session idle in a
+Herdr pane is woken to answer. A repo's notes board carries claims and handoffs to the
+sessions that come later.
+
+The protocol underneath is [YAP](docs/yap.md): a handful of verbs over local HTTP. Claude Code speaks it through
+hooks; any agent that can run a command around its tools can speak it directly.
+
+On top of it sits a crew: you give it a goal, and agents plan, write, review and merge it without you watching.
+See "The crew" below.
+
+## Run
+
+Needs [Bun](https://bun.sh) 1.2.3 or later, git 2.28 or later, and a recent [Claude Code](https://claude.com/claude-code)
+signed in (2.1 or later: the crew's agents use `--permission-prompts` and `--json-schema`). For the Rinai board, the
+GitHub CLI signed in too.
+
+```
+bun install
+bun link              # puts `yap` in bun's global bin (~/.bun/bin, which has to be on PATH)
+yap hooks --install   # every Claude Code session started from now on reports to the daemon
+cd ~/some/repo
+yap                   # the crew's board; the repo becomes a project, the daemon starts if it isn't running
+```
+
+| Command | |
+|---|---|
+| `yap sessions` | The live sessions, their names and what each edited. |
+| `yap say [@name] <text>` | Message one session in this repo, or all of them. |
+| `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
+| `yap` | The crew's board. Closing it leaves the crew running. |
+| `yap status` | Print every project's rail and exit. |
+| `yap start` / `yap stop` | Daemon in the background. Stopping kills running agents and requeues their tickets. |
+| `yap forget [name]` | Take this repo's project, or the named one, off the board. Refused while tickets are queued or running. |
+| `yap serve` | Daemon in the foreground. |
+
+State lives in `~/.yap` (`YAP_HOME`): the database, worktrees, and `daemon.log`. The daemon listens on
+`127.0.0.1:4170` (`YAP_PORT`). A daemon running older code than the `yap` you launch is restarted, unless an
+agent is mid-ticket.
+
+## Parallel sessions
+
+Every Claude Code session on this machine reports to the daemon through five hooks in `~/.claude/settings.json`
+(a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). `yap hooks --install` puts them
+there, replacing earlier ones and keeping a `.bak-yap` copy; `yap hooks` prints them instead. Sessions are
+grouped by repo, worktrees included, and the crew counts as one more worker.
+
+- A new session is told who else is in the repo, which files each touched (not what it was asked:
+  a prompt is yours), plus any tickets the crew is running.
+- On your next prompt it hears what moved since, and nothing at all when nothing did.
+- Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
+  is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
+- A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
+  its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
+- Sessions talk: `yap say @<name> <text>` to one (a prefix of the name or id will do), `yap say <text>` to all
+  of them in the repo. A message lands on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
+  A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
+  be typing in it. A woken session answers but is told not to start work on another session's word.
+- A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
+  `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
+  last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
+- Notes: `yap note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `yap notes`
+  reads it, `yap note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
+  starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
+  note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
+- Who is live, what each edited and undelivered messages survive a daemon restart.
+- `yap sessions` lists them.
+
+Shell commands count as edits too: after each one, files `git status` shows changed since it started are
+recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
+`yap` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
+The crew's own agents run with `YAP_AGENT=1` and stay out of the registry.
+
+## The crew
+
+Modelled on [niwa](https://niwa.build). You type a goal. A planner turns it into tickets with acceptance criteria. Each ticket gets an agent on its own
 branch in its own git worktree. A second agent, in a fresh context, checks the diff against every criterion and
 either approves or sends it back with findings. Approved work is squashed onto the base branch in a scratch
 worktree, your gate command runs on that merged result, and only then does the base branch move. A ticket that
@@ -16,41 +91,15 @@ t1: Collapse dash runs and trim edge dashes in slugify
 
 Ticket: 1
 Rounds: 1
-Reviewed-by: kumi reviewer (fresh context, not the author)
+Reviewed-by: yap reviewer (fresh context, not the author)
 Criterion: [pass] slugify collapses consecutive dashes to one
 Criterion: [pass] slugify strips leading and trailing dashes
 ```
 
-## Run
-
-Needs [Bun](https://bun.sh) 1.2.3 or later, git 2.28 or later, and a recent [Claude Code](https://claude.com/claude-code)
-signed in (2.1 or later: the agents use `--permission-prompts` and `--json-schema`). For the Rinai board, the
-GitHub CLI signed in too.
-
-```
-bun install
-bun link            # puts `kumi` in bun's global bin (~/.bun/bin, which has to be on PATH)
-kumi hooks --install  # optional: parallel Claude Code sessions see and message each other
-cd ~/some/repo
-kumi                # the repo becomes a project; the daemon starts if it isn't running
-```
-
-A new project's gate is the test command kumi guesses from the repo (`c` on the board changes it). With no
+A new project's gate is the test command yap guesses from the repo (`c` on the board changes it). With no
 gate, the reviewer is the only check and merged tickets are never run together.
 
-| Command | |
-|---|---|
-| `kumi` | The board. Closing it leaves the crew running. |
-| `kumi status` | Print every project's rail and exit. |
-| `kumi start` / `kumi stop` | Daemon in the background. Stopping kills running agents and requeues their tickets. |
-| `kumi forget [name]` | Take this repo's project, or the named one, off the board. Refused while tickets are queued or running. |
-| `kumi serve` | Daemon in the foreground. |
-
-State lives in `~/.kumi` (`KUMI_HOME`): the database, worktrees, and `daemon.log`. The daemon listens on
-`127.0.0.1:4170` (`KUMI_PORT`). A daemon running older code than the `kumi` you launch is restarted, unless an
-agent is mid-ticket.
-
-## The board
+## The crew's board
 
 The base branch runs down the screen like `git log --graph`. Above the first merge is everything on its way in,
 most urgent first. On a wide terminal the selected ticket's criteria, verdicts and journal sit beside the rail.
@@ -90,52 +139,18 @@ from. Worktrees are always automatic, one per ticket, outside the repo.
 
 ## From Claude Code
 
-`skills/kumi` is a skill that teaches Claude Code the one-shot commands, so you can say "give this to kumi"
+`skills/yap` is a skill that teaches Claude Code the one-shot commands, so you can say "give this to yap"
 in a session and read back what it did:
 
 ```
-kumi goal "<what should be true when it is done>"   # plans drafts; --rinai files it as an issue too
-kumi take 154                                        # plans from a Rinai issue
-kumi go                                              # starts the drafts
-kumi status · kumi show 12 · kumi init
+yap goal "<what should be true when it is done>"   # plans drafts; --rinai files it as an issue too
+yap take 154                                        # plans from a Rinai issue
+yap go                                              # starts the drafts
+yap status · yap show 12 · yap init
 ```
 
-Install it for every session with a symlink, `ln -s "$PWD/skills/kumi" ~/.claude/skills/kumi` (a junction on
+Install it for every session with a symlink, `ln -s "$PWD/skills/yap" ~/.claude/skills/yap` (a junction on
 Windows: `mklink /J`), or load the repo as a plugin for one session with `claude --plugin-dir <this repo>`.
-
-## Parallel sessions
-
-Every Claude Code session on this machine reports to the daemon through five hooks in `~/.claude/settings.json`
-(a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). `kumi hooks --install` puts them
-there, replacing kumi's earlier ones and keeping a `.bak-kumi` copy; `kumi hooks` prints them instead. Sessions are grouped by repo,
-worktrees included, and kumi's own crew counts as one more worker.
-
-- A new session is told who else is in the repo, which files each touched (not what it was asked:
-  a prompt is yours), plus any tickets the crew is running.
-- On your next prompt it hears what moved since, and nothing at all when nothing did.
-- Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
-  is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
-- A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
-  its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
-- Sessions talk: `kumi say @<name> <text>` to one (a prefix of the name or id will do), `kumi say <text>` to all of them in the repo. A message lands
-  on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
-  A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
-  be typing in it. A woken session answers but is told not to start work on another session's word.
-- A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
-  `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
-  last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
-- The board: `kumi note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `kumi notes`
-  reads it, `kumi note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
-  starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
-  note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
-- Who is live, what each edited and undelivered messages survive a daemon restart.
-- `kumi sessions` lists them.
-
-Shell commands count as edits too: after each one, files `git status` shows changed since it started are
-recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
-`kumi` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
-The crew's own agents run with `KUMI_AGENT=1` and stay out of the registry.
-The protocol underneath, apart from Claude Code, is [YAP](docs/yap.md).
 
 ## Herdr
 
@@ -143,15 +158,15 @@ The protocol underneath, apart from Claude Code, is [YAP](docs/yap.md).
 
 - The daemon starts when the Herdr server does. It is spawned detached, so restarting Herdr never kills an agent
   mid-ticket.
-- Actions, each on the focused pane's repo: `kumi.board` (popup), `kumi.board-tab`, `kumi.new` (board opened
-  on the composer), `kumi.go` (start the drafts; the answer comes back as a toast).
+- Actions, each on the focused pane's repo: `yap.board` (popup), `yap.board-tab`, `yap.new` (board opened
+  on the composer), `yap.go` (start the drafts; the answer comes back as a toast).
 - Bind them in Herdr's `config.toml`:
 
 ```toml
 [[keys.command]]
 key = "prefix+u"
 type = "plugin_action"
-command = "kumi.board"
+command = "yap.board"
 ```
 
 ## Rinai
@@ -173,16 +188,16 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   tools. An issue you take from a public tracker is text an agent acts on; read it first.
 - **Agents and the gate get a trimmed environment.** System paths, your profile dirs and toolchain homes; not
   tokens, not the Claude Code or Herdr session the daemon was started from. Claude's own key reaches Claude but
-  not the commands it runs. A gate that needs a variable: `KUMI_PASS=DATABASE_URL,REDIS_URL` on the daemon.
+  not the commands it runs. A gate that needs a variable: `YAP_PASS=DATABASE_URL,REDIS_URL` on the daemon.
   Files are another matter: an agent can still read anything you can.
-- **The API wants a token.** The daemon writes `~/.kumi/token` on first start and every client sends it. The
+- **The API wants a token.** The daemon writes `~/.yap/token` on first start and every client sends it. The
   hooks send it too, read from the file on each call. Hooks installed before that are refused silently: run
-  `kumi hooks --install` again and restart open sessions.
+  `yap hooks --install` again and restart open sessions.
 - **What skips a check asks you on the desktop.** Approving past the reviewer, changing or clearing a gate,
-  editing an escalated ticket's body or criteria, and `kumi forget` pop a native yes/no dialog (No by default,
-  gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `KUMI_YOLO=1`
-  where the daemon starts (`setx KUMI_YOLO 1` on Windows, then restart it) and the token is enough.
-- **The tracker only hears kumi's own words.** A stuck ticket's comment names the ticket and the first line of
+  editing an escalated ticket's body or criteria, and `yap forget` pop a native yes/no dialog (No by default,
+  gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `YAP_YOLO=1`
+  where the daemon starts (`setx YAP_YOLO 1` on Windows, then restart it) and the token is enough.
+- **The tracker only hears yap's own words.** A stuck ticket's comment names the ticket and the first line of
   why. A finished goal's comment lists each commit, its title and how it passed. Author reports and the goal
   summary stay on the board.
 - **A change to agent config goes to you.** A diff that touches `.claude/`, `CLAUDE.md`, `AGENTS.md` or
@@ -199,3 +214,7 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 `src/crew.ts` is the loop and talks only to the interfaces in `src/ports.ts`: `Store` (SQLite), `Workspace`
 (git and the gate shell), `AgentRunner` (`claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
 daemon; `src/tui.ts` is a client of its HTTP API. `bun run check` runs the loop against fakes.
+
+## License
+
+MIT

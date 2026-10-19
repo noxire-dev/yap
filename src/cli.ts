@@ -7,28 +7,28 @@ import { build, home, url } from './env'
 import { STALE, ago } from './sessions'
 import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
-const USAGE = `kumi                 open the board (starts the daemon if it isn't running)
-kumi status          every project's rail
-kumi show <ticket>   one ticket: criteria, verdicts, what was done, journal
-kumi goal <text>     plan tickets for this repo from a sentence (--rinai files it as an issue too)
-kumi take <issue>    plan tickets from an issue on this repo's Rinai board
-kumi go              start this repo's drafted tickets
-kumi init            make this directory a git repo so the crew can work in it
-kumi gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
-kumi forget [name]   take this repo's project (or the named one) off the board
-kumi herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
-kumi hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
-kumi sessions        the Claude Code sessions the hooks have seen, and what each is doing
-kumi say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
-kumi note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
-kumi notes           this repo's board
-kumi start | stop    the daemon in the background; stop kills running agents and requeues their tickets
-kumi serve           the daemon in the foreground`
+const USAGE = `yap                 open the board (starts the daemon if it isn't running)
+yap status          every project's rail
+yap show <ticket>   one ticket: criteria, verdicts, what was done, journal
+yap goal <text>     plan tickets for this repo from a sentence (--rinai files it as an issue too)
+yap take <issue>    plan tickets from an issue on this repo's Rinai board
+yap go              start this repo's drafted tickets
+yap init            make this directory a git repo so the crew can work in it
+yap gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
+yap forget [name]   take this repo's project (or the named one) off the board
+yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
+yap hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
+yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
+yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
+yap note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
+yap notes           this repo's board
+yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
+yap serve           the daemon in the foreground`
 
 // Written by the daemon on its first start; read on every call, so a fresh daemon's token is picked up.
 const auth = (): Record<string, string> => {
   try {
-    return { 'x-kumi-token': readFileSync(join(home, 'token'), 'utf8').trim() }
+    return { 'x-yap-token': readFileSync(join(home, 'token'), 'utf8').trim() }
   } catch {
     return {}
   }
@@ -45,7 +45,7 @@ class HttpClient implements Client {
 
   private async read(res: Response) {
     const data: any = await res.json().catch(() => {
-      throw new Error(res.status === 403 ? 'the daemon refused the request: ~/.kumi/token is missing or stale' : `something that isn't kumi answers on ${url}; set KUMI_PORT`)
+      throw new Error(res.status === 403 ? 'the daemon refused the request: ~/.yap/token is missing or stale' : `something that isn't yap answers on ${url}; set YAP_PORT`)
     })
     if (!res.ok) throw new Error(data?.error ?? res.statusText)
     return data
@@ -72,9 +72,9 @@ const running = () =>
   fetch(`${url}/api/state`, { signal: AbortSignal.timeout(500), headers: auth() }).then(
     async r => {
       if (r.ok) return r.json().catch(() => null) as Promise<State | null>
-      // 403 is a kumi daemon whose token this client can't read; anything else on the port isn't kumi.
-      if (r.status === 403) throw new Error('the daemon refused the request: ~/.kumi/token is missing or stale')
-      throw new Error(`something that isn't kumi answers on ${url}; set KUMI_PORT`)
+      // 403 is a yap daemon whose token this client can't read; anything else on the port isn't yap.
+      if (r.status === 403) throw new Error('the daemon refused the request: ~/.yap/token is missing or stale')
+      throw new Error(`something that isn't yap answers on ${url}; set YAP_PORT`)
     },
     () => null,
   )
@@ -98,11 +98,11 @@ async function daemon() {
 }
 
 /**
- * The repo kumi is about. Inside a Herdr plugin pane or action the process starts in the plugin's own
+ * The repo yap is about. Inside a Herdr plugin pane or action the process starts in the plugin's own
  * directory, so the focused pane's directory comes from Herdr instead.
  */
 function target() {
-  if (process.env.KUMI_CWD) return process.env.KUMI_CWD
+  if (process.env.YAP_CWD) return process.env.YAP_CWD
   try {
     const c = JSON.parse(process.env.HERDR_PLUGIN_CONTEXT_JSON ?? '{}')
     if (c.focused_pane_cwd || c.workspace_cwd) return String(c.focused_pane_cwd || c.workspace_cwd)
@@ -126,7 +126,7 @@ const SCREEN_OFF = '\x1b[?2004l\x1b[?1006l\x1b[?1000l\x1b[?25h\x1b[?1049l'
 async function board() {
   await daemon()
   const { stdin, stdout } = process
-  if (!stdin.isTTY || !stdout.isTTY) throw new Error('the board needs a terminal. Try `kumi status`.')
+  if (!stdin.isTTY || !stdout.isTTY) throw new Error('the board needs a terminal. Try `yap status`.')
 
   const screen = (on: boolean) => {
     stdin.setRawMode(on)
@@ -147,7 +147,7 @@ async function board() {
     {
       cwd: target(),
       seen: readSeen(),
-      open: process.env.KUMI_OPEN === 'new' ? 'new' : undefined,
+      open: process.env.YAP_OPEN === 'new' ? 'new' : undefined,
       quit() {
         screen(false)
         writeFileSync(seenFile, String(Date.now()))
@@ -180,17 +180,17 @@ async function herdr(what: string | undefined, placement: 'popup' | 'tab') {
       const s = (await running())!
       const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft').map(t => t.goal_id))
       for (const g of goals) await api.send('POST', `/api/goals/${g}/start`)
-      return void toast('kumi', goals.size ? `started ${p.name}'s drafts` : `nothing drafted on ${p.name}`)
+      return void toast('yap', goals.size ? `started ${p.name}'s drafts` : `nothing drafted on ${p.name}`)
     }
-    if (what !== 'board' && what !== 'new') throw new Error('kumi herdr <board|new|go> [popup|tab]')
+    if (what !== 'board' && what !== 'new') throw new Error('yap herdr <board|new|go> [popup|tab]')
     await daemon()
-    const args = ['plugin', 'pane', 'open', '--plugin', 'kumi', '--entrypoint', 'board', '--placement', placement, '--env', `KUMI_CWD=${cwd}`, '--focus']
-    if (what === 'new') args.push('--env', 'KUMI_OPEN=new')
+    const args = ['plugin', 'pane', 'open', '--plugin', 'yap', '--entrypoint', 'board', '--placement', placement, '--env', `YAP_CWD=${cwd}`, '--focus']
+    if (what === 'new') args.push('--env', 'YAP_OPEN=new')
     const r = Bun.spawnSync([bin, ...args], { windowsHide: true })
     if (r.exitCode !== 0) throw new Error(r.stderr.toString().trim() || `herdr exited ${r.exitCode}`)
   } catch (e: any) {
     // An action has no terminal to print to; a toast is the only place an error can be seen.
-    toast('kumi', String(e?.message ?? e))
+    toast('yap', String(e?.message ?? e))
     throw e
   }
 }
@@ -203,15 +203,15 @@ async function here(init = false) {
 
 /**
  * The Claude Code hooks that report every session to the daemon. A bare curl, so a hook costs milliseconds and
- * says nothing when the daemon is down or refuses; crew agents (KUMI_AGENT) stay out. Messages land on edits, shell
+ * says nothing when the daemon is down or refuses; crew agents (YAP_AGENT) stay out. Messages land on edits, shell
  * commands and prompts, not on reads, which keeps the per-call cost off the busiest tools.
  */
 function hooks() {
   // -f: a refusal prints nothing, where its body would land in the session's context as text.
   const post = (ev: string) =>
-    `curl -sf -m 2 -H content-type:application/json -H "x-kumi-token: $(cat "\${KUMI_HOME:-$HOME/.kumi}/token" 2>/dev/null)" --data-binary @- http://127.0.0.1:\${KUMI_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
+    `curl -sf -m 2 -H content-type:application/json -H "x-yap-token: $(cat "\${YAP_HOME:-$HOME/.yap}/token" 2>/dev/null)" --data-binary @- http://127.0.0.1:\${YAP_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
   const run = (ev: string, timeout: number, extra: object = {}) => [
-    { ...extra, hooks: [{ type: 'command', command: `[ -n "$KUMI_AGENT" ] || ${ev === 'start' ? `{ kumi start >/dev/null 2>&1; ${post(ev)}; }` : post(ev)}`, timeout, ...(ev === 'post' || ev === 'end' ? { async: true } : {}) }] },
+    { ...extra, hooks: [{ type: 'command', command: `[ -n "$YAP_AGENT" ] || ${ev === 'start' ? `{ yap start >/dev/null 2>&1; ${post(ev)}; }` : post(ev)}`, timeout, ...(ev === 'post' || ev === 'end' ? { async: true } : {}) }] },
   ]
   const tools = { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash' }
   return {
@@ -223,14 +223,14 @@ function hooks() {
   }
 }
 
-/** Merge the hooks into the user's Claude Code settings, replacing kumi's earlier ones. Returns the file. */
+/** Merge the hooks into the user's Claude Code settings, replacing yap's earlier ones. Returns the file. */
 function install(block: ReturnType<typeof hooks>) {
   const file = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
   let settings: any = {}
   try {
     const text = readFileSync(file, 'utf8')
     settings = JSON.parse(text)
-    writeFileSync(`${file}.bak-kumi`, text)
+    writeFileSync(`${file}.bak-yap`, text)
   } catch (e: any) {
     if (e?.code !== 'ENOENT') throw new Error(`${file} isn't JSON this can safely rewrite: ${e?.message ?? e}`)
   }
@@ -251,7 +251,7 @@ try {
   else if (cmd === 'start') await daemon()
   else if (cmd === 'status') {
     const s = await running()
-    console.log(s ? status(s, cols, readSeen()) : 'the daemon is not running. `kumi` starts it.')
+    console.log(s ? status(s, cols, readSeen()) : 'the daemon is not running. `yap` starts it.')
   } else if (cmd === 'show') {
     const id = Number(String(rest[0]).replace(/^t/, ''))
     const s = await running()
@@ -261,17 +261,17 @@ try {
   } else if (cmd === 'goal') {
     const file = rest.includes('--rinai')
     const text = rest.filter(a => a !== '--rinai').join(' ').trim()
-    if (!text) throw new Error('kumi goal <what you want done>')
+    if (!text) throw new Error('yap goal <what you want done>')
     const p = await here()
     const g = await api.send('POST', '/api/goals', { project_id: p.id, text, file })
-    console.log(`goal ${g.id} on ${p.name}${g.issue ? ` (rinai #${g.issue})` : ''}: a planner is drafting tickets. \`kumi status\` shows them, \`kumi go\` starts them.`)
+    console.log(`goal ${g.id} on ${p.name}${g.issue ? ` (rinai #${g.issue})` : ''}: a planner is drafting tickets. \`yap status\` shows them, \`yap go\` starts them.`)
   } else if (cmd === 'take') {
     const n = Number(String(rest[0]).replace(/^#/, ''))
     const p = await here()
     const card = (await api.get<{ number: number; title: string }[]>(`/api/projects/${p.id}/cards`)).find(c => c.number === n)
     if (!card) throw new Error(`#${rest[0]} is not an open issue on ${p.tracker ?? 'this repo'}`)
     const g = await api.send('POST', '/api/goals', { project_id: p.id, issue: n, title: card.title })
-    console.log(`goal ${g.id} on ${p.name} from #${n}: a planner is drafting tickets. \`kumi go\` starts them.`)
+    console.log(`goal ${g.id} on ${p.name} from #${n}: a planner is drafting tickets. \`yap go\` starts them.`)
   } else if (cmd === 'go') {
     const p = await here()
     const s = (await running())!
@@ -309,7 +309,7 @@ try {
   } else if (cmd === 'hooks') {
     const block = hooks()
     if (rest[0] !== '--install') console.log(JSON.stringify({ hooks: block }, null, 2))
-    else console.log(`kumi's hooks are in ${install(block)}. Sessions started from now on report to the daemon.`)
+    else console.log(`yap's hooks are in ${install(block)}. Sessions started from now on report to the daemon.`)
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'gate') {
@@ -327,6 +327,6 @@ try {
     console.log((await running()) ? (await api.send('POST', '/api/stop'), 'stopped') : 'not running')
   } else console.log(USAGE)
 } catch (e: any) {
-  console.error(`kumi: ${e?.message ?? e}`)
+  console.error(`yap: ${e?.message ?? e}`)
   process.exit(1)
 }

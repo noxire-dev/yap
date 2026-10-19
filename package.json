@@ -1,9 +1,13 @@
 {
-  "name": "kumi",
+  "name": "yap",
+  "version": "0.1.0",
+  "description": "Claude Code sessions on one machine that see each other, message each other and stay out of each other's way. Plus a crew that merges goals.",
+  "license": "MIT",
+  "repository": "github:noxire-dev/yap",
   "private": true,
   "type": "module",
   "bin": {
-    "kumi": "src/cli.ts"
+    "yap": "src/cli.ts"
   },
   "scripts": {
     "start": "bun src/cli.ts",

@@ -450,9 +450,9 @@ export function sheet(t: Ticket, events: Event[], goal: Goal | undefined, w: num
   return out
 }
 
-/** Plain printout of every project's rail, for `kumi status`. */
+/** Plain printout of every project's rail, for `yap status`. */
 export function status(s: State, w: number, seen: number) {
-  if (!s.projects.length) return 'no projects yet. run `kumi` in a repo to add one.'
+  if (!s.projects.length) return 'no projects yet. run `yap` in a repo to add one.'
   const now = Date.now()
   return s.projects
     .map(p => [`${bold(p.name)} ${dim(p.running ? '' : '(paused)')}`, ...rail(s, p, w, { sel: null, seen, tick: 0, now }).lines].join('\n'))
@@ -634,7 +634,7 @@ export class Tui {
 
     if (this.help) body = HELP.split('\n')
     else if (this.picker) body = this.pickerLines(w, room)
-    else if (!p) body = ['', ` ${bold('kumi')} runs a crew of coding agents on a git repo.`, '', ` Start it inside a repo, or press ${bold('A')} and give it a path.`]
+    else if (!p) body = ['', ` ${bold('yap')} runs a crew of coding agents on a git repo.`, '', ` Start it inside a repo, or press ${bold('A')} and give it a path.`]
     else if (this.view === 'rail') {
       const lw = this.railWidth
       const opts = { seen: this.host.seen, tick: this.tick, now: Date.now() }
@@ -698,7 +698,7 @@ export class Tui {
       : p
         ? `${p.running ? dim('running') : yellow('paused')}${dim(` · ${plural(p.workers, 'agent')} · `)}${p.gate ? dim(`gate: ${p.gate}`) : yellow('no gate')}${p.tracker ? dim(' · rinai') : ''}`
         : ''
-    return row(` ${bold('kumi')}  ${tabs.join('  ')}`, `${right} `, w)
+    return row(` ${bold('yap')}  ${tabs.join('  ')}`, `${right} `, w)
   }
 
   private footer(w: number) {
@@ -937,7 +937,7 @@ export class Tui {
       if (!drafts.length) return this.say('nothing to start: no drafts on the rail')
       for (const g of new Set(drafts.map(o => o.goal_id))) await this.api.send('POST', g ? `/api/goals/${g}/start` : `/api/tickets/${drafts[0].id}/start`)
       await this.refresh()
-      this.say(`started ${plural(drafts.length, 'ticket')}. You can close kumi; the crew keeps going.`)
+      this.say(`started ${plural(drafts.length, 'ticket')}. You can close yap; the crew keeps going.`)
     } else if (k === 'R' && on('working', 'review')) {
       this.confirm = { text: `kill t${t.id}'s agent and run this round again?`, done: () => post(`/api/tickets/${t.id}/restart`) }
     } else if (k === 'r' && on('escalated')) {
