@@ -4,8 +4,7 @@ How coding agents on one machine see each other, message each other and stay out
 daemon is the first implementation (`src/sessions.ts`); Claude Code is the first agent wired to it. This file
 is the protocol without either, so another agent, or a web client, can speak it.
 
-Status: draft. It describes what the daemon does today, with the verbs named apart from Claude Code's hooks.
-The wire still uses the hook names; see "Today's wire".
+Status: draft, version 0. Everything here runs today.
 
 ## The model
 
@@ -71,10 +70,29 @@ answer then carries the message and instructions in `context`. Rules:
 - What would skip a check (approving past the reviewer, changing a gate, forgetting a project) is confirmed on
   the desktop, which the token holder can't do. Not part of YAP; it is kumi's.
 
-## Today's wire
+## The wire
 
-`POST http://127.0.0.1:4170/api/hook/<event>` with a Claude Code hook payload, answered in Claude Code's hook
-format. `say`, `note` and `unnote` have their own routes (`/api/say`, `/api/notes`, `/api/notes/:id`).
+`POST http://127.0.0.1:4170/yap/<verb>` (`KUMI_PORT` moves it) with `x-kumi-token` and a JSON body:
+
+```json
+{ "session": "codex-1", "cwd": "C:/src/app", "path": "src/auth.ts" }
+```
+
+The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
+`prompt` (turn), `text` and `to` (say), `text` (note), `id` (unnote). The answer is `{}` or any of
+`{ "context", "notice", "deny" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
+verb or a bad argument is a 400 with `{ "error" }`.
+
+```sh
+curl -s -H content-type:application/json -H "x-kumi-token: $(cat ~/.kumi/token)" \
+  --data-binary '{"session":"codex-2","cwd":"'"$PWD"'","command":"git checkout main"}' \
+  http://127.0.0.1:4170/yap/will-run
+```
+
+## Claude Code's adapter
+
+Claude Code's hooks post to `/api/hook/<event>` with their own payload, and get their own format back. The
+daemon turns each into a YAP verb and the answer into the hook's fields:
 
 | YAP | Claude Code hook | Payload | Answer |
 |---|---|---|---|
@@ -86,9 +104,10 @@ format. `say`, `note` and `unnote` have their own routes (`/api/say`, `/api/note
 | `ran` | `PostToolUse` (Bash) → `post` | same | none |
 | `leave` | `SessionEnd` → `end` | `session_id` | none |
 
-Before a second agent speaks YAP, the wire should take YAP's verbs and plain answers (`{context, notice, deny}`)
-at `/yap/<verb>`, with the Claude Code hook format as one adapter in front of it. Each new agent is then one
-more adapter: its own event names in, its own answer format out.
+`context` becomes `additionalContext`, `notice` `systemMessage`, `deny` `permissionDecision: deny` with the reason.
+
+Another agent is one more adapter like it, or none: an agent that can run a command before and after its own
+tools can call `/yap` directly.
 
 ## Remote: a platform drives the machine
 
@@ -109,6 +128,4 @@ The shape:
 
 The risk is the whole point of the design above: a website that can make your PC run agents is a remote code
 execution channel. A compromised platform account must get no more than "queue a goal on a repo you already
-gave kumi". Second, read the provider's terms before shipping this to other people: a personal tool running
-your own subscription is one thing, a platform that routes its users' work onto their subscriptions may be
-another.
+gave kumi".

@@ -6,7 +6,7 @@ import { ClaudeCli } from './agent'
 import { Crew } from './crew'
 import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
-import { Sessions } from './sessions'
+import { Sessions, VERBS, type Verb } from './sessions'
 import { SqliteStore } from './store'
 import { Dialog } from './dialog'
 import { Herdr } from './herdr'
@@ -65,12 +65,13 @@ const denied = (req: Request) => foreign(req) || req.headers.get('x-kumi-token')
 
 type Handler = (req: Request & { params: Record<string, string> }, body: any) => unknown
 
-const api = (fn: Handler) => async (req: Request & { params: Record<string, string> }) => {
+// `quiet`: called on every tool use, and nothing the board shows changes.
+const api = (fn: Handler, quiet = false) => async (req: Request & { params: Record<string, string> }) => {
   if (denied(req)) return new Response('forbidden', { status: 403 })
   try {
     const body = req.method === 'GET' ? {} : await req.json().catch(() => ({}))
     const out = (await fn(req, body)) ?? { ok: true }
-    if (req.method !== 'GET') changed()
+    if (req.method !== 'GET' && !quiet) changed()
     return Response.json(out)
   } catch (e: any) {
     return Response.json({ error: String(e?.message ?? e) }, { status: 400 })
@@ -142,6 +143,19 @@ Bun.serve({
           return Response.json({})
         }
       },
+    },
+    // YAP (docs/yap.md): the same as the hooks, in plain verbs and answers, for any agent.
+    '/yap/:verb': {
+      POST: api((req, b) => {
+        const verb = req.params.verb
+        const str = (k: string) => (typeof b[k] === 'string' ? b[k] : undefined)
+        const cwd = String(b.cwd ?? '')
+        if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to') })
+        if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
+        if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
+        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${[...VERBS, 'say', 'note', 'unnote'].join(', ')}`)
+        return sessions.yap(verb as Verb, { session: str('session'), cwd, path: str('path'), command: str('command'), prompt: str('prompt') })
+      }, true),
     },
     '/api/sessions': api(() => sessions.list()),
     '/api/notes': {

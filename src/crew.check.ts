@@ -250,6 +250,20 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(reg.list().map(s => s.id).sort(), ['aaaa1111', 'cccc3333'])
 }
 
+// YAP without the hooks: plain verbs, plain answers.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  await reg.yap('edited', { session: 'aaaa1111', cwd: '/repo', path: 'src/auth.ts' })
+  await reg.yap('join', { session: 'bbbb2222', cwd: '/repo' })
+  const a = await reg.yap('will-edit', { session: 'bbbb2222', cwd: '/repo', path: 'src/auth.ts' })
+  assert.equal(a.notice, 'kumi: src/auth.ts was just edited by @auth')
+  assert.match(a.context!, /session @auth edited it just now/)
+  assert.match((await reg.yap('will-run', { session: 'bbbb2222', cwd: '/repo', command: 'git stash' })).deny!, /session @auth, editing src\/auth\.ts/)
+  await reg.yap('leave', { session: 'aaaa1111' })
+  assert.deepEqual(await reg.yap('will-run', { session: 'bbbb2222', cwd: '/repo', command: 'git stash' }), {})
+}
+
 // Sessions talk: a message waits for the recipient's next hook call, a clobbering git command is held back while
 // another session edits the same tree, and a shell command's edits count as the session's own.
 {

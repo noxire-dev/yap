@@ -84,6 +84,29 @@ export function gitRisk(command: string): 'moves' | 'sweeps' | null {
   return risk
 }
 
+/** One YAP call (docs/yap.md): who, where, and the verb's one argument. */
+export interface Call {
+  session?: string
+  cwd?: string
+  /** will-edit, edited: the file, relative to cwd or absolute. */
+  path?: string
+  /** will-run, ran. */
+  command?: string
+  /** turn. */
+  prompt?: string
+}
+
+/** What the agent gets back. `context` is for the model only, `notice` one line for the user. */
+export interface Answer {
+  context?: string
+  notice?: string
+  /** will-run only: don't run it, and this is why. */
+  deny?: string
+}
+
+export const VERBS = ['join', 'turn', 'will-edit', 'edited', 'will-run', 'ran', 'leave'] as const
+export type Verb = (typeof VERBS)[number]
+
 /** What Claude Code sends a hook on stdin; only the fields used here. */
 export interface HookInput {
   session_id?: string
@@ -138,10 +161,10 @@ export class Sessions {
     return r
   }
 
-  private async touch(input: HookInput) {
+  private async touch(input: { session?: string; cwd?: string }) {
     const now = this.now()
     for (const [id, s] of this.all) if (now - s.at > LIVE) this.forget(id)
-    const id = String(input.session_id ?? '')
+    const id = String(input.session ?? '')
     if (!id || !input.cwd) return null
     let s = this.all.get(id)
     if (!s) {
@@ -222,7 +245,7 @@ export class Sessions {
   async note(m: { from?: string; cwd: string; text: string }) {
     const text = m.text.trim()
     if (!text) throw new Error('say what the note is')
-    const s = m.from ? await this.touch({ session_id: m.from, cwd: m.cwd }) : null
+    const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const n = this.store.addNote({ repo, ts: this.now(), author: this.label(s), text })
     const them = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id)
@@ -252,7 +275,7 @@ export class Sessions {
   async say(m: { from?: string; cwd: string; text: string; to?: string }) {
     const text = m.text.trim()
     if (!text) throw new Error('say something')
-    const s = m.from ? await this.touch({ session_id: m.from, cwd: m.cwd }) : null
+    const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const to = m.to?.replace(/^@/, '').toLowerCase()
     const now = this.now()
@@ -283,101 +306,112 @@ export class Sessions {
       .map(s => ({ id: s.id, name: s.name, top: s.top, started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')) }))
   }
 
-  /** One hook call. Returns what Claude Code should get back; `{}` means say nothing. */
+  /** Claude Code's hooks are one adapter: a hook event in, YAP's answer out in the hook's own format. */
   async hook(event: string, input: HookInput): Promise<object> {
-    if (event === 'end') {
-      this.forget(String(input.session_id ?? ''))
+    const bash = input.tool_name === 'Bash' && typeof input.tool_input?.command === 'string'
+    const verb = ({ start: 'join', prompt: 'turn', end: 'leave', pre: bash ? 'will-run' : 'will-edit', post: bash ? 'ran' : 'edited' } as const)[event as 'start']
+    if (!verb) return {}
+    const a = await this.yap(verb, {
+      session: input.session_id,
+      cwd: input.cwd,
+      prompt: input.prompt,
+      command: input.tool_input?.command,
+      path: input.tool_input?.file_path ?? input.tool_input?.notebook_path,
+    })
+    const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : 'PreToolUse'
+    const notice = a.notice ? { systemMessage: a.notice } : {}
+    if (a.deny)
+      return { ...notice, hookSpecificOutput: { hookEventName: name, permissionDecision: 'deny', permissionDecisionReason: a.deny, ...(a.context ? { additionalContext: a.context } : {}) } }
+    return a.context ? { ...notice, hookSpecificOutput: { hookEventName: name, additionalContext: a.context } } : {}
+  }
+
+  /** One YAP call. `{}` means say nothing. */
+  async yap(verb: Verb, call: Call): Promise<Answer> {
+    if (verb === 'leave') {
+      this.forget(String(call.session ?? ''))
       return {}
     }
-    const out = await this.handle(event, input)
-    this.save(this.all.get(String(input.session_id ?? '')))
+    const out = await this.handle(verb, call)
+    this.save(this.all.get(String(call.session ?? '')))
     return out
   }
 
-  private async handle(event: string, input: HookInput): Promise<object> {
-    const s = await this.touch(input)
+  private async handle(verb: Verb, call: Call): Promise<Answer> {
+    const s = await this.touch(call)
     if (!s) return {}
-    const say = (name: string, text: string, extra: object = {}) =>
-      text ? { ...extra, hookSpecificOutput: { hookEventName: name, additionalContext: text } } : {}
     const both = (...parts: string[]) => parts.filter(Boolean).join('\n\n')
+    const arrived = (mail: string): Answer => (mail ? { context: mail, notice: 'kumi: a message arrived' } : {})
 
-    if (event === 'start') return say('SessionStart', both(this.overview(s), this.drain(s)))
+    if (verb === 'join') return { context: both(this.overview(s), this.drain(s)) }
 
-    if (event === 'prompt' && input.prompt?.startsWith(WAKE)) return say('UserPromptSubmit', both(WOKEN, this.drain(s)))
-    if (event === 'prompt') {
-      const first = String(input.prompt ?? '').trim().split(/\r?\n/)[0]
+    if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(WOKEN, this.drain(s)) }
+    if (verb === 'turn') {
+      const first = String(call.prompt ?? '').trim().split(/\r?\n/)[0]
       if (!MARKUP.test(first)) s.news = this.now()
       // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
       // neighbour merely reading, costs no context.
       const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
-      return say('UserPromptSubmit', both(moved ? this.overview(s) : '', this.drain(s)))
+      return { context: both(moved ? this.overview(s) : '', this.drain(s)) }
     }
 
-    const command = input.tool_input?.command
-    if (input.tool_name === 'Bash' && typeof command === 'string') {
-      if (event === 'post') {
-        // A shell command edits too (sed, codegen, a formatter): what changed while it ran counts as this
-        // session's, unless another session's edit tool wrote the file in that window.
-        const theirs = (f: string) => this.others(s).some(o => o.top === s.top && (o.files.get(f) ?? 0) >= s.shell - 1000)
-        for (const f of await this.ws.changed(s.top)) {
-          const file = norm(f.path)
-          if (f.mtime >= s.shell - 1000 && !theirs(file)) this.edited(s, file)
-        }
-        return {}
+    if (verb === 'ran') {
+      // A shell command edits too (sed, codegen, a formatter): what changed while it ran counts as this
+      // session's, unless another session's edit tool wrote the file in that window.
+      const theirs = (f: string) => this.others(s).some(o => o.top === s.top && (o.files.get(f) ?? 0) >= s.shell - 1000)
+      for (const f of await this.ws.changed(s.top)) {
+        const file = norm(f.path)
+        if (f.mtime >= s.shell - 1000 && !theirs(file)) this.edited(s, file)
       }
-      if (event !== 'pre') return {}
+      return {}
+    }
+
+    if (verb === 'will-run') {
       s.shell = this.now()
       const mail = this.drain(s)
-      const risk = gitRisk(command)
+      const risk = gitRisk(String(call.command ?? ''))
       const recent = (o: Session) => [...o.files].filter(([, at]) => this.now() - at < RECENT).map(([f]) => f)
       const busy = risk ? this.others(s).filter(o => o.top === s.top && recent(o).length) : []
-      if (!busy.length) return say('PreToolUse', mail, mail ? { systemMessage: 'kumi: a message arrived' } : {})
+      if (!busy.length) return arrived(mail)
       const who = busy.map(o => `${this.label(o)}, editing ${recent(o).slice(-3).map(f => relative(s.top, f).replace(/\\/g, '/')).join(', ')}`)
       const why =
         risk === 'moves'
           ? `This git command can switch, rewrite or discard the files under it. Don't run it. Ask that session first with \`kumi say @<session> <text>\`, use a separate worktree, or ask the user to run it if they asked for it.`
           : `This command stages or commits every change in the tree, theirs included. Stage your own files by name instead (\`git add <file>...\`), then commit.`
       return {
-        systemMessage: `kumi: held back a git command that would ${risk === 'moves' ? 'move the tree' : 'sweep up the work'} of ${busy.map(o => `@${this.tag(o)}`).join(', ')}`,
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny',
-          permissionDecisionReason: `kumi: another session is working in this same working tree right now (${who.join('; ')}). ${why}`,
-          ...(mail ? { additionalContext: mail } : {}),
-        },
+        notice: `kumi: held back a git command that would ${risk === 'moves' ? 'move the tree' : 'sweep up the work'} of ${busy.map(o => `@${this.tag(o)}`).join(', ')}`,
+        deny: `kumi: another session is working in this same working tree right now (${who.join('; ')}). ${why}`,
+        ...(mail ? { context: mail } : {}),
       }
     }
 
-    const path = input.tool_input?.file_path ?? input.tool_input?.notebook_path
-    if (event === 'post') {
-      const file = path && norm(resolve(input.cwd ?? '', path))
+    const path = call.path
+    if (verb === 'edited') {
+      const file = path && norm(resolve(call.cwd ?? '', path))
       // Outside its working tree (a scratchpad, a temp file) is nobody's conflict.
       const rel = file && relative(s.top, file)
       if (file && rel && !rel.startsWith('..') && !isAbsolute(rel)) this.edited(s, file)
       return {}
     }
-    if (event !== 'pre') return {}
-    const mail = this.drain(s)
-    const notice = mail ? { systemMessage: 'kumi: a message arrived' } : {}
-    if (!path) return say('PreToolUse', mail, notice)
 
-    const file = norm(resolve(input.cwd ?? '', path))
+    // will-edit
+    const mail = this.drain(s)
+    if (!path) return arrived(mail)
+    const file = norm(resolve(call.cwd ?? '', path))
     const hits = this.others(s)
       .filter(o => o.top === s.top)
       .map(o => ({ o, at: o.files.get(file) ?? 0 }))
       .filter(h => this.now() - h.at < RECENT && h.at > (s.warned.get(file) ?? 0))
-    if (!hits.length) return say('PreToolUse', mail, notice)
+    if (!hits.length) return arrived(mail)
     s.warned.set(file, Math.max(...hits.map(h => h.at)))
     // As the session spelled it: `file` is lowercased on Windows.
-    const name = relative(input.cwd ?? '', resolve(input.cwd ?? '', path)).replace(/\\/g, '/')
+    const name = relative(call.cwd ?? '', resolve(call.cwd ?? '', path)).replace(/\\/g, '/')
     const who = hits.map(h => `${this.label(h.o)} edited it ${ago(h.at, this.now())}`)
-    return say(
-      'PreToolUse',
-      both(
+    return {
+      context: both(
         `Another session is working on ${name} in this same working tree: ${who.join('; ')}. Re-read the file before you edit it, keep their change intact, and if your task overlaps theirs, tell them with \`kumi say @<session> <text>\` and tell the user instead of redoing it.`,
         mail,
       ),
-      { systemMessage: `kumi: ${name} was just edited by ${hits.map(h => `@${this.tag(h.o)}`).join(', ')}` },
-    )
+      notice: `kumi: ${name} was just edited by ${hits.map(h => `@${this.tag(h.o)}`).join(', ')}`,
+    }
   }
 }
