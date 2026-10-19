@@ -238,10 +238,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect\nmore' })
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: '/repo/src/auth.ts' } })
   now += 60_000
-  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /@fix-login-redirect \(aaaa1111\), active 1m ago: edited src\/auth\.ts$/m)
+  assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /@auth \(aaaa1111\), active 1m ago: edited src\/auth\.ts$/m)
   assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /aaaa1111.*in another worktree/)
   const warn = await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
-  assert.match(ctx(warn), /src\/auth\.ts in this same working tree: session @fix-login-redirect edited it 1m ago/)
+  assert.match(ctx(warn), /src\/auth\.ts in this same working tree: session @auth edited it 1m ago/)
   assert.deepEqual(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } }), {}, 'warned once')
   assert.deepEqual(await reg.hook('pre', { session_id: 'cccc3333', cwd: '/wt', tool_input: { file_path: '/wt/src/auth.ts' } }), {}, 'other worktree')
   assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'x' })), /bbbb2222[\s\S]*cccc3333/, 'news on the next prompt')
@@ -259,13 +259,17 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
   const bash = (id: string, command: string, event = 'pre') => reg.hook(event, { session_id: id, cwd: '/repo', tool_name: 'Bash', tool_input: { command } })
   await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
+  await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session @bbbb2222.*kumi say/s)
-  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), { to: ['@fix-login-redirect'], woke: [] })
+  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), { to: ['@auth'], woke: [] })
   assert.match(ctx(await bash('aaaa1111', 'ls')), /From session @bbbb2222: leave auth\.ts to me/)
-  // Named from the first prompt, addressed by it; harness markup arriving as a prompt names nothing.
-  await reg.hook('prompt', { session_id: 'eeee5555', cwd: '/repo', prompt: '<agent-message from="x">hi</agent-message>' })
+  // Named from the first file it edits, addressed by it; a prompt names nothing, a generic file takes its directory.
+  await reg.hook('prompt', { session_id: 'eeee5555', cwd: '/repo', prompt: 'fix the login redirect' })
   assert.equal(reg.list().find(s => s.id === 'eeee5555')!.name, '')
-  assert.deepEqual((await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@fix-login', text: 'ok' })).to, ['@fix-login-redirect'])
+  await reg.hook('post', { session_id: 'eeee5555', cwd: '/repo', tool_input: { file_path: '/repo/src/api/index.ts' } })
+  assert.equal(reg.list().find(s => s.id === 'eeee5555')!.name, 'api-index')
+  await reg.hook('end', { session_id: 'eeee5555' })
+  assert.deepEqual((await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@au', text: 'ok' })).to, ['@auth'])
   await bash('aaaa1111', 'ls')
   // An edit outside the working tree (a scratchpad) is nobody's conflict.
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: '/tmp/scratch/notes.md' } })
@@ -284,7 +288,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
   const held: any = await bash('bbbb2222', 'git stash && git checkout main')
   assert.equal(held.hookSpecificOutput.permissionDecision, 'deny')
-  assert.match(held.hookSpecificOutput.permissionDecisionReason, /session @fix-login-redirect.*src\/auth\.ts/)
+  assert.match(held.hookSpecificOutput.permissionDecisionReason, /session @auth.*src\/auth\.ts/)
   assert.deepEqual(await bash('bbbb2222', 'git status && git diff'), {}, 'reading git is fine')
   assert.equal(((await bash('aaaa1111', 'git reset --hard')) as any).hookSpecificOutput, undefined, 'bbbb edited nothing')
 }
@@ -296,9 +300,9 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const prompts: string[] = []
   const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (id, text) => (prompts.push(text), id === 'aaaa1111') })
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
-  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
+  await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
-  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['@fix-login-redirect', '@bbbb2222'], woke: ['@fix-login-redirect'] })
+  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
   assert.equal(prompts[0], 'kumi: a message from the user')
   const after = new Sessions(ws, store, () => 1_000_000)
   assert.deepEqual(after.list().map(s => s.id).sort(), ['aaaa1111', 'bbbb2222'], 'the restart kept them')
@@ -321,12 +325,12 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const { store, ws } = rig([])
   const reg = new Sessions(ws, store, () => 1_000_000)
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
-  await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'auth refactor' })
+  await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
   const n = await reg.note({ from: 'aaaa1111', cwd: '/repo', text: 'I own src/auth until tonight' })
-  assert.match(ctx(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'ls' } })), /New note on the board, #1 from session @auth-refactor: I own src\/auth/)
+  assert.match(ctx(await reg.hook('pre', { session_id: 'bbbb2222', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'ls' } })), /New note on the board, #1 from session @auth: I own src\/auth/)
   await reg.hook('end', { session_id: 'aaaa1111' })
-  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /kumi board[\s\S]*#1 just now, session @auth-refactor: I own src\/auth/, 'a worktree shares the board')
+  assert.match(ctx(await reg.hook('start', { session_id: 'cccc3333', cwd: '/wt' })), /kumi board[\s\S]*#1 just now, session @auth: I own src\/auth/, 'a worktree shares the board')
   await assert.rejects(reg.unnote('/repo', 99), /no note #99/)
   // Four days on, it is marked as maybe no longer true.
   const later = new Sessions(ws, store, () => 1_000_000 + 4 * 24 * 60 * 60_000)

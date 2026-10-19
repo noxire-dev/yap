@@ -115,8 +115,8 @@ worktrees included, and kumi's own crew counts as one more worker.
 - On your next prompt it hears what moved since, and nothing at all when nothing did.
 - Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
-- A session is named from its first prompt (`@fix-login-redirect`); before that, by its id. Only edits inside
-  its working tree count, so a scratchpad or temp file never warns anyone.
+- A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
+  its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
 - Sessions talk: `kumi say @<name> <text>` to one (a prefix of the name or id will do), `kumi say <text>` to all of them in the repo. A message lands
   on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
   A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may

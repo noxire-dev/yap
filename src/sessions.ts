@@ -9,8 +9,8 @@ const RECENT = 30 * 60_000
 const BOARD = 10
 /** A note this old is marked as maybe no longer true. */
 export const STALE = 24 * 60 * 60_000
-/** Words that say nothing about the work, skipped when a session is named from its first prompt. */
-const FILLER = new Set('a an the to of in on for and or with is are be it this that these those i we you me my our your can could would should will please pls lets let let\'s hey hi hello ok okay alr alright so now just also chief do make get go some there here what how why when about into from at as by up'.split(' '))
+/** File names that say nothing on their own; a session named from one takes its directory too. */
+const GENERIC = new Set(['index', 'main', 'mod', 'lib', 'init', '__init__', 'readme', 'utils', 'util', 'types', 'app', 'page', 'route', 'layout'])
 /** Harness markup Claude Code feeds in as a prompt (another agent's message, a task notification): not what the user asked. */
 const MARKUP = /^<[\w-]+[\s>]/
 /**
@@ -28,7 +28,10 @@ const norm = (p: string) => {
 
 interface Session {
   id: string
-  /** Short, from its first prompt (`fix-login-redirect`), so it can be told apart and addressed. Empty until then. */
+  /**
+   * Short, from the first file it edits (`auth`, `api-index`), so it can be told apart and addressed. Not from its
+   * prompt: that is the user's words, and would reach every other session. Empty until then.
+   */
   name: string
   /** Working tree the session edits in. */
   top: string
@@ -157,10 +160,16 @@ export class Sessions {
     return s.name || s.id.slice(0, 8)
   }
 
-  /** A name from the first prompt, unique among the sessions in its repo. */
-  private naming(s: Session, prompt: string) {
-    const words = (prompt.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(w => !FILLER.has(w)).slice(0, 3)
-    const base = words.join('-').slice(0, 24).replace(/-$/, '')
+  /** Record an edit to `file` (normalized, inside its tree); the first one names the session, unique in its repo. */
+  private edited(s: Session, file: string) {
+    s.files.set(file, (s.news = this.now()))
+    s.name ||= this.naming(s, file)
+  }
+
+  private naming(s: Session, file: string) {
+    const slug = (p = '') => p.toLowerCase().replace(/\.[^.]*$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const [dir, stem] = relative(s.top, file).split(/[\\/]/).slice(-2).map(slug)
+    const base = (stem === undefined ? dir : GENERIC.has(stem) ? `${dir}-${stem}` : stem).slice(0, 24)
     if (!base) return ''
     const taken = new Set(this.others(s).map(o => o.name))
     let name = base
@@ -297,10 +306,7 @@ export class Sessions {
     if (event === 'prompt' && input.prompt?.startsWith(WAKE)) return say('UserPromptSubmit', both(WOKEN, this.drain(s)))
     if (event === 'prompt') {
       const first = String(input.prompt ?? '').trim().split(/\r?\n/)[0]
-      if (!MARKUP.test(first)) {
-        s.name ||= this.naming(s, first)
-        s.news = this.now()
-      }
+      if (!MARKUP.test(first)) s.news = this.now()
       // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
       // neighbour merely reading, costs no context.
       const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
@@ -315,7 +321,7 @@ export class Sessions {
         const theirs = (f: string) => this.others(s).some(o => o.top === s.top && (o.files.get(f) ?? 0) >= s.shell - 1000)
         for (const f of await this.ws.changed(s.top)) {
           const file = norm(f.path)
-          if (f.mtime >= s.shell - 1000 && !theirs(file)) s.files.set(file, (s.news = this.now()))
+          if (f.mtime >= s.shell - 1000 && !theirs(file)) this.edited(s, file)
         }
         return {}
       }
@@ -347,7 +353,7 @@ export class Sessions {
       const file = path && norm(resolve(input.cwd ?? '', path))
       // Outside its working tree (a scratchpad, a temp file) is nobody's conflict.
       const rel = file && relative(s.top, file)
-      if (file && rel && !rel.startsWith('..') && !isAbsolute(rel)) s.files.set(file, (s.news = this.now()))
+      if (file && rel && !rel.startsWith('..') && !isAbsolute(rel)) this.edited(s, file)
       return {}
     }
     if (event !== 'pre') return {}
