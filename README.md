@@ -135,6 +135,7 @@ Shell commands count as edits too: after each one, files `git status` shows chan
 recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
 `kumi` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
 The crew's own agents run with `KUMI_AGENT=1` and stay out of the registry.
+The protocol underneath, apart from Claude Code, is [YAP](docs/yap.md).
 
 ## Herdr
 
