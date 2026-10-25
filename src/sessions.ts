@@ -94,6 +94,8 @@ export interface Call {
   command?: string
   /** turn. */
   prompt?: string
+  /** idle: the agent is already carrying on because of an earlier idle answer. */
+  continuing?: boolean
 }
 
 /** What the agent gets back. `context` is for the model only, `notice` one line for the user. */
@@ -104,7 +106,7 @@ export interface Answer {
   deny?: string
 }
 
-export const VERBS = ['join', 'turn', 'will-edit', 'edited', 'will-run', 'ran', 'leave'] as const
+export const VERBS = ['join', 'turn', 'will-edit', 'edited', 'will-run', 'ran', 'idle', 'leave'] as const
 export type Verb = (typeof VERBS)[number]
 
 /** What Claude Code sends a hook on stdin; only the fields used here. */
@@ -114,6 +116,7 @@ export interface HookInput {
   prompt?: string
   tool_name?: string
   tool_input?: { file_path?: string; notebook_path?: string; command?: string }
+  stop_hook_active?: boolean
 }
 
 export function ago(ts: number, now = Date.now()) {
@@ -309,7 +312,7 @@ export class Sessions {
   /** Claude Code's hooks are one adapter: a hook event in, YAP's answer out in the hook's own format. */
   async hook(event: string, input: HookInput): Promise<object> {
     const bash = input.tool_name === 'Bash' && typeof input.tool_input?.command === 'string'
-    const verb = ({ start: 'join', prompt: 'turn', end: 'leave', pre: bash ? 'will-run' : 'will-edit', post: bash ? 'ran' : 'edited' } as const)[event as 'start']
+    const verb = ({ start: 'join', prompt: 'turn', stop: 'idle', end: 'leave', pre: bash ? 'will-run' : 'will-edit', post: bash ? 'ran' : 'edited' } as const)[event as 'start']
     if (!verb) return {}
     const a = await this.yap(verb, {
       session: input.session_id,
@@ -317,8 +320,9 @@ export class Sessions {
       prompt: input.prompt,
       command: input.tool_input?.command,
       path: input.tool_input?.file_path ?? input.tool_input?.notebook_path,
+      continuing: input.stop_hook_active === true,
     })
-    const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : 'PreToolUse'
+    const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : verb === 'idle' ? 'Stop' : 'PreToolUse'
     const notice = a.notice ? { systemMessage: a.notice } : {}
     if (a.deny)
       return { ...notice, hookSpecificOutput: { hookEventName: name, permissionDecision: 'deny', permissionDecisionReason: a.deny, ...(a.context ? { additionalContext: a.context } : {}) } }
@@ -343,6 +347,10 @@ export class Sessions {
     const arrived = (mail: string): Answer => (mail ? { context: mail, notice: 'yap: a message arrived' } : {})
 
     if (verb === 'join') return { context: both(this.overview(s), this.drain(s)) }
+
+    // About to end its turn: what came in while it worked is read now, not after the user's next prompt. Once a
+    // turn: a reply that lands while it carries on waits, so two sessions can't keep each other talking.
+    if (verb === 'idle') return call.continuing ? {} : arrived(this.drain(s))
 
     if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(WOKEN, this.drain(s)) }
     if (verb === 'turn') {

@@ -204,7 +204,7 @@ async function here(init = false) {
 /**
  * The Claude Code hooks that report every session to the daemon. A bare curl, so a hook costs milliseconds and
  * says nothing when the daemon is down or refuses; crew agents (YAP_AGENT) stay out. Messages land on edits, shell
- * commands and prompts, not on reads, which keeps the per-call cost off the busiest tools.
+ * commands, prompts and the end of a turn, not on reads, which keeps the per-call cost off the busiest tools.
  */
 function hooks() {
   // -f: a refusal prints nothing, where its body would land in the session's context as text.
@@ -217,6 +217,7 @@ function hooks() {
   return {
     SessionStart: run('start', 15),
     UserPromptSubmit: run('prompt', 5),
+    Stop: run('stop', 5),
     PreToolUse: run('pre', 5, tools),
     PostToolUse: run('post', 5, tools),
     SessionEnd: run('end', 5),

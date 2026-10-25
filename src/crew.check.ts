@@ -260,6 +260,13 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(a.notice, 'yap: src/auth.ts was just edited by @auth')
   assert.match(a.context!, /session @auth edited it just now/)
   assert.match((await reg.yap('will-run', { session: 'bbbb2222', cwd: '/repo', command: 'git stash' })).deny!, /session @auth, editing src\/auth\.ts/)
+  // A message that came in while it worked is read before its turn ends, once a turn.
+  await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@auth', text: 'wait for me' })
+  assert.deepEqual(await reg.yap('idle', { session: 'aaaa1111', cwd: '/repo', continuing: true }), {})
+  const idle = await reg.hook('stop', { session_id: 'aaaa1111', cwd: '/repo' }) as any
+  assert.equal(idle.hookSpecificOutput.hookEventName, 'Stop')
+  assert.match(idle.hookSpecificOutput.additionalContext, /From session @bbbb2222: wait for me/)
+  assert.deepEqual(await reg.hook('stop', { session_id: 'aaaa1111', cwd: '/repo' }), {}, 'nothing left')
   await reg.yap('leave', { session: 'aaaa1111' })
   assert.deepEqual(await reg.yap('will-run', { session: 'bbbb2222', cwd: '/repo', command: 'git stash' }), {})
 }

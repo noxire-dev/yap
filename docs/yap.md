@@ -33,6 +33,7 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
 | `will-run` | Before a shell command (`command`) | Notes the start time. If the command would move the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`, `restore`, `rebase`, `pull`, `merge`) or sweep it (`add -A`, `commit -a`) while a peer in the same tree edited in the last 30 minutes, answers with a **deny**. |
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. |
+| `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. |
 | `leave` | The conversation ends | Forgets it. |
 | `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is the user. |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
@@ -102,6 +103,7 @@ daemon turns each into a YAP verb and the answer into the hook's fields:
 | `edited` | `PostToolUse` → `post` | `+ tool_input.file_path` | none |
 | `will-run` | `PreToolUse` (Bash) → `pre` | `+ tool_name: Bash, tool_input.command` | `permissionDecision: deny` and its reason |
 | `ran` | `PostToolUse` (Bash) → `post` | same | none |
+| `idle` | `Stop` → `stop` | `+ stop_hook_active` as `continuing` | `additionalContext`, which keeps the turn going |
 | `leave` | `SessionEnd` → `end` | `session_id` | none |
 
 `context` becomes `additionalContext`, `notice` `systemMessage`, `deny` `permissionDecision: deny` with the reason.

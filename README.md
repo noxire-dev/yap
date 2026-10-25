@@ -45,7 +45,7 @@ agent is mid-ticket.
 
 ## Parallel sessions
 
-Every Claude Code session on this machine reports to the daemon through five hooks in `~/.claude/settings.json`
+Every Claude Code session on this machine reports to the daemon through six hooks in `~/.claude/settings.json`
 (a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). `yap hooks --install` puts them
 there, replacing earlier ones and keeping a `.bak-yap` copy; `yap hooks` prints them instead. Sessions are
 grouped by repo, worktrees included, and the crew counts as one more worker.
@@ -58,7 +58,7 @@ grouped by repo, worktrees included, and the crew counts as one more worker.
 - A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
   its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
 - Sessions talk: `yap say @<name> <text>` to one (a prefix of the name or id will do), `yap say <text>` to all
-  of them in the repo. A message lands on the recipient's next edit, shell command or prompt. Run from your own terminal, it comes from "the user".
+  of them in the repo. A message lands on the recipient's next edit, shell command or prompt, or before it ends its turn. Run from your own terminal, it comes from "the user".
   A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
   be typing in it. A woken session answers but is told not to start work on another session's word.
 - A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
