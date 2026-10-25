@@ -83,7 +83,8 @@ answer then carries the message and instructions in `context`. Rules:
 The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
 `prompt` (turn), `text` and `to` (say), `text` (note and spawn), `id` (unnote). The answer is `{}` or any of
 `{ "context", "notice", "deny" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
-verb or a bad argument is a 400 with `{ "error" }`.
+verb or a bad argument is a 400 with `{ "error" }`. A missing or wrong token is a 403. `GET /yap` answers
+`{ protocol, version, verbs }`.
 
 ```sh
 curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
@@ -138,9 +139,14 @@ The local API token never leaves the machine.
 | `GET /connect?device=<id>` | `Bearer <secret>` | the machine's WebSocket; a reconnect replaces the old one |
 | `POST /d/<device>/<verb>` | `Bearer <token>` | one remote verb, JSON body; the machine's answer, or 503 offline, 504 no answer in 25 s |
 | `DELETE /d/<device>` | `Bearer <secret>` | unpair |
+| `GET /` | none | `{ protocol: "yap", version }` |
 
 Down the socket the relay sends `{ id, verb, body }`; the machine answers `{ id, answer }` or `{ id, error }`
 (a 400 to the caller).
+
+Errors are `{ "error": "<why>" }` with a status: 400 a bad call (unknown verb or project, a wrong field), 401 a
+bad secret or token, 403 a wrong or used pairing code, 404 no such device, 503 the machine is offline, 504 it
+didn't answer. Any origin may call the relay: auth is a bearer token, never a cookie.
 
 ### Remote verbs
 
@@ -150,9 +156,10 @@ token was given it by the user.
 
 | Verb | Body | Answer |
 |---|---|---|
+| `hello` | | `{ protocol: "yap", version, verbs }`; check `version` before relying on a shape |
 | `projects` | | `[{ name, base }]` |
 | `sessions` | | live sessions in projects: `[{ project, id, name, at, files }]` |
-| `spawns` | | background sessions in projects, and how each ended |
+| `spawns` | `id`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result? }]`; `id` picks one |
 | `notes` | `project` | the project's board |
 | `note` | `project`, `text` | pins a note |
 | `say` | `project`, `text`, `to`? | messages a session there, or all of them |
@@ -160,6 +167,30 @@ token was given it by the user.
 
 Nothing else: no `join` or `edited` (a web client is not a peer in a working tree), no shell, no path, nothing
 the crew's desktop confirmation guards.
+
+### Client
+
+`relay/client.ts` is the web side in one file with no dependencies (browser, Worker, Bun, Node 18+):
+
+```ts
+import { Yap } from './client'
+
+const yap = await Yap.claim('https://yap-relay.example.workers.dev', '<device>.<code>')
+localStorage.yap = JSON.stringify(yap)            // { relay, device, token }; the code works once
+const { id } = await yap.spawn('app', 'add a retry to fetchUser')
+const run = await yap.wait(id)                    // polls spawns until it ends
+console.log(run.ok, run.result)
+
+const later = Yap.from(JSON.parse(localStorage.yap))
+await later.say('app', 'the deploy is frozen until 6pm')
+```
+
+Each remote verb is a method; a refusal throws `YapError` with the status above.
+
+### Version
+
+`hello` (remote), `GET /yap` (local) and `GET /` (relay) answer with the protocol version. It is 0: shapes may
+still change, and the version moves when one does.
 
 The risk is the point of the shape: a website that can make your PC run agents is a remote code execution
 channel. A leaked token gets "start an agent in a repo you already gave yap" and no more, and `yap unpair` ends

@@ -96,7 +96,14 @@ yap unpair                                     # every web client's token stops 
 
 A paired client can list your registered projects and their sessions, read and pin notes, message sessions and
 spawn background ones. It names projects, never paths, and nothing outside a registered project is visible.
-The wire is in [docs/yap.md](docs/yap.md#remote).
+The wire is in [docs/yap.md](docs/yap.md#remote), and `relay/client.ts` is a typed client for it with no
+dependencies:
+
+```ts
+const yap = await Yap.claim('https://yap-relay.<you>.workers.dev', '<device>.<code>')
+const { id } = await yap.spawn('app', 'add a retry to fetchUser')
+console.log((await yap.wait(id)).result)
+```
 
 ## The crew
 

@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { AgentRunner, Panes, Store, Workspace } from './ports'
 
+/** What `hello` answers. The version moves when a verb or an answer changes shape. */
+export const PROTOCOL = { protocol: 'yap', version: 0 }
+
 /** A session silent this long has gone away without saying so. */
 const LIVE = 2 * 60 * 60_000
 /** An edit this recent is worth a warning to whoever touches the same file next. */

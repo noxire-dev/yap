@@ -6,7 +6,7 @@ import { ClaudeCli } from './agent'
 import { Crew } from './crew'
 import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
-import { Sessions, VERBS, type Verb } from './sessions'
+import { PROTOCOL, Sessions, VERBS, type Verb } from './sessions'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
@@ -160,6 +160,7 @@ Bun.serve({
       },
     },
     // YAP (docs/yap.md): the same as the hooks, in plain verbs and answers, for any agent.
+    '/yap': api(() => ({ ...PROTOCOL, verbs: [...VERBS, 'say', 'note', 'unnote', 'spawn'] })),
     '/yap/:verb': {
       POST: api((req, b) => {
         const verb = req.params.verb

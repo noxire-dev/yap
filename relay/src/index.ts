@@ -11,6 +11,9 @@ import { DurableObject } from 'cloudflare:workers'
  *   GET    /connect                   the daemon's WebSocket, with its secret
  *   POST   /d/<device>/<verb>         a web client's call, with its token
  *   DELETE /d/<device>                the daemon unpairs, with its secret: every token dies with it
+ *   GET    /                          what this is: { protocol, version }
+ *
+ * Any origin may call it: auth is a bearer token, never a cookie, so a page can only use a token it was given.
  */
 
 interface Env {
@@ -25,6 +28,7 @@ const random = (bytes: number) => [...crypto.getRandomValues(new Uint8Array(byte
 const hash = async (s: string) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2, '0')).join('')
 const bearer = (req: Request) => req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
 const fail = (status: number, error: string) => Response.json({ error }, { status })
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type', 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-max-age': '86400' }
 
 export class Device extends DurableObject<Env> {
   /** Calls waiting for the machine's answer. In memory: a call in flight keeps this object awake. */
@@ -69,7 +73,7 @@ export class Device extends DurableObject<Env> {
     if (!secret) return fail(404, 'no such device')
 
     if (url.pathname === '/connect') {
-      if ((await hash(bearer(req))) !== secret) return fail(403, 'wrong secret')
+      if ((await hash(bearer(req))) !== secret) return fail(401, 'wrong secret')
       // One machine, one socket: a reconnect replaces the old one.
       for (const ws of this.ctx.getWebSockets()) ws.close(1000, 'replaced')
       const [client, server] = Object.values(new WebSocketPair())
@@ -78,7 +82,7 @@ export class Device extends DurableObject<Env> {
     }
 
     if (req.method === 'DELETE') {
-      if ((await hash(bearer(req))) !== secret) return fail(403, 'wrong secret')
+      if ((await hash(bearer(req))) !== secret) return fail(401, 'wrong secret')
       for (const ws of this.ctx.getWebSockets()) ws.close(1000, 'unpaired')
       this.ctx.storage.sql.exec('DELETE FROM kv')
       this.ctx.storage.sql.exec('DELETE FROM token')
@@ -86,7 +90,7 @@ export class Device extends DurableObject<Env> {
     }
 
     const t = await hash(bearer(req))
-    if (!this.ctx.storage.sql.exec('SELECT 1 FROM token WHERE hash = ?', t).toArray().length) return fail(403, 'not paired with this device')
+    if (!this.ctx.storage.sql.exec('SELECT 1 FROM token WHERE hash = ?', t).toArray().length) return fail(401, 'not paired with this device')
     const ws = this.ctx.getWebSockets()[0]
     if (!ws) return fail(503, 'the machine is offline')
     const verb = url.pathname.split('/').pop()!
@@ -116,35 +120,47 @@ export class Device extends DurableObject<Env> {
 
 export default {
   async fetch(req: Request, env: Env) {
-    const url = new URL(req.url)
-    const parts = url.pathname.split('/').filter(Boolean)
-
-    // ponytail: anyone can pair a new device; rate-limit /pair if it is ever abused.
-    if (req.method === 'POST' && url.pathname === '/pair') {
-      const device = random(8)
-      const secret = random(32)
-      const code = random(4)
-      await env.DEVICE.getByName(device).pair(secret, code)
-      return Response.json({ device, secret, code })
-    }
-
-    if (req.method === 'POST' && url.pathname === '/claim') {
-      const b = (await req.json().catch(() => ({}))) as { device?: string; code?: string }
-      if (!/^[0-9a-f]{16}$/.test(b.device ?? '')) return fail(400, 'no such device')
-      const token = await env.DEVICE.getByName(b.device!).claim(String(b.code ?? ''))
-      return token ? Response.json({ token }) : fail(403, 'wrong or expired code')
-    }
-
-    if (url.pathname === '/connect') {
-      if (req.headers.get('upgrade') !== 'websocket') return fail(426, 'a WebSocket, please')
-      const device = url.searchParams.get('device') ?? ''
-      if (!/^[0-9a-f]{16}$/.test(device)) return fail(400, 'no such device')
-      return env.DEVICE.getByName(device).fetch(req)
-    }
-
-    if (parts[0] === 'd' && /^[0-9a-f]{16}$/.test(parts[1] ?? '') && ((req.method === 'POST' && parts.length === 3) || (req.method === 'DELETE' && parts.length === 2)))
-      return env.DEVICE.getByName(parts[1]).fetch(req)
-
-    return fail(404, 'not found')
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
+    const res = await route(req, env)
+    // A WebSocket upgrade goes back as it is; everything else carries CORS.
+    if (res.status === 101) return res
+    const out = new Response(res.body, res)
+    for (const [k, v] of Object.entries(CORS)) out.headers.set(k, v)
+    return out
   },
+}
+
+async function route(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url)
+  const parts = url.pathname.split('/').filter(Boolean)
+
+  // ponytail: anyone can pair a new device; rate-limit /pair if it is ever abused.
+  if (req.method === 'POST' && url.pathname === '/pair') {
+    const device = random(8)
+    const secret = random(32)
+    const code = random(4)
+    await env.DEVICE.getByName(device).pair(secret, code)
+    return Response.json({ device, secret, code })
+  }
+
+  if (req.method === 'POST' && url.pathname === '/claim') {
+    const b = (await req.json().catch(() => ({}))) as { device?: string; code?: string }
+    if (!/^[0-9a-f]{16}$/.test(b.device ?? '')) return fail(400, 'no such device')
+    const token = await env.DEVICE.getByName(b.device!).claim(String(b.code ?? ''))
+    return token ? Response.json({ token }) : fail(403, 'wrong or expired code')
+  }
+
+  if (url.pathname === '/connect') {
+    if (req.headers.get('upgrade') !== 'websocket') return fail(426, 'a WebSocket, please')
+    const device = url.searchParams.get('device') ?? ''
+    if (!/^[0-9a-f]{16}$/.test(device)) return fail(400, 'no such device')
+    return env.DEVICE.getByName(device).fetch(req)
+  }
+
+  if (parts[0] === 'd' && /^[0-9a-f]{16}$/.test(parts[1] ?? '') && ((req.method === 'POST' && parts.length === 3) || (req.method === 'DELETE' && parts.length === 2)))
+    return env.DEVICE.getByName(parts[1]).fetch(req)
+
+  if (req.method === 'GET' && url.pathname === '/') return Response.json({ protocol: 'yap', version: 0 })
+
+  return fail(404, 'not found')
 }

@@ -1,5 +1,5 @@
 import type { Project } from './ports'
-import { type Sessions, norm } from './sessions'
+import { PROTOCOL, type Sessions, norm } from './sessions'
 
 /** What `yap pair` got from the relay. */
 export interface Pairing {
@@ -34,12 +34,13 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
   const whose = (path: string) => projects().find(p => norm(path) === norm(p.path))?.name
   const text = (b: any) => String(b.text ?? '')
   const verbs: Record<string, (b: any) => unknown> = {
+    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs) }),
     projects: () => projects().map(p => ({ name: p.name, base: p.base })),
     sessions: () =>
       sessions
         .list()
         .flatMap(s => (whose(s.repo) ? [{ project: whose(s.repo), id: s.id.slice(0, 8), name: s.name, at: s.at, files: s.files }] : [])),
-    spawns: () => sessions.spawns().flatMap(s => (whose(s.cwd) ? [{ ...s, cwd: undefined, project: whose(s.cwd) }] : [])),
+    spawns: b => sessions.spawns().flatMap(s => (whose(s.cwd) && (!b.id || s.id === b.id) ? [{ ...s, cwd: undefined, project: whose(s.cwd) }] : [])),
     notes: async b => (await sessions.notes(project(b.project).path)).map(({ repo, ...n }) => n),
     note: b => sessions.note({ cwd: project(b.project).path, text: text(b) }),
     say: b => sessions.say({ cwd: project(b.project).path, text: text(b), to: typeof b.to === 'string' ? b.to : undefined }),

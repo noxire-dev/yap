@@ -1,6 +1,7 @@
 // bun src/crew.check.ts — the loop against fakes: no git, no model, no network.
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
+import { Yap, YapError } from '../relay/client'
 import { Bridge, remote } from './bridge'
 import { Crew, ROUNDS } from './crew'
 import { childEnv } from './env'
@@ -307,6 +308,29 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   later[0]()
   assert.equal(lines.length, 2, 'reconnected')
   bridge.stop()
+}
+
+// The web client: claims once, keeps what it needs as JSON, waits for a spawn, and turns refusals into YapError.
+{
+  const calls: [string, any, string][] = []
+  let polls = 0
+  const relay: typeof fetch = (async (url: string, init: any) => {
+    const body = JSON.parse(init.body)
+    calls.push([url, body, init.headers.authorization ?? ''])
+    const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 })
+    if (url.endsWith('/claim')) return ok({ token: 't0k' })
+    if (url.endsWith('/spawn')) return ok({ id: 'ab12cd34' })
+    if (url.endsWith('/spawns')) return ok([{ id: body.id, done: ++polls >= 2 ? 5 : undefined, ok: true, result: 'did it' }])
+    return new Response(JSON.stringify({ error: 'no project nope' }), { status: 400 })
+  }) as any
+  const yap = await Yap.claim('https://relay.test/', 'dev1.c0de', relay)
+  assert.deepEqual(calls[0], ['https://relay.test/claim', { device: 'dev1', code: 'c0de' }, ''])
+  const again = Yap.from(JSON.parse(JSON.stringify(yap)), relay)
+  const { id } = await again.spawn('app', 'tidy')
+  assert.deepEqual(calls[1], ['https://relay.test/d/dev1/spawn', { project: 'app', text: 'tidy' }, 'Bearer t0k'])
+  assert.equal((await again.wait(id, { every: 0 })).result, 'did it')
+  assert.equal(polls, 2)
+  await assert.rejects(again.notes('nope'), (e: any) => e instanceof YapError && e.status === 400 && /no project nope/.test(e.message))
 }
 
 // YAP without the hooks: plain verbs, plain answers.
