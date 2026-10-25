@@ -32,6 +32,7 @@ yap                   # the crew's board; the repo becomes a project, the daemon
 |---|---|
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
+| `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
 | `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
 | `yap` | The crew's board. Closing it leaves the crew running. |
 | `yap status` | Print every project's rail and exit. |
@@ -70,6 +71,10 @@ grouped by repo, worktrees included, and the crew counts as one more worker.
   note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
 - Who is live, what each edited and undelivered messages survive a daemon restart.
 - `yap sessions` lists them.
+- `yap spawn <text>` starts a background Claude Code session in this repo on that task. It is a peer like the
+  others: it hears about them, they hear about it, and `yap say` reaches it. Nobody can answer its questions, so
+  it makes its own calls under auto mode. Its final message comes back to the session that started it, or to
+  `yap spawns` when you started it from your terminal. A daemon restart loses track of running ones.
 
 Shell commands count as edits too: after each one, files `git status` shows changed since it started are
 recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
@@ -187,8 +192,8 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   worktrees. Claude Code has no sandbox on native Windows. The planner runs in your checkout with read-only
   tools. An issue you take from a public tracker is text an agent acts on; read it first.
 - **Agents and the gate get a trimmed environment.** System paths, your profile dirs and toolchain homes; not
-  tokens, not the Claude Code or Herdr session the daemon was started from. Claude's own key reaches Claude but
-  not the commands it runs. A gate that needs a variable: `YAP_PASS=DATABASE_URL,REDIS_URL` on the daemon.
+  tokens, not the Claude Code or Herdr session the daemon was started from. An `ANTHROPIC_API_KEY` or
+  `CLAUDE_CODE_OAUTH_TOKEN` reaches Claude, and the commands it runs can read it. A gate that needs a variable: `YAP_PASS=DATABASE_URL,REDIS_URL` on the daemon.
   Files are another matter: an agent can still read anything you can.
 - **The API wants a token.** The daemon writes `~/.yap/token` on first start and every client sends it. The
   hooks send it too, read from the file on each call. Hooks installed before that are refused silently: run

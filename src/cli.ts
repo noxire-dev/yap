@@ -20,6 +20,8 @@ yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 yap hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
+yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
+yap spawns           the background sessions yap started, and how each ended
 yap note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
 yap notes           this repo's board
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
@@ -294,6 +296,19 @@ try {
     const r = await api.send('POST', '/api/say', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), to, text: rest.join(' ') })
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
     console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
+  } else if (cmd === 'spawn') {
+    await daemon()
+    const r = await api.send('POST', '/yap/spawn', { session: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), text: rest.join(' ') })
+    console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${process.env.CLAUDE_CODE_SESSION_ID ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
+  } else if (cmd === 'spawns') {
+    if (!(await running())) throw new Error('the daemon is not running, so nothing it started is running')
+    const list = await api.get<{ id: string; name: string; task: string; started: number; done?: number; ok?: boolean; result?: string }[]>('/api/spawns')
+    const show = (s: (typeof list)[number]) =>
+      [
+        `${s.id}  ${ago(s.started).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.done ? (s.ok ? 'finished' : 'failed') : 'running'}  ${s.task.slice(0, 80)}`,
+        ...(s.result ? s.result.split(/\r?\n/).map(l => `          ${l}`) : []),
+      ].join('\n')
+    console.log(list.length ? list.map(show).join('\n') : 'nothing spawned since the daemon started')
   } else if (cmd === 'note' || cmd === 'notes') {
     await daemon()
     const cwd = target()

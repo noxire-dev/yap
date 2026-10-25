@@ -69,6 +69,9 @@ Known gaps, roughly in the order they bite. Fix from the top.
   Claude Code sandboxes only on macOS, Linux and WSL2. Their environment is trimmed to an allowlist; files are
   not. With the token an agent can drive the API, but skipping a check needs a yes on the desktop, unless
   YAP_YOLO. An agent set on it could still restart the daemon with YAP_YOLO=1 or kill it.
+- An API key or OAuth token in the daemon's environment reaches agents' shell commands. Claude Code's
+  CLAUDE_CODE_SUBPROCESS_ENV_SCRUB would strip it, but in 2.1.310 it makes `-p` auto mode deny every write
+  (undocumented). Subscription sign-in is a file, so nothing changes there. Retry the scrub on a newer Claude Code.
 - Outside Herdr, an idle session hears a message only on its next prompt. The PreToolUse hook skips Read and
   Grep (about 67 ms a call), so a session that only reads hears nothing until it edits or runs a command.
 - `yap show` is about 110 lines a ticket. `yap status` lists every project and prints the board's key hint.

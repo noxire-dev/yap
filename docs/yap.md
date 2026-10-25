@@ -38,6 +38,7 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is the user. |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
+| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, from the user, to `yap spawns`. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 
@@ -80,7 +81,7 @@ answer then carries the message and instructions in `context`. Rules:
 ```
 
 The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
-`prompt` (turn), `text` and `to` (say), `text` (note), `id` (unnote). The answer is `{}` or any of
+`prompt` (turn), `text` and `to` (say), `text` (note and spawn), `id` (unnote). The answer is `{}` or any of
 `{ "context", "notice", "deny" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
 verb or a bad argument is a 400 with `{ "error" }`.
 

@@ -40,7 +40,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store, Date.now, new Herdr())
+const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli())
 
 // This server runs shell commands, so a web page must not be able to drive it:
 // refuse anything not addressed to localhost or sent from another origin.
@@ -153,11 +153,13 @@ Bun.serve({
         if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to') })
         if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
         if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
-        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${[...VERBS, 'say', 'note', 'unnote'].join(', ')}`)
+        if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? '') })
+        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${[...VERBS, 'say', 'note', 'unnote', 'spawn'].join(', ')}`)
         return sessions.yap(verb as Verb, { session: str('session'), cwd, path: str('path'), command: str('command'), prompt: str('prompt') })
       }, true),
     },
     '/api/sessions': api(() => sessions.list()),
+    '/api/spawns': api(() => sessions.spawns()),
     '/api/notes': {
       GET: api(req => sessions.notes(new URL(req.url).searchParams.get('cwd') ?? '')),
       POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),

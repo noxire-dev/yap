@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
-import type { Panes, Store, Workspace } from './ports'
+import type { AgentRunner, Panes, Store, Workspace } from './ports'
 
 /** A session silent this long has gone away without saying so. */
 const LIVE = 2 * 60 * 60_000
@@ -53,6 +54,21 @@ interface Session {
   cwd: string
   /** When it last did something the others should hear about: started, prompted, edited. */
   news: number
+}
+
+/** A background session yap started, and what came of it. */
+interface Spawn {
+  id: string
+  cwd: string
+  task: string
+  /** The session that asked, or '' for the user. */
+  from: string
+  started: number
+  /** Its name once it has one; kept here because it leaves the registry before it finishes. */
+  name: string
+  done?: number
+  ok?: boolean
+  result?: string
 }
 
 const RESUME = new Set(['--abort', '--continue', '--skip', '--quit'])
@@ -131,12 +147,15 @@ export function ago(ts: number, now = Date.now()) {
 export class Sessions {
   private all = new Map<string, Session>()
   private roots = new Map<string, { top: string; repo: string }>()
+  // ponytail: in memory, and a daemon restart orphans what is running; persist them when spawns outlive a session.
+  private spawned = new Map<string, Spawn>()
 
   constructor(
     private ws: Workspace,
     private store: Store,
     private now = Date.now,
     private panes: Panes = { wake: async () => false },
+    private runner?: AgentRunner,
   ) {
     for (const row of store.sessions()) {
       const s = JSON.parse(row)
@@ -150,6 +169,8 @@ export class Sessions {
   }
 
   private forget(id: string) {
+    const sp = this.spawned.get(id)
+    if (sp) sp.name ||= this.all.get(id)?.name ?? ''
     this.all.delete(id)
     this.store.dropSession(id)
   }
@@ -292,6 +313,43 @@ export class Sessions {
     this.save(s, ...them)
     const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + (s ? `session @${this.tag(s)}` : 'the user'))))
     return { to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
+  }
+
+  /**
+   * Start a background Claude Code session in `cwd` on `text`. It is a peer like any other: it hears about the
+   * others, they hear about it, and it can be messaged. Its final message goes back to whoever asked: a session
+   * gets it in its inbox, the user reads it with `yap spawns`.
+   */
+  // ponytail: no cap on how many run at once; add one when a web client can ask.
+  async spawn(m: { from?: string; cwd: string; text: string }) {
+    const task = m.text.trim()
+    if (!task) throw new Error('say what the session should do')
+    if (!this.runner) throw new Error('this daemon cannot start agents')
+    const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
+    const id = randomUUID()
+    const sp: Spawn = { id, cwd: m.cwd, task, from: s?.id ?? '', started: this.now(), name: '' }
+    this.spawned.set(id, sp)
+    const who = s ? `session @${this.tag(s)}, which asked for it` : 'the user, who asked for it'
+    const prompt = `${task}\n\nyap started you in the background for ${this.label(s)}. Nobody is watching this session and nobody can answer a question: make the calls yourself and say what you decided. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
+    void this.runner.run({ cwd: m.cwd, prompt, peer: id }).then(
+      r => this.finished(sp, r.ok, r.text),
+      e => this.finished(sp, false, String(e?.message ?? e)),
+    )
+    return { id: id.slice(0, 8) }
+  }
+
+  private async finished(sp: Spawn, ok: boolean, text: string) {
+    Object.assign(sp, { done: this.now(), ok, result: text.trim(), name: sp.name || this.all.get(sp.id)?.name || '' })
+    const s = this.all.get(sp.from)
+    if (!s) return
+    s.inbox.push(`Session @${sp.name || sp.id.slice(0, 8)}, which you started, ${ok ? 'finished' : 'failed'}: ${sp.result!.slice(0, 2000)}`)
+    this.save(s)
+    await this.panes.wake(s.id, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
+  }
+
+  /** Background sessions yap started, newest first, for `yap spawns`. */
+  spawns() {
+    return [...this.spawned.values()].reverse().map(sp => ({ ...sp, id: sp.id.slice(0, 8), name: sp.name || this.all.get(sp.id)?.name || '' }))
   }
 
   /** Everything waiting for `s`, emptied. */

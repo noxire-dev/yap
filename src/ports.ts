@@ -148,6 +148,8 @@ export interface AgentRun {
   schema?: object
   signal?: AbortSignal
   onActivity?: (line: string) => void
+  /** A session id: the agent joins YAP as a peer under it, where the crew's own agents stay out. */
+  peer?: string
 }
 
 export interface AgentRunner {

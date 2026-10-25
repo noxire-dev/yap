@@ -3,16 +3,19 @@ import type { AgentRun, AgentRunner } from './ports'
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity }: AgentRun) {
+  async run({ cwd, prompt, readOnly, schema, signal, onActivity, peer }: AgentRun) {
     const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
     // No human is there to answer a prompt: anything that would ask is denied.
     args.push('--permission-prompts', 'none', '--strict-mcp-config', '--no-session-persistence')
     if (readOnly) args.push('--tools', 'Read,Grep,Glob')
     else args.push('--permission-mode', 'auto')
     if (schema) args.push('--json-schema', JSON.stringify(schema))
+    if (peer) args.push('--session-id', peer)
 
-    // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet.
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1', YAP_AGENT: '1' } })
+    // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet. A peer's hooks report,
+    // so they need to find this daemon.
+    const yap = peer ? Object.fromEntries(['YAP_HOME', 'YAP_PORT'].filter(k => process.env[k]).map(k => [k, process.env[k]!])) : { YAP_AGENT: '1' }
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap } })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()
@@ -53,7 +56,10 @@ export class ClaudeCli implements AgentRunner {
   }
 }
 
-/** Claude's own credentials, if it signs in with one. The scrub keeps them out of the shell commands it runs. */
+/**
+ * Claude's own credentials, if it signs in with one. They reach the shell commands it runs too: Claude Code's
+ * CLAUDE_CODE_SUBPROCESS_ENV_SCRUB would keep them out, but in 2.1.310 it also makes auto mode deny every write.
+ */
 function auth() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(anthropic_\w+|claude_code_oauth_token)$/i.test(k)))
 }
