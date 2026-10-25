@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
-import { mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { build, home, url } from './env'
@@ -22,6 +22,9 @@ yap sessions        the Claude Code sessions the hooks have seen, and what each 
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
 yap spawns           the background sessions yap started, and how each ended
+yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
+yap unpair           forget the pairing, here and on the relay: every web client's token stops working
+yap bridge           whether this machine is paired, and connected
 yap note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
 yap notes           this repo's board
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
@@ -300,6 +303,31 @@ try {
     await daemon()
     const r = await api.send('POST', '/yap/spawn', { session: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), text: rest.join(' ') })
     console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${process.env.CLAUDE_CODE_SESSION_ID ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
+  } else if (cmd === 'pair') {
+    const relay = String(rest[0] ?? '').replace(/\/$/, '')
+    if (!/^https?:\/\//.test(relay)) throw new Error('yap pair <relay url>, like https://relay.example.com')
+    const r = await fetch(`${relay}/pair`, { method: 'POST' })
+    if (!r.ok) throw new Error(`the relay said ${r.status}`)
+    const { device, secret, code } = (await r.json()) as { device: string; secret: string; code: string }
+    writeFileSync(join(home, 'bridge.json'), JSON.stringify({ relay, device, secret }), { mode: 0o600 })
+    await daemon()
+    await api.send('POST', '/api/bridge')
+    console.log(`paired with ${relay}. Enter this code where you connect, within ten minutes; it works once:\n\n  ${device}.${code}\n\nWhoever holds it can start agents in your registered projects and message their sessions. \`yap unpair\` takes that back.`)
+  } else if (cmd === 'unpair') {
+    const file = join(home, 'bridge.json')
+    let p: { relay: string; device: string; secret: string } | null = null
+    try {
+      p = JSON.parse(readFileSync(file, 'utf8'))
+    } catch {}
+    if (!p) throw new Error('this machine is not paired')
+    const r = await fetch(`${p.relay}/d/${p.device}`, { method: 'DELETE', headers: { authorization: `Bearer ${p.secret}` } }).catch(() => null)
+    rmSync(file)
+    if (await running()) await api.send('POST', '/api/bridge')
+    console.log(r?.ok ? `unpaired from ${p.relay}` : `forgot the pairing here; the relay ${r ? `said ${r.status}` : "couldn't be reached"}, so tokens it issued may still be stored there, with nothing to reach`)
+  } else if (cmd === 'bridge') {
+    if (!(await running())) throw new Error('the daemon is not running')
+    const b = await api.get<{ relay?: string; device?: string; connected?: boolean }>('/api/bridge')
+    console.log(b.relay ? `paired with ${b.relay} as ${b.device}, ${b.connected ? 'connected' : 'not connected right now'}` : 'not paired. `yap pair <relay>` pairs it')
   } else if (cmd === 'spawns') {
     if (!(await running())) throw new Error('the daemon is not running, so nothing it started is running')
     const list = await api.get<{ id: string; name: string; task: string; started: number; done?: number; ok?: boolean; result?: string }[]>('/api/spawns')

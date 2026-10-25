@@ -33,6 +33,7 @@ yap                   # the crew's board; the repo becomes a project, the daemon
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
 | `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
+| `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
 | `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
 | `yap` | The crew's board. Closing it leaves the crew running. |
 | `yap status` | Print every project's rail and exit. |
@@ -80,6 +81,22 @@ Shell commands count as edits too: after each one, files `git status` shows chan
 recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.
 `yap` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
 The crew's own agents run with `YAP_AGENT=1` and stay out of the registry.
+
+## Remote
+
+A web client can reach this machine through a relay, so a site like Rinai can start agents on your own computer
+under your own Claude sign-in. The daemon dials out; nothing listens on the internet. The relay is `relay/`, a
+Cloudflare Worker: `cd relay && bun install && bunx wrangler deploy` puts it on your account.
+
+```
+yap pair https://yap-relay.<you>.workers.dev   # prints a one-time code for the web client
+yap bridge                                     # paired, and connected?
+yap unpair                                     # every web client's token stops working
+```
+
+A paired client can list your registered projects and their sessions, read and pin notes, message sessions and
+spawn background ones. It names projects, never paths, and nothing outside a registered project is visible.
+The wire is in [docs/yap.md](docs/yap.md#remote).
 
 ## The crew
 
@@ -218,7 +235,8 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 
 `src/crew.ts` is the loop and talks only to the interfaces in `src/ports.ts`: `Store` (SQLite), `Workspace`
 (git and the gate shell), `AgentRunner` (`claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
-daemon; `src/tui.ts` is a client of its HTTP API. `bun run check` runs the loop against fakes.
+daemon; `src/tui.ts` is a client of its HTTP API. `src/sessions.ts` is YAP; `src/bridge.ts` is the line to the
+relay and what the web may do; `relay/` is the relay. `bun run check` runs it all against fakes.
 
 ## License
 

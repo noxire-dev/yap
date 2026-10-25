@@ -1,6 +1,7 @@
 // bun src/crew.check.ts — the loop against fakes: no git, no model, no network.
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
+import { Bridge, remote } from './bridge'
 import { Crew, ROUNDS } from './crew'
 import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
@@ -22,7 +23,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
   const ws: Workspace = {
     root: async dir => dir,
     // `/wt` is a second worktree of `/repo`.
-    where: async dir => ({ top: dir.startsWith('/wt') ? '/wt' : '/repo', common: '/repo/.git' }),
+    where: async dir => (dir.startsWith('/elsewhere') ? { top: '/elsewhere', common: '/elsewhere/.git' } : { top: dir.startsWith('/wt') ? '/wt' : '/repo', common: '/repo/.git' }),
     changed: async () => dirty,
     init: async () => {},
     branch: async () => 'main',
@@ -269,6 +270,43 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(woken, ['aaaa1111'])
   assert.match((await reg.yap('turn', { session: 'aaaa1111', cwd: '/repo', prompt: 'yap: a message from session @fetch' })).context!, /Session @fetch, which you started, finished: Added a retry/)
   assert.deepEqual(reg.spawns().map(s => [s.id, s.name, s.ok]), [[id, 'fetch', true]])
+}
+
+// The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
+// line answers what comes down it and comes back after a drop.
+{
+  const { store, ws } = rig([])
+  const runs: any[] = []
+  const reg = new Sessions(ws, store, () => 1_000_000, undefined, { run: async o => (runs.push(o), { ok: true, text: 'done' }) })
+  store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
+  await reg.yap('edited', { session: 'aaaa1111', cwd: '/repo', path: 'src/auth.ts' })
+  await reg.yap('edited', { session: 'bbbb2222', cwd: '/elsewhere', path: 'secret.ts' })
+  const answer = remote(reg, () => store.projects())
+  assert.deepEqual(((await answer('sessions', {})) as any[]).map(s => [s.project, s.name]), [['app', 'auth']], 'no session outside a project')
+  await answer('spawn', { project: 'app', text: 'tidy the README' })
+  assert.equal(runs[0].cwd, '/repo')
+  await assert.rejects(answer('spawn', { project: 'nope', text: 'x', cwd: '/elsewhere' }), /no project nope; .* app/)
+  await assert.rejects(answer('join', {}), /no remote verb join/)
+
+  const sent: string[] = []
+  const lines: any[] = []
+  const later: (() => void)[] = []
+  const bridge = new Bridge({ relay: 'https://relay.test', device: 'd1', secret: 's' }, answer, (url, secret) => {
+    const l = { url, secret, send: (t: string) => sent.push(t), close() {}, onopen: null, onmessage: null, onclose: null } as any
+    lines.push(l)
+    return l
+  }, fn => later.push(fn))
+  assert.equal(lines[0].url, 'wss://relay.test/connect?device=d1')
+  lines[0].onopen()
+  await lines[0].onmessage({ data: JSON.stringify({ id: 'c1', verb: 'projects' }) })
+  await lines[0].onmessage({ data: JSON.stringify({ id: 'c2', verb: 'notes', body: { project: 'nope' } }) })
+  assert.deepEqual(sent.map(t => JSON.parse(t)), [{ id: 'c1', answer: [{ name: 'app', base: 'main' }] }, { id: 'c2', error: sent[1] && JSON.parse(sent[1]).error }])
+  assert.match(JSON.parse(sent[1]).error, /no project nope/)
+  lines[0].onclose()
+  assert.equal(bridge.connected, false)
+  later[0]()
+  assert.equal(lines.length, 2, 'reconnected')
+  bridge.stop()
 }
 
 // YAP without the hooks: plain verbs, plain answers.

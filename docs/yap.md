@@ -112,23 +112,55 @@ daemon turns each into a YAP verb and the answer into the hook's fields:
 Another agent is one more adapter like it, or none: an agent that can run a command before and after its own
 tools can call `/yap` directly.
 
-## Remote: a platform drives the machine
+## Remote
 
-Where this is going: a web platform (Rinai first) has an agents menu, and the agents it starts run on the
-user's own computer, under the user's own Claude Code or Codex sign-in, instead of on metered API keys.
+A web client (Rinai first) reaches a machine through a **relay**: the machine's daemon dials out and holds one
+WebSocket open, so there is no inbound port and no tunnel, and it works behind any router. The relay is
+`relay/` in this repo, a Cloudflare Worker with one Durable Object per machine. It stores no project, session or
+message: only hashes of the machine's secret, its pairing code and the tokens it issued.
 
-The shape:
+### Pairing
 
-- The daemon dials out to the platform over one long-lived connection (WebSocket or SSE). No inbound port, no
-  tunnel, works behind any router.
-- Pairing: the user approves a code on the desktop once; the platform gets a device token it can revoke. The
-  local API token never leaves the machine.
-- The platform asks; the daemon decides. It can send a goal for a project the user registered, and read the
-  board, the merge log and the receipts. It can't name an arbitrary path, run a shell command or approve past a
-  check. Every goal still goes through the planner and waits for a start, unless the user marked that project
-  as trusted for the platform.
-- Peers stay local. Prompts, file contents and messages between sessions don't go up unless the user sends them.
+1. `yap pair <relay>` asks the relay for a machine id, a secret and a pairing code. The daemon keeps the id and
+   secret in `~/.yap/bridge.json` and connects. The command prints `<device>.<code>`.
+2. The user enters that string in the web client, which trades it for a token: `POST /claim {device, code}`
+   answers `{ "token" }`. A code works once, within ten minutes.
+3. `yap unpair` deletes the machine on the relay; every token it issued stops working.
 
-The risk is the whole point of the design above: a website that can make your PC run agents is a remote code
-execution channel. A compromised platform account must get no more than "queue a goal on a repo you already
-gave yap".
+The local API token never leaves the machine.
+
+### Relay HTTP
+
+| Call | Auth | |
+|---|---|---|
+| `POST /pair` | none | `{ device, secret, code }` for a new machine |
+| `POST /claim` | none | `{device, code}` → `{ token }` |
+| `GET /connect?device=<id>` | `Bearer <secret>` | the machine's WebSocket; a reconnect replaces the old one |
+| `POST /d/<device>/<verb>` | `Bearer <token>` | one remote verb, JSON body; the machine's answer, or 503 offline, 504 no answer in 25 s |
+| `DELETE /d/<device>` | `Bearer <secret>` | unpair |
+
+Down the socket the relay sends `{ id, verb, body }`; the machine answers `{ id, answer }` or `{ id, error }`
+(a 400 to the caller).
+
+### Remote verbs
+
+Every call names a `project`, one the user registered with yap, never a path. Sessions, spawns and notes
+outside registered projects don't exist as far as the web is concerned. The sender is the user: whoever holds a
+token was given it by the user.
+
+| Verb | Body | Answer |
+|---|---|---|
+| `projects` | | `[{ name, base }]` |
+| `sessions` | | live sessions in projects: `[{ project, id, name, at, files }]` |
+| `spawns` | | background sessions in projects, and how each ended |
+| `notes` | `project` | the project's board |
+| `note` | `project`, `text` | pins a note |
+| `say` | `project`, `text`, `to`? | messages a session there, or all of them |
+| `spawn` | `project`, `text` | starts a background session on the task: `{ id }` |
+
+Nothing else: no `join` or `edited` (a web client is not a peer in a working tree), no shell, no path, nothing
+the crew's desktop confirmation guards.
+
+The risk is the point of the shape: a website that can make your PC run agents is a remote code execution
+channel. A leaked token gets "start an agent in a repo you already gave yap" and no more, and `yap unpair` ends
+it.

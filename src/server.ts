@@ -8,6 +8,7 @@ import { build, home, port, url } from './env'
 import { Rinai } from './rinai'
 import { Sessions, VERBS, type Verb } from './sessions'
 import { SqliteStore } from './store'
+import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
 import { Herdr } from './herdr'
 import { LocalWorkspace } from './workspace'
@@ -41,6 +42,20 @@ setInterval(ping, 30_000)
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
 const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli())
+
+// The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
+// the web. Reloaded by `yap pair` and `yap unpair`.
+const pairingFile = join(home, 'bridge.json')
+const answerRemote = remote(sessions, () => store.projects())
+let bridge: Bridge | null = null
+function rebridge() {
+  bridge?.stop()
+  bridge = null
+  try {
+    bridge = new Bridge(JSON.parse(readFileSync(pairingFile, 'utf8')) as Pairing, answerRemote)
+  } catch {}
+}
+rebridge()
 
 // This server runs shell commands, so a web page must not be able to drive it:
 // refuse anything not addressed to localhost or sent from another origin.
@@ -160,6 +175,10 @@ Bun.serve({
     },
     '/api/sessions': api(() => sessions.list()),
     '/api/spawns': api(() => sessions.spawns()),
+    '/api/bridge': {
+      GET: api(() => (bridge ? { relay: bridge.pairing.relay, device: bridge.pairing.device, connected: bridge.connected } : {})),
+      POST: api(() => rebridge()),
+    },
     '/api/notes': {
       GET: api(req => sessions.notes(new URL(req.url).searchParams.get('cwd') ?? '')),
       POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),

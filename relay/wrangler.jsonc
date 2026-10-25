@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yap-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-21",
+  "durable_objects": { "bindings": [{ "name": "DEVICE", "class_name": "Device" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Device"] }],
+  "observability": { "enabled": true }
+}
