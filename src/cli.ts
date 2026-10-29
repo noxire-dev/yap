@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { build, home, url } from './env'
+import { SETTINGS, type Settings, build, home, settings, url } from './env'
 import { STALE, ago } from './sessions'
 import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
@@ -22,6 +22,7 @@ yap sessions        the Claude Code sessions the hooks have seen, and what each 
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
 yap spawns           the background sessions yap started, and how each ended
+yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
 yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
 yap unpair           forget the pairing, here and on the relay: every web client's token stops working
 yap bridge           whether this machine is paired, and connected
@@ -336,7 +337,20 @@ try {
         `${s.id}  ${ago(s.started).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.done ? (s.ok ? 'finished' : 'failed') : 'running'}  ${s.task.slice(0, 80)}`,
         ...(s.result ? s.result.split(/\r?\n/).map(l => `          ${l}`) : []),
       ].join('\n')
-    console.log(list.length ? list.map(show).join('\n') : 'nothing spawned since the daemon started')
+    console.log(list.length ? list.slice(0, 20).map(show).join('\n') : 'nothing spawned yet')
+  } else if (cmd === 'config') {
+    const [key, value] = rest
+    const now = settings()
+    if (!key) console.log(Object.entries(now).map(([k, v]) => `${k} ${v}`).join('\n'))
+    else if (!(key in SETTINGS)) throw new Error(`no setting ${key}; there are ${Object.keys(SETTINGS).join(', ')}`)
+    else if (value === undefined) console.log(now[key as keyof Settings])
+    else {
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 1) throw new Error(`${key} takes a whole number, 1 or more`)
+      mkdirSync(home, { recursive: true })
+      writeFileSync(join(home, 'config.json'), JSON.stringify({ ...now, [key]: n }, null, 2) + '\n')
+      console.log(`${key} ${n}`)
+    }
   } else if (cmd === 'note' || cmd === 'notes') {
     await daemon()
     const cwd = target()

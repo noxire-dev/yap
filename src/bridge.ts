@@ -94,7 +94,7 @@ export class Bridge {
       try {
         line.send(JSON.stringify({ id: m.id, answer: (await this.answer(m.verb, m.body)) ?? {} }))
       } catch (err: any) {
-        line.send(JSON.stringify({ id: m.id, error: String(err?.message ?? err) }))
+        line.send(JSON.stringify({ id: m.id, error: String(err?.message ?? err), status: err?.status }))
       }
     }
   }

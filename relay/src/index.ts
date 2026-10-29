@@ -21,6 +21,8 @@ interface Env {
 }
 
 const PAIRING = 10 * 60_000
+/** Wrong codes before the code is burned and the machine has to pair again. */
+const TRIES = 5
 /** How long a web call waits for the machine to answer. */
 const WAIT = 25_000
 
@@ -55,12 +57,19 @@ export class Device extends DurableObject<Env> {
     this.set('secret', await hash(secret))
     this.set('code', await hash(code))
     this.set('expires', String(Date.now() + PAIRING))
+    this.set('tries', '0')
   }
 
-  /** The code works once. */
+  /** The code works once, and only within TRIES guesses. */
   async claim(code: string) {
-    const ok = this.get('code') && this.get('code') === (await hash(code)) && Date.now() < Number(this.get('expires'))
-    if (!ok) return null
+    if (!this.get('code')) return null
+    const ok = this.get('code') === (await hash(code)) && Date.now() < Number(this.get('expires'))
+    if (!ok) {
+      const tries = Number(this.get('tries')) + 1
+      this.set('tries', String(tries))
+      if (tries >= TRIES) this.set('code', '')
+      return null
+    }
     this.set('code', '')
     const token = random(32)
     this.ctx.storage.sql.exec('INSERT INTO token (hash, at) VALUES (?, ?)', await hash(token), Date.now())
@@ -105,7 +114,7 @@ export class Device extends DurableObject<Env> {
   }
 
   async webSocketMessage(_: WebSocket, message: string | ArrayBuffer) {
-    let m: { id?: string; answer?: unknown; error?: string }
+    let m: { id?: string; answer?: unknown; error?: string; status?: number }
     try {
       m = JSON.parse(String(message))
     } catch {
@@ -114,7 +123,7 @@ export class Device extends DurableObject<Env> {
     const done = m.id ? this.waiting.get(m.id) : undefined
     if (!done) return
     this.waiting.delete(m.id!)
-    done(m.error ? { status: 400, body: { error: m.error } } : { status: 200, body: m.answer ?? {} })
+    done(m.error ? { status: m.status ?? 400, body: { error: m.error } } : { status: 200, body: m.answer ?? {} })
   }
 }
 

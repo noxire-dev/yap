@@ -56,7 +56,7 @@ export interface Note {
   text: string
 }
 
-/** A refusal from the relay or the machine. `status`: 400 bad call, 401 bad token, 503 machine offline, 504 no answer. */
+/** A refusal from the relay or the machine. `status`: 400 bad call, 401 bad token, 429 too many running, 503 machine offline, 504 no answer. */
 export class YapError extends Error {
   constructor(
     readonly status: number,
@@ -139,13 +139,15 @@ export class Yap {
     return this.verb<{ id: string }>('spawn', { project, text: task })
   }
 
-  /** Poll until the spawned session ends, and return how it did. */
+  /** Poll until the spawned session ends, and return how it did. Rides out the machine dropping off for a while. */
   async wait(id: string, { every = 3000, timeout = 30 * 60_000 } = {}) {
     const until = Date.now() + timeout
     for (;;) {
-      const [s] = await this.verb<Spawn[]>('spawns', { id })
-      if (!s) throw new YapError(400, `no spawn ${id} on this machine; the daemon may have restarted`)
-      if (s.done) return s
+      const s = await this.verb<Spawn[]>('spawns', { id }).then(
+        ([s]) => s ?? Promise.reject(new YapError(400, `no spawn ${id} on this machine`)),
+        e => (e instanceof YapError && (e.status === 503 || e.status === 504) ? null : Promise.reject(e)),
+      )
+      if (s?.done) return s
       if (Date.now() > until) throw new YapError(504, `spawn ${id} still running after ${timeout} ms`)
       await new Promise(r => setTimeout(r, every))
     }

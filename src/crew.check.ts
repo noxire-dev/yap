@@ -271,6 +271,20 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(woken, ['aaaa1111'])
   assert.match((await reg.yap('turn', { session: 'aaaa1111', cwd: '/repo', prompt: 'yap: a message from session @fetch' })).context!, /Session @fetch, which you started, finished: Added a retry/)
   assert.deepEqual(reg.spawns().map(s => [s.id, s.name, s.ok]), [[id, 'fetch', true]])
+
+  // No more than the setting run at once; what ran outlives the daemon, and what was running comes back failed.
+  let cap = 1
+  const hang: AgentRunner = { run: () => new Promise(() => {}) }
+  const next = new Sessions(ws, store, () => 2_000_000, undefined, hang, () => cap)
+  assert.deepEqual(next.spawns().map(s => [s.id, s.name, s.ok]), [[id, 'fetch', true]], 'kept across a restart')
+  await next.spawn({ cwd: '/repo', text: 'one' })
+  await assert.rejects(next.spawn({ cwd: '/repo', text: 'two' }), (e: any) => e.status === 429 && /yap config spawns/.test(e.message))
+  cap = 2
+  await next.spawn({ cwd: '/repo', text: 'two' })
+  const after = new Sessions(ws, store, () => 3_000_000, undefined, hang, () => cap)
+  assert.deepEqual(after.spawns().map(s => [s.task, s.ok, s.done]), [['two', false, 3_000_000], ['one', false, 3_000_000], ['add a retry to fetchUser', true, 1_000_000]])
+  assert.match(after.spawns()[0].result!, /yap restarted while it ran/)
+  await after.spawn({ cwd: '/repo', text: 'three' })
 }
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
@@ -320,7 +334,8 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
     const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 })
     if (url.endsWith('/claim')) return ok({ token: 't0k' })
     if (url.endsWith('/spawn')) return ok({ id: 'ab12cd34' })
-    if (url.endsWith('/spawns')) return ok([{ id: body.id, done: ++polls >= 2 ? 5 : undefined, ok: true, result: 'did it' }])
+    if (url.endsWith('/spawns'))
+      return ++polls === 1 ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 }) : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it' }])
     return new Response(JSON.stringify({ error: 'no project nope' }), { status: 400 })
   }) as any
   const yap = await Yap.claim('https://relay.test/', 'dev1.c0de', relay)
@@ -329,7 +344,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const { id } = await again.spawn('app', 'tidy')
   assert.deepEqual(calls[1], ['https://relay.test/d/dev1/spawn', { project: 'app', text: 'tidy' }, 'Bearer t0k'])
   assert.equal((await again.wait(id, { every: 0 })).result, 'did it')
-  assert.equal(polls, 2)
+  assert.equal(polls, 3, 'rode out a 503')
   await assert.rejects(again.notes('nope'), (e: any) => e instanceof YapError && e.status === 400 && /no project nope/.test(e.message))
 }
 

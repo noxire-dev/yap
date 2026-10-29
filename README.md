@@ -33,6 +33,7 @@ yap                   # the crew's board; the repo becomes a project, the daemon
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
 | `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
+| `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
 | `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
 | `yap` | The crew's board. Closing it leaves the crew running. |
@@ -75,7 +76,8 @@ grouped by repo, worktrees included, and the crew counts as one more worker.
 - `yap spawn <text>` starts a background Claude Code session in this repo on that task. It is a peer like the
   others: it hears about them, they hear about it, and `yap say` reaches it. Nobody can answer its questions, so
   it makes its own calls under auto mode. Its final message comes back to the session that started it, or to
-  `yap spawns` when you started it from your terminal. A daemon restart loses track of running ones.
+  `yap spawns` when you started it from your terminal. Three run at once unless `yap config spawns <n>` says
+  otherwise; past that, `spawn` is refused with a 429. A daemon restart marks the ones it was running as failed.
 
 Shell commands count as edits too: after each one, files `git status` shows changed since it started are
 recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.

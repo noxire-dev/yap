@@ -150,7 +150,6 @@ export function ago(ts: number, now = Date.now()) {
 export class Sessions {
   private all = new Map<string, Session>()
   private roots = new Map<string, { top: string; repo: string }>()
-  // ponytail: in memory, and a daemon restart orphans what is running; persist them when spawns outlive a session.
   private spawned = new Map<string, Spawn>()
 
   constructor(
@@ -159,11 +158,23 @@ export class Sessions {
     private now = Date.now,
     private panes: Panes = { wake: async () => false },
     private runner?: AgentRunner,
+    /** How many background sessions may run at once: `spawns` in ~/.yap/config.json. */
+    private cap = () => 3,
   ) {
     for (const row of store.sessions()) {
       const s = JSON.parse(row)
       this.all.set(s.id, { name: '', ...s, files: new Map(s.files), warned: new Map(s.warned) })
     }
+    // What was running when the daemon stopped is no longer ours to hear from.
+    for (const row of store.spawns()) {
+      const sp: Spawn = JSON.parse(row)
+      this.spawned.set(sp.id, sp)
+      if (!sp.done) this.keep(Object.assign(sp, { done: now(), ok: false, result: 'yap restarted while it ran; whatever it did is in the working tree' }))
+    }
+  }
+
+  private keep(sp: Spawn) {
+    this.store.saveSpawn(sp.id, JSON.stringify(sp))
   }
 
   /** Into the store, so a daemon restart keeps who is live, what each edited and what waits for them. */
@@ -173,7 +184,7 @@ export class Sessions {
 
   private forget(id: string) {
     const sp = this.spawned.get(id)
-    if (sp) sp.name ||= this.all.get(id)?.name ?? ''
+    if (sp && !sp.name) this.keep(Object.assign(sp, { name: this.all.get(id)?.name ?? '' }))
     this.all.delete(id)
     this.store.dropSession(id)
   }
@@ -323,15 +334,18 @@ export class Sessions {
    * others, they hear about it, and it can be messaged. Its final message goes back to whoever asked: a session
    * gets it in its inbox, the user reads it with `yap spawns`.
    */
-  // ponytail: no cap on how many run at once; add one when a web client can ask.
   async spawn(m: { from?: string; cwd: string; text: string }) {
     const task = m.text.trim()
     if (!task) throw new Error('say what the session should do')
     if (!this.runner) throw new Error('this daemon cannot start agents')
+    const running = [...this.spawned.values()].filter(sp => !sp.done).length
+    if (running >= this.cap())
+      throw Object.assign(new Error(`${running} background sessions are running, the most yap starts at once; raise it with \`yap config spawns <n>\``), { status: 429 })
     const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const id = randomUUID()
     const sp: Spawn = { id, cwd: m.cwd, task, from: s?.id ?? '', started: this.now(), name: '' }
     this.spawned.set(id, sp)
+    this.keep(sp)
     const who = s ? `session @${this.tag(s)}, which asked for it` : 'the user, who asked for it'
     const prompt = `${task}\n\nyap started you in the background for ${this.label(s)}. Nobody is watching this session and nobody can answer a question: make the calls yourself and say what you decided. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
     void this.runner.run({ cwd: m.cwd, prompt, peer: id }).then(
@@ -343,6 +357,7 @@ export class Sessions {
 
   private async finished(sp: Spawn, ok: boolean, text: string) {
     Object.assign(sp, { done: this.now(), ok, result: text.trim(), name: sp.name || this.all.get(sp.id)?.name || '' })
+    this.keep(sp)
     const s = this.all.get(sp.from)
     if (!s) return
     s.inbox.push(`Session @${sp.name || sp.id.slice(0, 8)}, which you started, ${ok ? 'finished' : 'failed'}: ${sp.result!.slice(0, 2000)}`)

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ClaudeCli } from './agent'
 import { Crew } from './crew'
-import { build, home, port, url } from './env'
+import { build, home, port, settings, url } from './env'
 import { Rinai } from './rinai'
 import { PROTOCOL, Sessions, VERBS, type Verb } from './sessions'
 import { SqliteStore } from './store'
@@ -41,7 +41,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli())
+const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli(), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.
@@ -89,7 +89,7 @@ const api = (fn: Handler, quiet = false) => async (req: Request & { params: Reco
     if (req.method !== 'GET' && !quiet) changed()
     return Response.json(out)
   } catch (e: any) {
-    return Response.json({ error: String(e?.message ?? e) }, { status: 400 })
+    return Response.json({ error: String(e?.message ?? e) }, { status: e?.status ?? 400 })
   }
 }
 

@@ -95,6 +95,9 @@ export interface Store {
   sessions(): string[]
   saveSession(id: string, data: string): void
   dropSession(id: string): void
+  /** Background sessions yap started, each an opaque JSON blob, oldest first. */
+  spawns(): string[]
+  saveSpawn(id: string, data: string): void
 }
 
 export interface Ran {

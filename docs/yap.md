@@ -38,7 +38,7 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is the user. |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
-| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, from the user, to `yap spawns`. |
+| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, from the user, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 
@@ -125,7 +125,7 @@ message: only hashes of the machine's secret, its pairing code and the tokens it
 1. `yap pair <relay>` asks the relay for a machine id, a secret and a pairing code. The daemon keeps the id and
    secret in `~/.yap/bridge.json` and connects. The command prints `<device>.<code>`.
 2. The user enters that string in the web client, which trades it for a token: `POST /claim {device, code}`
-   answers `{ "token" }`. A code works once, within ten minutes.
+   answers `{ "token" }`. A code works once, within ten minutes and five guesses.
 3. `yap unpair` deletes the machine on the relay; every token it issued stops working.
 
 The local API token never leaves the machine.
@@ -142,11 +142,11 @@ The local API token never leaves the machine.
 | `GET /` | none | `{ protocol: "yap", version }` |
 
 Down the socket the relay sends `{ id, verb, body }`; the machine answers `{ id, answer }` or `{ id, error }`
-(a 400 to the caller).
+(a 400 to the caller, or the `status` the machine sent with it).
 
 Errors are `{ "error": "<why>" }` with a status: 400 a bad call (unknown verb or project, a wrong field), 401 a
-bad secret or token, 403 a wrong or used pairing code, 404 no such device, 503 the machine is offline, 504 it
-didn't answer. Any origin may call the relay: auth is a bearer token, never a cookie.
+bad secret or token, 403 a wrong or used pairing code, 404 no such device, 429 too many background sessions
+running, 503 the machine is offline, 504 it didn't answer. A refusal from the machine keeps its status. Any origin may call the relay: auth is a bearer token, never a cookie.
 
 ### Remote verbs
 

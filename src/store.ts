@@ -14,6 +14,7 @@ export class SqliteStore implements Store {
       id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, ticket_id INTEGER,
       ts INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`)
     db.run('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
+    db.run('CREATE TABLE IF NOT EXISTS spawn (n INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, ts INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL)')
   }
 
@@ -80,4 +81,8 @@ export class SqliteStore implements Store {
   sessions = () => (this.db.query('SELECT data FROM session').all() as { data: string }[]).map(r => r.data)
   saveSession = (id: string, data: string) => void this.db.query('INSERT OR REPLACE INTO session (id, data) VALUES (?, ?)').run(id, data)
   dropSession = (id: string) => void this.db.query('DELETE FROM session WHERE id = ?').run(id)
+
+  spawns = () => (this.db.query('SELECT data FROM spawn ORDER BY n').all() as { data: string }[]).map(r => r.data)
+  saveSpawn = (id: string, data: string) =>
+    void this.db.query('INSERT INTO spawn (id, data) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data').run(id, data)
 }

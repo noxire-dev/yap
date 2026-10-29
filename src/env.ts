@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -6,6 +6,22 @@ export const home = process.env.YAP_HOME ?? join(homedir(), '.yap')
 export const port = Number(process.env.YAP_PORT ?? 4170)
 // 127.0.0.1, not localhost: Windows tries ::1 first and the daemon only binds v4.
 export const url = `http://127.0.0.1:${port}`
+
+/** What a user can set with `yap config <key> <value>`, and what each is until they do. */
+export const SETTINGS = {
+  /** Background sessions (`spawn`) that may run at once. Each is a Claude Code session on the user's subscription. */
+  spawns: 3,
+}
+export type Settings = typeof SETTINGS
+
+/** ~/.yap/config.json over the defaults. Read on every use, so a change needs no restart. */
+export function settings(): Settings {
+  let saved: Partial<Settings> = {}
+  try {
+    saved = JSON.parse(readFileSync(join(home, 'config.json'), 'utf8'))
+  } catch {}
+  return { ...SETTINGS, ...saved }
+}
 
 /** Changes whenever the source does, so a client can tell it is talking to a daemon running older code. */
 export const build = Math.max(...readdirSync(import.meta.dir).map(f => statSync(join(import.meta.dir, f)).mtimeMs))
