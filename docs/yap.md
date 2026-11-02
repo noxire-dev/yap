@@ -53,11 +53,16 @@ Four more read the repo `cwd` sits in, for a harness or a tool, and change nothi
 
 ## Answers
 
-An answer has up to three parts, and an agent maps each to what it has:
+An answer has up to four parts, and an agent maps each to what it has:
 
 - `context`: text for the model only. Peers, warnings, messages. Never shown to the user as if they typed it.
 - `notice`: one line for the user (`yap: src/auth.ts was just edited by @auth`).
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
+- `messages`: the messages `context` just delivered, as data, for a harness to show. The model already has them
+  in `context`; a harness doesn't parse that. Each is
+  `{ kind: "say" | "note" | "spawn", from, sender, text, at, ok? }`: `from` as the model reads it
+  (`session @auth`, `the user`), `sender` the sending session's id (`""` for the user), `ok` on a spawn's end.
+  A message is delivered once.
 
 An agent that can't receive answers on some verb still sends it: the daemon's record stays right, and the
 messages wait for the next verb that can answer.
@@ -111,7 +116,7 @@ curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
 | `join` | `session`, `name` | a session registers (any verb from a new id) |
 | `leave` | `session`, `name` | it leaves, or goes 2 hours silent |
 | `edited` | `session`, `name`, `path` (relative to its tree) | it edits a file, or a shell command of its does |
-| `message` | `session` (the one it is for), `name`, `from`, `text` | something is queued for it: a `say`, a note, a spawn it started ending |
+| `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending |
 | `note` | `id`, `author`, `text` | a note goes on the board |
 
 Every event also has `repo`, the repo's main checkout, normalized (forward slashes, lowercase on Windows). The

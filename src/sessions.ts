@@ -35,8 +35,21 @@ const checkout = (repo: string) => (repo.endsWith('/.git') ? dirname(repo) : rep
 export type YapEvent =
   | { type: 'join' | 'leave'; repo: string; session: string; name: string }
   | { type: 'edited'; repo: string; session: string; name: string; path: string }
-  | { type: 'message'; repo: string; session: string; name: string; from: string; text: string }
+  | ({ type: 'message'; repo: string; session: string; name: string } & Message)
   | { type: 'note'; repo: string; id: number; author: string; text: string }
+
+/** Something left for a session: a `say` from a peer or the user, a new `note`, or the end of a `spawn` it started. */
+export interface Message {
+  kind: 'say' | 'note' | 'spawn'
+  /** Who, as the model reads it: `session @auth`, `the user`. */
+  from: string
+  /** The sending session's id, `''` for the user. */
+  sender: string
+  text: string
+  at: number
+  /** spawn: whether it finished or failed. */
+  ok?: boolean
+}
 
 export const norm = (p: string) => {
   const r = resolve(p).replace(/\\/g, '/')
@@ -63,7 +76,8 @@ interface Session {
   /** File to the other session's edit time it was already warned about. */
   warned: Map<string, number>
   /** Messages from other sessions or the user, delivered on its next hook call. */
-  inbox: string[]
+  /** With `line`, the message as the model reads it. */
+  inbox: (Message & { line: string })[]
   /** When its running shell command started, to tell which files the command changed. */
   shell: number
   /** The directory it last reported from; a session that moves (into a worktree, say) is re-rooted. */
@@ -140,6 +154,8 @@ export interface Answer {
   notice?: string
   /** will-run only: don't run it, and this is why. */
   deny?: string
+  /** The messages `context` delivered, for a harness to show; the model already has them. */
+  messages?: Message[]
 }
 
 export const VERBS = ['join', 'turn', 'will-edit', 'edited', 'will-run', 'ran', 'idle', 'leave'] as const
@@ -181,7 +197,9 @@ export class Sessions {
   ) {
     for (const row of store.sessions()) {
       const s = JSON.parse(row)
-      this.all.set(s.id, { name: '', ...s, files: new Map(s.files), warned: new Map(s.warned) })
+      // An inbox saved before messages had a shape is plain lines.
+      const inbox = (s.inbox ?? []).map((m: any) => (typeof m === 'string' ? { kind: 'say', from: '', sender: '', text: m, at: 0, line: m } : m))
+      this.all.set(s.id, { name: '', ...s, files: new Map(s.files), warned: new Map(s.warned), inbox })
     }
     // What was running when the daemon stopped is no longer ours to hear from.
     for (const row of store.spawns()) {
@@ -201,10 +219,11 @@ export class Sessions {
     for (const fn of this.listeners) fn(e)
   }
 
-  /** Queue `line` for `o`, and tell the listeners whom it is for. */
-  private post(o: Session, line: string, from: string, text: string) {
-    o.inbox.push(line)
-    this.emit({ type: 'message', repo: checkout(o.repo), session: o.id, name: o.name, from, text })
+  /** Queue `m` for `o`, `line` for its model, and tell the listeners whom it is for. */
+  private post(o: Session, m: Omit<Message, 'at'>, line: string) {
+    const msg = { ...m, at: this.now() }
+    o.inbox.push({ ...msg, line })
+    this.emit({ type: 'message', repo: checkout(o.repo), session: o.id, name: o.name, ...msg })
   }
 
   private keep(sp: Spawn) {
@@ -330,7 +349,7 @@ export class Sessions {
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const n = this.store.addNote({ repo, ts: this.now(), author: this.label(s), text })
     const them = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id)
-    for (const o of them) this.post(o, `New note on the board, #${n.id} from ${n.author}: ${text}`, n.author, text)
+    for (const o of them) this.post(o, { kind: 'note', from: n.author, sender: s?.id ?? '', text }, `New note on the board, #${n.id} from ${n.author}: ${text}`)
     this.save(s, ...them)
     this.emit({ type: 'note', repo: checkout(repo), id: n.id, author: n.author, text })
     return n
@@ -367,7 +386,7 @@ export class Sessions {
     const them = exact.length ? exact : live.filter(o => !to || o.name.startsWith(to) || o.id.startsWith(to))
     if (!them.length) throw new Error(to ? `no live session @${to} in this repo` : 'nobody else is working in this repo')
     if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => `@${this.tag(o)}`).join(' or ')}; give more of it`)
-    for (const o of them) this.post(o, `From ${this.label(s)}: ${text}`, this.label(s), text)
+    for (const o of them) this.post(o, { kind: 'say', from: this.label(s), sender: s?.id ?? '', text }, `From ${this.label(s)}: ${text}`)
     this.save(s, ...them)
     const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + (s ? `session @${this.tag(s)}` : 'the user'))))
     return { to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
@@ -405,7 +424,8 @@ export class Sessions {
     const s = this.all.get(sp.from)
     if (!s) return
     const said = sp.result!.slice(0, 2000)
-    this.post(s, `Session @${sp.name || sp.id.slice(0, 8)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`, `session @${sp.name || sp.id.slice(0, 8)}`, said)
+    const from = `session @${sp.name || sp.id.slice(0, 8)}`
+    this.post(s, { kind: 'spawn', from, sender: sp.id, text: said, ok }, `${from[0].toUpperCase()}${from.slice(1)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
     this.save(s)
     await this.panes.wake(s.id, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
   }
@@ -415,11 +435,12 @@ export class Sessions {
     return [...this.spawned.values()].reverse().map(sp => ({ ...sp, id: sp.id.slice(0, 8), name: sp.name || this.all.get(sp.id)?.name || '' }))
   }
 
-  /** Everything waiting for `s`, emptied. */
-  private drain(s: Session) {
+  /** Everything waiting for `s`, emptied, as the model reads it; the messages themselves go into `got`. */
+  private drain(s: Session, got: Message[]) {
     if (!s.inbox.length) return ''
-    const lines = s.inbox.splice(0)
-    return `Messages for you through yap:\n${lines.map(l => `- ${l}`).join('\n')}\nAnswer a session with \`yap say @<session> <text>\` if it needs one; tell the user about anything that changes your plan.`
+    const all = s.inbox.splice(0)
+    got.push(...all.map(({ line, ...m }) => m))
+    return `Messages for you through yap:\n${all.map(m => `- ${m.line}`).join('\n')}\nAnswer a session with \`yap say @<session> <text>\` if it needs one; tell the user about anything that changes your plan.`
   }
 
   /** Live sessions, for `yap sessions`. */
@@ -483,26 +504,32 @@ export class Sessions {
   private async handle(verb: Verb, call: Call): Promise<Answer> {
     const s = await this.touch(call)
     if (!s) return {}
+    const got: Message[] = []
+    const a = await this.answer(verb, call, s, () => this.drain(s, got))
+    return got.length ? { ...a, messages: got } : a
+  }
+
+  private async answer(verb: Verb, call: Call, s: Session, drain: () => string): Promise<Answer> {
     const both = (...parts: string[]) => parts.filter(Boolean).join('\n\n')
     const arrived = (mail: string): Answer => (mail ? { context: mail, notice: 'yap: a message arrived' } : {})
 
     if (verb === 'join') {
       if (call.name && !s.name) s.name = this.unique(s, slug(call.name))
-      return { context: both(this.overview(s), this.drain(s)) }
+      return { context: both(this.overview(s), drain()) }
     }
 
     // About to end its turn: what came in while it worked is read now, not after the user's next prompt. Once a
     // turn: a reply that lands while it carries on waits, so two sessions can't keep each other talking.
-    if (verb === 'idle') return call.continuing ? {} : arrived(this.drain(s))
+    if (verb === 'idle') return call.continuing ? {} : arrived(drain())
 
-    if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(WOKEN, this.drain(s)) }
+    if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(WOKEN, drain()) }
     if (verb === 'turn') {
       const first = String(call.prompt ?? '').trim().split(/\r?\n/)[0]
       if (!MARKUP.test(first)) s.news = this.now()
       // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
       // neighbour merely reading, costs no context.
       const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
-      return { context: both(moved ? this.overview(s) : '', this.drain(s)) }
+      return { context: both(moved ? this.overview(s) : '', drain()) }
     }
 
     if (verb === 'ran') {
@@ -518,7 +545,7 @@ export class Sessions {
 
     if (verb === 'will-run') {
       s.shell = this.now()
-      const mail = this.drain(s)
+      const mail = drain()
       const risk = gitRisk(String(call.command ?? ''))
       const recent = (o: Session) => [...o.files].filter(([, at]) => this.now() - at < RECENT).map(([f]) => f)
       const busy = risk ? this.others(s).filter(o => o.top === s.top && recent(o).length) : []
@@ -545,7 +572,7 @@ export class Sessions {
     }
 
     // will-edit
-    const mail = this.drain(s)
+    const mail = drain()
     if (!path) return arrived(mail)
     const file = norm(resolve(call.cwd ?? '', path))
     const hits = this.others(s)

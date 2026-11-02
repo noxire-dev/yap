@@ -319,6 +319,16 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(await reg.repoOf('/wt/src'), repo, 'a worktree belongs to its repo')
   assert.deepEqual((await reg.peers('/wt')).map(s => s.name), ['planner'])
   assert.deepEqual((await reg.peers('/elsewhere')).map(s => s.name), [])
+
+  // The answer that delivers messages carries them as data too, for the harness to show.
+  const got = await reg.yap('idle', { session: 'ide-1', cwd: '/repo' })
+  assert.deepEqual(got.messages!.map(m => [m.kind, m.from, m.sender, m.text]), [['say', 'session @planner-2', 'ide-2', 'x.ts is mine'], ['note', 'the user', '', 'freeze']])
+  assert.match(got.context!, /From session @planner-2: x\.ts is mine/)
+  assert.equal((await reg.yap('idle', { session: 'ide-1', cwd: '/repo' })).messages, undefined, 'once')
+  // An inbox saved as plain lines, before messages had a shape, still arrives.
+  store.saveSession('old', JSON.stringify({ id: 'old', name: '', top: norm('/repo'), repo: norm('/repo/.git'), started: 1, at: 1_000_000, told: 0, files: [], warned: [], inbox: ['From the user: hi'], shell: 0, cwd: '/repo', news: 1 }))
+  const old = await new Sessions(ws, store, () => 1_000_000).yap('idle', { session: 'old', cwd: '/repo' })
+  assert.deepEqual([old.messages![0].text, /- From the user: hi/.test(old.context!)], ['From the user: hi', true])
 }
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
