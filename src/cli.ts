@@ -31,6 +31,9 @@ yap notes           this repo's board
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 yap serve           the daemon in the foreground`
 
+/** The session a command speaks as: the harness's YAP_SESSION, else Claude Code's own id; none is the user. */
+const me = process.env.YAP_SESSION || process.env.CLAUDE_CODE_SESSION_ID
+
 // Written by the daemon on its first start; read on every call, so a fresh daemon's token is picked up.
 const auth = (): Record<string, string> => {
   try {
@@ -297,13 +300,13 @@ try {
   } else if (cmd === 'say') {
     const to = rest[0]?.startsWith('@') ? rest.shift() : undefined
     await daemon()
-    const r = await api.send('POST', '/api/say', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), to, text: rest.join(' ') })
+    const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' ') })
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
     console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
   } else if (cmd === 'spawn') {
     await daemon()
-    const r = await api.send('POST', '/yap/spawn', { session: process.env.CLAUDE_CODE_SESSION_ID, cwd: target(), text: rest.join(' ') })
-    console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${process.env.CLAUDE_CODE_SESSION_ID ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
+    const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' ') })
+    console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${me ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
   } else if (cmd === 'pair') {
     const relay = String(rest[0] ?? '').replace(/\/$/, '')
     if (!/^https?:\/\//.test(relay)) throw new Error('yap pair <relay url>, like https://relay.example.com')
@@ -358,7 +361,7 @@ try {
       await api.send('DELETE', `/api/notes/${Number(String(rest[1]).replace(/^#/, ''))}`, { cwd })
       console.log(`took #${String(rest[1]).replace(/^#/, '')} down`)
     } else if (cmd === 'note') {
-      const n = await api.send('POST', '/api/notes', { from: process.env.CLAUDE_CODE_SESSION_ID, cwd, text: rest.join(' ') })
+      const n = await api.send('POST', '/api/notes', { from: me, cwd, text: rest.join(' ') })
       console.log(`pinned #${n.id}: every session in this repo sees it`)
     } else {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)

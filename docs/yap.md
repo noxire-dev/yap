@@ -27,7 +27,7 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 
 | Verb | When the agent sends it | What the daemon does |
 |---|---|---|
-| `join` | A conversation starts | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. |
+| `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. |
 | `turn` | The user sends a prompt | Answers with what peers did since it last heard, and nothing at all when nothing moved. Prompts that are harness markup (`<agent-message …>`) don't count as news. |
 | `will-edit` | Before a file write (`path`) | If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
@@ -41,6 +41,15 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, from the user, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
+
+Four more read the repo `cwd` sits in, for a harness or a tool, and change nothing:
+
+| Verb | Answers |
+|---|---|
+| `hello` | `{ protocol: "yap", version, verbs }` |
+| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files }]`, `files` relative to `top` |
+| `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
+| `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
 
 ## Answers
 
@@ -81,7 +90,7 @@ answer then carries the message and instructions in `context`. Rules:
 ```
 
 The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
-`prompt` (turn), `text` and `to` (say), `text` (note and spawn), `id` (unnote). The answer is `{}` or any of
+`prompt` (turn), `name` (join), `text` and `to` (say), `text` (note and spawn), `id` (unnote). The answer is `{}` or any of
 `{ "context", "notice", "deny" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
 verb or a bad argument is a 400 with `{ "error" }`. A missing or wrong token is a 403. `GET /yap` answers
 `{ protocol, version, verbs }`.
@@ -91,6 +100,38 @@ curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
   --data-binary '{"session":"codex-2","cwd":"'"$PWD"'","command":"git checkout main"}' \
   http://127.0.0.1:4170/yap/will-run
 ```
+
+## Events
+
+`GET /yap/events?cwd=<dir>` (with `x-yap-token`) is a server-sent event stream of what happens in the repo
+`<dir>` sits in; without `cwd`, in every repo. Each event is named by its `type` and carries JSON:
+
+| `type` | Fields | When |
+|---|---|---|
+| `join` | `session`, `name` | a session registers (any verb from a new id) |
+| `leave` | `session`, `name` | it leaves, or goes 2 hours silent |
+| `edited` | `session`, `name`, `path` (relative to its tree) | it edits a file, or a shell command of its does |
+| `message` | `session` (the one it is for), `name`, `from`, `text` | something is queued for it: a `say`, a note, a spawn it started ending |
+| `note` | `id`, `author`, `text` | a note goes on the board |
+
+Every event also has `repo`, the repo's main checkout, normalized (forward slashes, lowercase on Windows). The
+stream starts empty: read `sessions` first for who is already there.
+
+## Bringing your own harness
+
+A harness (an IDE, an agent runner) that hosts agents can speak YAP for them without Claude Code's hooks or
+Herdr:
+
+1. Give each agent a stable session id. Send `join` with it, and a `name` if the harness has one for it.
+2. Send `turn` with each user prompt, `will-edit`/`edited` around each file write, `will-run`/`ran` around each
+   shell command, `idle` before the agent ends its turn, and `leave` when the conversation closes.
+3. Put each answer's `context` in front of the model, show `notice` to the user, and don't run a command that
+   came back with `deny`; give the model the reason instead.
+4. Set `YAP_SESSION=<id>` in the agent's shell, so the `yap say`, `yap note` and `yap spawn` it runs speak as
+   it and not as the user.
+5. Be the pane host: on a `message` event for one of your sessions that sits idle, start a turn with the prompt
+   `yap: a message from <from>`. Its `turn` answer carries the message and tells the model the user didn't type
+   it. A busy session needs nothing: the message comes with its next answer.
 
 ## Claude Code's adapter
 
@@ -110,8 +151,7 @@ daemon turns each into a YAP verb and the answer into the hook's fields:
 
 `context` becomes `additionalContext`, `notice` `systemMessage`, `deny` `permissionDecision: deny` with the reason.
 
-Another agent is one more adapter like it, or none: an agent that can run a command before and after its own
-tools can call `/yap` directly.
+Another agent is one more adapter like it, or none (above): a harness can call `/yap` directly.
 
 ## Remote
 

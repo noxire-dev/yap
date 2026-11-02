@@ -84,6 +84,10 @@ recorded as that session's. Two sessions running shell commands at the same inst
 `yap` has to be on PATH for sessions to talk (`~/.bun/bin` after `bun link`).
 The crew's own agents run with `YAP_AGENT=1` and stay out of the registry.
 
+Another harness (your own IDE, say) can speak YAP for its agents without the hooks: it posts the verbs,
+listens on `GET /yap/events`, and sets `YAP_SESSION` in each agent's shell. See
+[docs/yap.md](docs/yap.md#bringing-your-own-harness).
+
 ## Remote
 
 A web client can reach this machine through a relay, so a site like Rinai can start agents on your own computer

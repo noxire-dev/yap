@@ -287,6 +287,40 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await after.spawn({ cwd: '/repo', text: 'three' })
 }
 
+// A harness: names its sessions, reads one repo's peers, and hears what happens there as it happens.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const heard: any[] = []
+  const off = reg.listen(e => heard.push(e))
+  await reg.yap('join', { session: 'ide-1', cwd: '/repo', name: 'Planner' })
+  await reg.yap('join', { session: 'ide-2', cwd: '/wt', name: 'planner' })
+  await reg.yap('edited', { session: 'ide-2', cwd: '/wt', path: 'src/x.ts' })
+  await reg.yap('join', { session: 'far', cwd: '/elsewhere' })
+  await reg.say({ from: 'ide-2', cwd: '/wt', to: 'planner', text: 'x.ts is mine' })
+  await reg.note({ cwd: '/repo', text: 'freeze' })
+  await reg.yap('leave', { session: 'ide-2' })
+  off()
+  await reg.yap('leave', { session: 'far' })
+  const repo = norm('/repo')
+  assert.deepEqual(heard.map(e => [e.type, e.session ?? e.id, e.name ?? e.author, e.path ?? e.text]), [
+    ['join', 'ide-1', 'planner', undefined],
+    ['join', 'ide-2', 'planner-2', undefined],
+    ['edited', 'ide-2', 'planner-2', 'src/x.ts'],
+    ['join', 'far', '', undefined],
+    ['message', 'ide-1', 'planner', 'x.ts is mine'],
+    ['message', 'ide-1', 'planner', 'freeze'],
+    ['message', 'ide-2', 'planner-2', 'freeze'],
+    ['note', 1, 'the user', 'freeze'],
+    ['leave', 'ide-2', 'planner-2', undefined],
+  ])
+  assert.equal(heard[4].from, 'session @planner-2')
+  assert.equal(heard[4].repo, repo)
+  assert.equal(await reg.repoOf('/wt/src'), repo, 'a worktree belongs to its repo')
+  assert.deepEqual((await reg.peers('/wt')).map(s => s.name), ['planner'])
+  assert.deepEqual((await reg.peers('/elsewhere')).map(s => s.name), [])
+}
+
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
 // line answers what comes down it and comes back after a drop.
 {

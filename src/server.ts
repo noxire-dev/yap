@@ -7,6 +7,9 @@ import { Crew } from './crew'
 import { build, home, port, settings, url } from './env'
 import { Rinai } from './rinai'
 import { PROTOCOL, Sessions, VERBS, type Verb } from './sessions'
+
+/** Everything `/yap/<verb>` takes: the agent's own verbs, then the ones about the repo. */
+const ALL = [...VERBS, 'say', 'note', 'unnote', 'spawn', 'hello', 'sessions', 'notes', 'spawns']
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
@@ -160,7 +163,26 @@ Bun.serve({
       },
     },
     // YAP (docs/yap.md): the same as the hooks, in plain verbs and answers, for any agent.
-    '/yap': api(() => ({ ...PROTOCOL, verbs: [...VERBS, 'say', 'note', 'unnote', 'spawn'] })),
+    '/yap': api(() => ({ ...PROTOCOL, verbs: ALL })),
+    // What happens in a repo as it happens, for a harness: who joins, leaves and edits, notes, and messages to
+    // wake its sessions for. `?cwd=` keeps it to the repo that directory sits in.
+    '/yap/events': async (req, server) => {
+      if (denied(req)) return new Response('forbidden', { status: 403 })
+      server.timeout(req, 0)
+      const cwd = new URL(req.url).searchParams.get('cwd')
+      const repo = cwd ? await sessions.repoOf(cwd) : null
+      let off = () => {}
+      const body = new ReadableStream({
+        start(c) {
+          c.enqueue(': yap\n\n')
+          off = sessions.listen(e => {
+            if (!repo || e.repo === repo) c.enqueue(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
+          })
+        },
+        cancel: () => off(),
+      })
+      return new Response(body, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
+    },
     '/yap/:verb': {
       POST: api((req, b) => {
         const verb = req.params.verb
@@ -170,8 +192,12 @@ Bun.serve({
         if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
         if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
         if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? '') })
-        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${[...VERBS, 'say', 'note', 'unnote', 'spawn'].join(', ')}`)
-        return sessions.yap(verb as Verb, { session: str('session'), cwd, path: str('path'), command: str('command'), prompt: str('prompt') })
+        if (verb === 'hello') return { ...PROTOCOL, verbs: ALL }
+        if (verb === 'sessions') return sessions.peers(cwd)
+        if (verb === 'notes') return sessions.notes(cwd)
+        if (verb === 'spawns') return sessions.spawnsIn(cwd)
+        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${ALL.join(', ')}`)
+        return sessions.yap(verb as Verb, { session: str('session'), cwd, path: str('path'), command: str('command'), prompt: str('prompt'), name: str('name') })
       }, true),
     },
     '/api/sessions': api(() => sessions.list()),
