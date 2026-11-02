@@ -23,9 +23,15 @@ GitHub CLI signed in too.
 ```
 bun install
 bun link              # puts `yap` in bun's global bin (~/.bun/bin, which has to be on PATH)
-yap hooks --install   # every Claude Code session started from now on reports to the daemon
 cd ~/some/repo
 yap                   # the crew's board; the repo becomes a project, the daemon starts if it isn't running
+```
+
+Then the Claude Code plugin, which carries the hooks and starts the daemon with each session:
+
+```
+claude plugin marketplace add noxire-dev/yap
+claude plugin install yap@yap
 ```
 
 | Command | |
@@ -43,15 +49,19 @@ yap                   # the crew's board; the repo becomes a project, the daemon
 | `yap serve` | Daemon in the foreground. |
 
 State lives in `~/.yap` (`YAP_HOME`): the database, worktrees, and `daemon.log`. The daemon listens on
-`127.0.0.1:4170` (`YAP_PORT`). A daemon running older code than the `yap` you launch is restarted, unless an
-agent is mid-ticket.
+`127.0.0.1:4170` (`YAP_PORT`). A daemon running older code than the `yap` you launch is restarted (see Parallel sessions), unless an
+agent is mid-ticket or a spawn is running.
 
 ## Parallel sessions
 
-Every Claude Code session on this machine reports to the daemon through six hooks in `~/.claude/settings.json`
-(a `curl` to `127.0.0.1:4170/api/hook/*`; silent when the daemon is down). `yap hooks --install` puts them
-there, replacing earlier ones and keeping a `.bak-yap` copy; `yap hooks` prints them instead. Sessions are
+Every Claude Code session on this machine reports to the daemon through six hooks that come with the plugin
+(`hooks/hooks.json`: a `curl` to `127.0.0.1:4170/api/hook/*`, silent when the daemon is down). The first one,
+on session start, starts the daemon if it isn't running. Hooks an older yap put in `~/.claude/settings.json`
+would fire twice next to the plugin's: `yap hooks` takes them out, keeping a `.bak-yap` copy. Sessions are
 grouped by repo, worktrees included, and the crew counts as one more worker.
+
+The plugin runs its own copy of yap. A daemon is only replaced by newer code from the copy it runs from, or by
+a newer release from another copy, and never while a ticket or a spawn is running.
 
 - A new session is told who else is in the repo, which files each touched (not what it was asked:
   a prompt is yours), plus any tickets the crew is running.
@@ -226,8 +236,8 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
   `CLAUDE_CODE_OAUTH_TOKEN` reaches Claude, and the commands it runs can read it. A gate that needs a variable: `YAP_PASS=DATABASE_URL,REDIS_URL` on the daemon.
   Files are another matter: an agent can still read anything you can.
 - **The API wants a token.** The daemon writes `~/.yap/token` on first start and every client sends it. The
-  hooks send it too, read from the file on each call. Hooks installed before that are refused silently: run
-  `yap hooks --install` again and restart open sessions.
+  hooks send it too, read from the file on each call. Hooks installed before that are refused silently: install the
+  plugin, run `yap hooks` to take the old ones out, and restart open sessions.
 - **What skips a check asks you on the desktop.** Approving past the reviewer, changing or clearing a gate,
   editing an escalated ticket's body or criteria, and `yap forget` pop a native yes/no dialog (No by default,
   gone after two minutes). A crew agent can read the token, but it can't answer the dialog. Don't care? Set `YAP_YOLO=1`

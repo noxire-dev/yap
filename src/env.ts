@@ -23,6 +23,10 @@ export function settings(): Settings {
   return { ...SETTINGS, ...saved }
 }
 
+/** This copy of yap: the checkout or plugin install it runs from, and its release. */
+export const dir = join(import.meta.dir, '..')
+export const version: string = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).version
+
 /** Changes whenever the source does, so a client can tell it is talking to a daemon running older code. */
 export const build = Math.max(...readdirSync(import.meta.dir).map(f => statSync(join(import.meta.dir, f)).mtimeMs))
 

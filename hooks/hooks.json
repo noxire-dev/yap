@@ -1,0 +1,74 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || { bun \"${CLAUDE_PLUGIN_ROOT}/src/cli.ts\" start >/dev/null 2>&1; curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/start 2>/dev/null || true; }",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/prompt 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/stop 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/pre 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/post 2>/dev/null || true",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$YAP_AGENT\" ] || curl -sf -m 2 -H content-type:application/json -H \"x-yap-token: $(cat \"${YAP_HOME:-$HOME/.yap}/token\" 2>/dev/null)\" --data-binary @- http://127.0.0.1:${YAP_PORT:-4170}/api/hook/end 2>/dev/null || true",
+            "timeout": 5,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

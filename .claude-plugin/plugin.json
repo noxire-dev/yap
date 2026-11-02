@@ -1,5 +1,10 @@
 {
   "name": "yap",
-  "description": "Hand work to yap, a crew of agents that plans, implements, reviews and merges tickets on this repo, and read back what it did.",
-  "version": "0.1.0"
+  "description": "Claude Code sessions on one machine see each other, message each other and stay out of each other's way (YAP). Starts the yap daemon with the session. Also: hand work to yap's crew.",
+  "version": "0.1.0",
+  "author": {
+    "name": "noxire-dev"
+  },
+  "repository": "https://github.com/noxire-dev/yap",
+  "license": "MIT"
 }

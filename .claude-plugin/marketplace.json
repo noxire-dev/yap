@@ -1,0 +1,14 @@
+{
+  "name": "yap",
+  "owner": {
+    "name": "noxire-dev"
+  },
+  "description": "yap: the YAP protocol for Claude Code sessions on one machine, and its crew.",
+  "plugins": [
+    {
+      "name": "yap",
+      "source": "./",
+      "description": "Claude Code sessions on one machine see each other, message each other and stay out of each other's way; and a crew that works tickets."
+    }
+  ]
+}

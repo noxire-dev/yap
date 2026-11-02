@@ -2,8 +2,8 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { SETTINGS, type Settings, build, home, settings, url } from './env'
+import { join } from 'node:path'
+import { SETTINGS, type Settings, build, dir, home, settings, url, version } from './env'
 import { STALE, ago } from './sessions'
 import { type Client, type State, Tui, reader, sheet, status, useColor } from './tui'
 
@@ -17,7 +17,7 @@ yap init            make this directory a git repo so the crew can work in it
 yap gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
 yap forget [name]   take this repo's project (or the named one) off the board
 yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
-yap hooks [--install]  the Claude Code hooks for parallel sessions; --install puts them in ~/.claude/settings.json
+yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
@@ -91,8 +91,11 @@ const running = () =>
 async function daemon() {
   const s = await running()
   if (s) {
-    // A daemon from before the last code change keeps serving until nothing is mid-flight.
-    if (s.build === build || Object.keys(s.activity).length) return
+    // Replaced by newer code from the same checkout, or by a newer release from another copy (the Claude Code
+    // plugin runs from its own), never by an older one; and only once no ticket or spawn is mid-flight.
+    const newer = s.dir === dir ? s.build !== build : Bun.semver.order(version, s.version ?? '0.0.0') > 0
+    if (!newer || Object.keys(s.activity).length) return
+    if ((await api.get<{ done?: number }[]>('/api/spawns')).some(sp => !sp.done)) return
     await api.send('POST', '/api/stop')
     await Bun.sleep(300)
   }
@@ -210,46 +213,27 @@ async function here(init = false) {
   return api.send('POST', '/api/projects', { path: target(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
 }
 
-/**
- * The Claude Code hooks that report every session to the daemon. A bare curl, so a hook costs milliseconds and
- * says nothing when the daemon is down or refuses; crew agents (YAP_AGENT) stay out. Messages land on edits, shell
- * commands, prompts and the end of a turn, not on reads, which keeps the per-call cost off the busiest tools.
- */
-function hooks() {
-  // -f: a refusal prints nothing, where its body would land in the session's context as text.
-  const post = (ev: string) =>
-    `curl -sf -m 2 -H content-type:application/json -H "x-yap-token: $(cat "\${YAP_HOME:-$HOME/.yap}/token" 2>/dev/null)" --data-binary @- http://127.0.0.1:\${YAP_PORT:-4170}/api/hook/${ev} 2>/dev/null || true`
-  const run = (ev: string, timeout: number, extra: object = {}) => [
-    { ...extra, hooks: [{ type: 'command', command: `[ -n "$YAP_AGENT" ] || ${ev === 'start' ? `{ yap start >/dev/null 2>&1; ${post(ev)}; }` : post(ev)}`, timeout, ...(ev === 'post' || ev === 'end' ? { async: true } : {}) }] },
-  ]
-  const tools = { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash' }
-  return {
-    SessionStart: run('start', 15),
-    UserPromptSubmit: run('prompt', 5),
-    Stop: run('stop', 5),
-    PreToolUse: run('pre', 5, tools),
-    PostToolUse: run('post', 5, tools),
-    SessionEnd: run('end', 5),
-  }
-}
-
-/** Merge the hooks into the user's Claude Code settings, replacing yap's earlier ones. Returns the file. */
-function install(block: ReturnType<typeof hooks>) {
+/** Take out the hooks `yap hooks --install` once put in the user's settings: the plugin carries them now. */
+function unhook() {
   const file = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
-  let settings: any = {}
+  let settings: any
   try {
-    const text = readFileSync(file, 'utf8')
-    settings = JSON.parse(text)
-    writeFileSync(`${file}.bak-yap`, text)
-  } catch (e: any) {
-    if (e?.code !== 'ENOENT') throw new Error(`${file} isn't JSON this can safely rewrite: ${e?.message ?? e}`)
+    settings = JSON.parse(readFileSync(file, 'utf8'))
+  } catch {
+    return 0
   }
-  settings.hooks ??= {}
-  const ours = (g: any) => JSON.stringify(g).includes('/api/hook/')
-  for (const [event, groups] of Object.entries(block)) settings.hooks[event] = [...(settings.hooks[event] ?? []).filter((g: any) => !ours(g)), ...groups]
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, JSON.stringify(settings, null, 2) + '\n')
-  return file
+  let n = 0
+  for (const [event, groups] of Object.entries<any[]>(settings.hooks ?? {})) {
+    const kept = groups.filter(g => !JSON.stringify(g).includes('/api/hook/'))
+    n += groups.length - kept.length
+    if (kept.length) settings.hooks[event] = kept
+    else delete settings.hooks[event]
+  }
+  if (n) {
+    writeFileSync(`${file}.bak-yap`, readFileSync(file))
+    writeFileSync(file, JSON.stringify(settings, null, 2) + '\n')
+  }
+  return n
 }
 
 const [cmd, ...rest] = process.argv.slice(2)
@@ -368,9 +352,10 @@ try {
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
   } else if (cmd === 'hooks') {
-    const block = hooks()
-    if (rest[0] !== '--install') console.log(JSON.stringify({ hooks: block }, null, 2))
-    else console.log(`yap's hooks are in ${install(block)}. Sessions started from now on report to the daemon.`)
+    const n = unhook()
+    console.log(
+      `${n ? `Took yap's old hooks out of your Claude Code settings (${n}). ` : ''}yap's hooks come with its Claude Code plugin:\n  claude plugin marketplace add noxire-dev/yap\n  claude plugin install yap@yap`,
+    )
   } else if (cmd === 'herdr') {
     await herdr(rest[0], rest[1] === 'tab' ? 'tab' : 'popup')
   } else if (cmd === 'gate') {

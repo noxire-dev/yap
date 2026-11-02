@@ -3,6 +3,9 @@ import type { Card, Event, Goal, Project, Ticket } from './ports'
 export interface State {
   /** Fingerprint of the daemon's source. */
   build: number
+  /** The copy of yap it runs from, and that copy's release. */
+  dir?: string
+  version?: string
   projects: Project[]
   goals: Goal[]
   tickets: Ticket[]

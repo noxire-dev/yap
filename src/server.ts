@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ClaudeCli } from './agent'
 import { Crew } from './crew'
-import { build, home, port, settings, url } from './env'
+import { build, dir, home, port, settings, url, version } from './env'
 import { Rinai } from './rinai'
 import { PROTOCOL, Sessions, VERBS, type Verb } from './sessions'
 
@@ -114,6 +114,8 @@ Bun.serve({
   routes: {
     '/api/state': api(() => ({
       build,
+      dir,
+      version,
       projects: store.projects(),
       goals: store.goals().map(g => ({ ...g, brief: undefined })),
       tickets: store.tickets(),
