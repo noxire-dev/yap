@@ -506,7 +506,9 @@ export class Sessions {
     if (!s) return {}
     const got: Message[] = []
     const a = await this.answer(verb, call, s, () => this.drain(s, got))
-    return got.length ? { ...a, messages: got } : a
+    // Nothing to say is `{}`, never an empty field.
+    const out = Object.fromEntries(Object.entries(a).filter(([, v]) => v)) as Answer
+    return got.length ? { ...out, messages: got } : out
   }
 
   private async answer(verb: Verb, call: Call, s: Session, drain: () => string): Promise<Answer> {

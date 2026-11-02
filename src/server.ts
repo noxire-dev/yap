@@ -6,10 +6,8 @@ import { ClaudeCli } from './agent'
 import { Crew } from './crew'
 import { build, dir, home, port, settings, url, version } from './env'
 import { Rinai } from './rinai'
-import { PROTOCOL, Sessions, VERBS, type Verb } from './sessions'
-
-/** Everything `/yap/<verb>` takes: the agent's own verbs, then the ones about the repo. */
-const ALL = [...VERBS, 'say', 'note', 'unnote', 'spawn', 'hello', 'sessions', 'notes', 'spawns']
+import { PROTOCOL, Sessions } from './sessions'
+import { ALL, events, local } from './wire'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
@@ -50,6 +48,7 @@ const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli(),
 // the web. Reloaded by `yap pair` and `yap unpair`.
 const pairingFile = join(home, 'bridge.json')
 const answerRemote = remote(sessions, () => store.projects())
+const answerLocal = local(sessions)
 let bridge: Bridge | null = null
 function rebridge() {
   bridge?.stop()
@@ -171,37 +170,10 @@ Bun.serve({
     '/yap/events': async (req, server) => {
       if (denied(req)) return new Response('forbidden', { status: 403 })
       server.timeout(req, 0)
-      const cwd = new URL(req.url).searchParams.get('cwd')
-      const repo = cwd ? await sessions.repoOf(cwd) : null
-      let off = () => {}
-      const body = new ReadableStream({
-        start(c) {
-          c.enqueue(': yap\n\n')
-          off = sessions.listen(e => {
-            if (!repo || e.repo === repo) c.enqueue(`event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`)
-          })
-        },
-        cancel: () => off(),
-      })
+      const body = await events(sessions, new URL(req.url).searchParams.get('cwd'))
       return new Response(body, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
     },
-    '/yap/:verb': {
-      POST: api((req, b) => {
-        const verb = req.params.verb
-        const str = (k: string) => (typeof b[k] === 'string' ? b[k] : undefined)
-        const cwd = String(b.cwd ?? '')
-        if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to') })
-        if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
-        if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
-        if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? '') })
-        if (verb === 'hello') return { ...PROTOCOL, verbs: ALL }
-        if (verb === 'sessions') return sessions.peers(cwd)
-        if (verb === 'notes') return sessions.notes(cwd)
-        if (verb === 'spawns') return sessions.spawnsIn(cwd)
-        if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${ALL.join(', ')}`)
-        return sessions.yap(verb as Verb, { session: str('session'), cwd, path: str('path'), command: str('command'), prompt: str('prompt'), name: str('name') })
-      }, true),
-    },
+    '/yap/:verb': { POST: api((req, b) => answerLocal(req.params.verb, b), true) },
     '/api/sessions': api(() => sessions.list()),
     '/api/spawns': api(() => sessions.spawns()),
     '/api/bridge': {

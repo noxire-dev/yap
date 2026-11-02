@@ -1,7 +1,8 @@
 // bun src/crew.check.ts — the loop against fakes: no git, no model, no network.
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { Yap, YapError } from '../relay/client'
+import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
+import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
 import { Crew, ROUNDS } from './crew'
 import { childEnv } from './env'
@@ -9,6 +10,7 @@ import type { AgentRunner, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
+import { events, local } from './wire'
 
 const ok = { ok: true, log: '' }
 const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
@@ -329,6 +331,44 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   store.saveSession('old', JSON.stringify({ id: 'old', name: '', top: norm('/repo'), repo: norm('/repo/.git'), started: 1, at: 1_000_000, told: 0, files: [], warned: [], inbox: ['From the user: hi'], shell: 0, cwd: '/repo', news: 1 }))
   const old = await new Sessions(ws, store, () => 1_000_000).yap('idle', { session: 'old', cwd: '/repo' })
   assert.deepEqual([old.messages![0].text, /- From the user: hi/.test(old.context!)], ['From the user: hi', true])
+}
+
+// The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const answer = local(reg)
+  const fetcher = async (url: string, init: RequestInit) => {
+    if (url.includes('/yap/events'))
+      return new Response((await events(reg, new URL(url).searchParams.get('cwd'))).pipeThrough(new TextEncoderStream()))
+    try {
+      return Response.json(await answer(url.split('/yap/')[1], JSON.parse(String(init.body))))
+    } catch (e: any) {
+      return Response.json({ error: e.message }, { status: e.status ?? 400 })
+    }
+  }
+  const yap = new YapLocal('http://yap.test', 't', fetcher)
+  const a = yap.session('k1', '/repo')
+  const b = yap.session('k2', '/repo')
+  const heard: any[] = []
+  let open = () => {}
+  const opened = new Promise<void>(r => (open = r))
+  const stop = yap.watch('/repo', e => heard.push(e), { onOpen: () => open() })
+  await opened
+  assert.deepEqual(await a.join('Kodr Planner'), {}, 'alone in the repo: nothing to say')
+  await b.join()
+  await b.edited('src/a.ts')
+  assert.match((await a.willEdit('src/a.ts')).notice!, /src\/a\.ts was just edited by @a/)
+  assert.match((await a.willRun('git checkout main')).deny!, /another session is working in this same working tree/)
+  await b.say('done with a.ts', 'kodr')
+  await Bun.sleep(0)
+  const msg = heard.find(e => e.type === 'message')
+  assert.deepEqual([msg.session, wakePrompt(msg)], ['k1', 'yap: a message from session @a'])
+  assert.deepEqual(await a.idle(true), {}, 'continuing: nothing, the message waits')
+  assert.deepEqual((await a.idle()).messages!.map(m => m.text), ['done with a.ts'])
+  assert.deepEqual((await yap.sessions('/repo')).map(s => s.name).sort(), ['a', 'kodr-planner'])
+  await assert.rejects(yap.call('nope', {}), (e: any) => e instanceof LocalError && e.status === 400 && /no verb nope/.test(e.message))
+  stop()
 }
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The

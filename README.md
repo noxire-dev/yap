@@ -112,7 +112,7 @@ yap unpair                                     # every web client's token stops 
 
 A paired client can list your registered projects and their sessions, read and pin notes, message sessions and
 spawn background ones. It names projects, never paths, and nothing outside a registered project is visible.
-The wire is in [docs/yap.md](docs/yap.md#remote), and `relay/client.ts` is a typed client for it with no
+The wire is in [docs/yap.md](docs/yap.md#remote), and `sdk/remote.ts` is a typed client for it with no
 dependencies:
 
 ```ts
@@ -258,8 +258,9 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 
 `src/crew.ts` is the loop and talks only to the interfaces in `src/ports.ts`: `Store` (SQLite), `Workspace`
 (git and the gate shell), `AgentRunner` (`claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
-daemon; `src/tui.ts` is a client of its HTTP API. `src/sessions.ts` is YAP; `src/bridge.ts` is the line to the
-relay and what the web may do; `relay/` is the relay. `bun run check` runs it all against fakes.
+daemon; `src/tui.ts` is a client of its HTTP API. `src/sessions.ts` is YAP and `src/wire.ts` its HTTP verbs; `src/bridge.ts` is the line to
+the relay and what the web may do; `relay/` is the relay. `sdk/` holds the two clients, one file each with no
+dependencies: `local.ts` for a harness on this machine, `remote.ts` for the web. `bun run check` runs it all against fakes.
 
 ## License
 

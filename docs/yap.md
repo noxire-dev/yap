@@ -138,6 +138,21 @@ Herdr:
    `yap: a message from <from>`. Its `turn` answer carries the message and tells the model the user didn't type
    it. A busy session needs nothing: the message comes with its next answer.
 
+`sdk/local.ts` does all of it in one file with no dependencies (Node 18+, Bun); vendor it:
+
+```ts
+import { YapLocal, wakePrompt } from './yap'
+
+const yap = await YapLocal.connect({ start: () => exec('yap start') })  // token from ~/.yap/token
+const s = yap.session(thread.id, thread.worktree)
+await s.join('planner')
+const a = await s.willRun(command)              // and turn, willEdit, edited, ran, idle, leave
+if (a.deny) return refuse(a.deny)
+yap.watch(thread.worktree, e => {
+  if (e.type === 'message' && isIdle(e.session)) startTurn(e.session, wakePrompt(e))
+})
+```
+
 ## Claude Code's adapter
 
 Claude Code's hooks post to `/api/hook/<event>` with their own payload, and get their own format back. The
@@ -215,10 +230,10 @@ the crew's desktop confirmation guards.
 
 ### Client
 
-`relay/client.ts` is the web side in one file with no dependencies (browser, Worker, Bun, Node 18+):
+`sdk/remote.ts` is the web side in one file with no dependencies (browser, Worker, Bun, Node 18+):
 
 ```ts
-import { Yap } from './client'
+import { Yap } from './remote'
 
 const yap = await Yap.claim('https://yap-relay.example.workers.dev', '<device>.<code>')
 localStorage.yap = JSON.stringify(yap)            // { relay, device, token }; the code works once
