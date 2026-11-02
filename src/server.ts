@@ -157,7 +157,11 @@ Bun.serve({
         // Empty: hooks installed before the token carry no -f, and a body would land in their session as text.
         if (denied(req)) return new Response(null, { status: 403 })
         try {
-          return Response.json(await sessions.hook(req.params.event, await req.json()))
+          // A harness that hosts Claude Code (Kodr) sets YAP_SESSION to its own id for the conversation, which
+          // outlives Claude's session id; the hooks pass it as ?session=.
+          const input = await req.json()
+          const as = new URL(req.url).searchParams.get('session')
+          return Response.json(await sessions.hook(req.params.event, as ? { ...input, session_id: as } : input))
         } catch {
           return Response.json({})
         }

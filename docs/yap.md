@@ -132,8 +132,8 @@ Herdr:
    shell command, `idle` before the agent ends its turn, and `leave` when the conversation closes.
 3. Put each answer's `context` in front of the model, show `notice` to the user, and don't run a command that
    came back with `deny`; give the model the reason instead.
-4. Set `YAP_SESSION=<id>` in the agent's shell, so the `yap say`, `yap note` and `yap spawn` it runs speak as
-   it and not as the user.
+4. Set `YAP_SESSION=<id>` in the agent's environment, so the `yap say`, `yap note` and `yap spawn` it runs
+   speak as it and not as the user. For Claude Code with the yap plugin, that is all of steps 1 to 4.
 5. Be the pane host: on a `message` event for one of your sessions that sits idle, start a turn with the prompt
    `yap: a message from <from>`. Its `turn` answer carries the message and tells the model the user didn't type
    it. A busy session needs nothing: the message comes with its next answer.
@@ -155,8 +155,11 @@ yap.watch(thread.worktree, e => {
 
 ## Claude Code's adapter
 
-Claude Code's hooks post to `/api/hook/<event>` with their own payload, and get their own format back. The
-daemon turns each into a YAP verb and the answer into the hook's fields:
+Claude Code's hooks (the yap plugin) post to `/api/hook/<event>` with their own payload, and get their own
+format back. The daemon turns each into a YAP verb and the answer into the hook's fields. The session is
+Claude's `session_id`, unless `YAP_SESSION` is set in Claude Code's environment: then the hooks pass it as
+`?session=` and the session goes by that. A harness that runs Claude Code (through the Agent SDK, say) sets it
+to its own id for the conversation and needs no adapter of its own for Claude: the hooks speak YAP for it.
 
 | YAP | Claude Code hook | Payload | Answer |
 |---|---|---|---|
