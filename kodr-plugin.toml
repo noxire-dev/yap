@@ -1,0 +1,24 @@
+# Kodr plugin: `kodr plugin link .` from this folder. Format: Kodr's docs/user/plugins.md.
+id = "yap"
+name = "YAP"
+version = "0.1.0"
+description = "Kodr threads see the other sessions in their repo, are warned before clobbering their files, and wake when one messages them."
+
+# Starts the daemon detached and exits, as the Herdr plugin does.
+[[startup]]
+command = ["bun", "src/cli.ts", "start"]
+
+# The yap Claude Code plugin's hooks report under YAP_SESSION, so each thread speaks as its Kodr thread id.
+[agent.env]
+YAP_SESSION = "${thread.id}"
+
+# An idle thread hears a yap message as a new turn.
+[[services]]
+id = "wake"
+command = ["bun", "src/kodr.ts"]
+
+[[actions]]
+id = "sessions"
+title = "YAP: who else is in this repo"
+contexts = ["project", "thread"]
+command = ["bun", "src/kodr.ts", "sessions", "${project.path}"]
