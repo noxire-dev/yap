@@ -85,7 +85,8 @@ async function refresh() {
     const others = sessions.filter(o => o.repo === s.repo && o.id !== s.id)
     threads[s.id] = [
       {
-        text: label(s),
+        // An unnamed session's id means nothing in a chip; say whose it is and who else is here.
+        text: `${s.name ? `@${s.name}` : 'yap'}${others.length ? ` +${others.length}` : ''}`,
         tone: others.length ? 'info' : 'neutral',
         title: others.length
           ? `Its yap name. In this repo with ${others.map(label).join(', ')}.`
