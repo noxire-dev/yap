@@ -30,6 +30,8 @@ if (fed) {
     for (let i = pending.indexOf('\n'); i >= 0; i = pending.indexOf('\n')) {
       const item = JSON.parse(pending.slice(0, i))
       pending = pending.slice(i + 1)
+      // A snapshot with resolved roots is a projects-only enrichment, not the whole thread list.
+      if (item.kind === 'snapshot' && item.resolvedRepositoryIdentityRoots !== undefined) continue
       if (item.kind === 'snapshot') {
         fedStatus.clear()
         for (const t of item.snapshot.threads) fedStatus.set(t.id, t.status)
