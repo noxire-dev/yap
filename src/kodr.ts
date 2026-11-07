@@ -17,8 +17,36 @@ async function kodr(args: string[]) {
   return { ok: (await p.exited) === 0, out }
 }
 
+// Under `kodr host` the server's thread list arrives on stdin, one shell item per line, so a
+// session's thread is a lookup instead of a `kodr thread show` per session.
+const fed = process.env.KODR_EVENTS === 'stdin'
+const fedStatus = new Map<string, string>()
+let onThreadsChanged = () => {}
+if (fed) {
+  let pending = ''
+  process.stdin.setEncoding('utf8')
+  process.stdin.on('data', (chunk: string) => {
+    pending += chunk
+    for (let i = pending.indexOf('\n'); i >= 0; i = pending.indexOf('\n')) {
+      const item = JSON.parse(pending.slice(0, i))
+      pending = pending.slice(i + 1)
+      if (item.kind === 'snapshot') {
+        fedStatus.clear()
+        for (const t of item.snapshot.threads) fedStatus.set(t.id, t.status)
+      } else if (item.kind === 'thread.updated' && item.location === 'active') fedStatus.set(item.thread.id, item.thread.status)
+      else if (item.kind === 'thread.updated') fedStatus.delete(item.thread.id)
+      else if (item.kind === 'thread.removed') fedStatus.delete(item.threadId)
+      else continue
+      onThreadsChanged()
+    }
+  })
+  // The host closes the feed when it stops; leave with it.
+  process.stdin.on('end', () => process.exit(0))
+}
+
 /** null when the session is not a Kodr thread: a terminal Claude Code, a Herdr pane, a spawn. */
 async function threadStatus(id: string): Promise<string | null> {
+  if (fed) return fedStatus.get(id) ?? null
   const r = await kodr(['thread', 'show', id, '--json', '--messages', '0'])
   if (!r.ok) return null
   try {
@@ -67,6 +95,7 @@ async function allSessions(): Promise<Peer[]> {
 
 const isThread = new Map<string, Promise<boolean>>()
 const kodrThread = (id: string) => {
+  if (fed) return Promise.resolve(fedStatus.has(id))
   if (!isThread.has(id)) isThread.set(id, threadStatus(id).then(s => s !== null))
   return isThread.get(id)!
 }
@@ -102,11 +131,12 @@ async function refresh() {
   })
 }
 
-let pending: ReturnType<typeof setTimeout> | undefined
+let refreshTimer: ReturnType<typeof setTimeout> | undefined
 const soon = () => {
-  clearTimeout(pending)
-  pending = setTimeout(refresh, 500)
+  clearTimeout(refreshTimer)
+  refreshTimer = setTimeout(refresh, 500)
 }
+onThreadsChanged = soon
 // Kodr killed outright leaves this running on Windows; leave with it.
 const kodrPid = Number(process.env.KODR_PID)
 const kodrAlive = () => {
