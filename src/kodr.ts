@@ -5,7 +5,8 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { type Peer, wakePrompt, YapLocal } from '../sdk/local'
+import { type Message, type Peer, wakePrompt, YapLocal } from '../sdk/local'
+import { label, threadChips } from './kodrChips'
 
 // Every thread status but a running one: a busy thread hears the message from its next hook instead.
 const SETTLED = new Set(['idle', 'completed', 'failed', 'cancelled', 'interrupted'])
@@ -68,8 +69,6 @@ const yap = await YapLocal.connect({ start }).catch(async e => {
   throw e
 })
 
-const label = (s: Peer) => `@${s.name || s.id.slice(0, 8)}`
-
 if (process.argv[2] === 'sessions') {
   const peers = await yap.sessions(process.argv[3] || process.cwd())
   console.log(
@@ -95,6 +94,8 @@ async function allSessions(): Promise<Peer[]> {
   return r.json()
 }
 
+// The last message each thread received, shown on it for a while: a busy agent reads it silently.
+const mail = new Map<string, Message>()
 const isThread = new Map<string, Promise<boolean>>()
 const kodrThread = (id: string) => {
   if (fed) return Promise.resolve(fedStatus.has(id))
@@ -110,20 +111,10 @@ async function refresh() {
     await publish('status.json', { text: 'the yap daemon is not answering', tone: 'error' })
     return
   }
-  const threads: Record<string, { text: string; tone: string; title: string }[]> = {}
+  const threads: Record<string, ReturnType<typeof threadChips>> = {}
   for (const s of sessions) {
     if (!(await kodrThread(s.id))) continue
-    const others = sessions.filter(o => o.repo === s.repo && o.id !== s.id)
-    threads[s.id] = [
-      {
-        // An unnamed session's id means nothing in a chip; say whose it is and who else is here.
-        text: `${s.name ? `@${s.name}` : 'yap'}${others.length ? ` +${others.length}` : ''}`,
-        tone: others.length ? 'info' : 'neutral',
-        title: others.length
-          ? `Its yap name. In this repo with ${others.map(label).join(', ')}.`
-          : 'Its yap name. Nobody else is in this repo.',
-      },
-    ]
+    threads[s.id] = threadChips(s, sessions, mail.get(s.id), Date.now())
   }
   const mine = Object.keys(threads).length
   await publish('threads.json', threads)
@@ -160,7 +151,10 @@ yap.watch(
   undefined,
   async e => {
     if (e.type === 'join' || e.type === 'leave' || e.type === 'edited') return soon()
-    if (e.type !== 'message' || waking.has(e.session)) return
+    if (e.type !== 'message') return
+    mail.set(e.session, e)
+    soon()
+    if (waking.has(e.session)) return
     waking.add(e.session)
     try {
       const status = await threadStatus(e.session)

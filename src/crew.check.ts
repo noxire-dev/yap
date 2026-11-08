@@ -5,6 +5,7 @@ import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
 import { Crew, ROUNDS } from './crew'
+import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk } from './sessions'
@@ -583,5 +584,19 @@ for (const c of ['git -C . checkout main', 'git -c x=1 switch main', 'git reset 
 for (const c of ['git add -A && git commit -m x', 'git commit -am x', 'git add .']) assert.equal(gitRisk(c), 'sweeps', c)
 for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', 'git restore --staged a.ts', 'git checkout-index -a', 'echo "git merge"', 'git add src/a.ts', 'git status'])
   assert.equal(gitRisk(c), null, c)
+
+// A Kodr thread's chips: a file another session edited in the same tree warns, another worktree's doesn't, and a
+// message shows on its recipient until it goes stale.
+{
+  const peer = (id: string, top: string, files: string[]) => ({ id, name: id, top, repo: 'r', started: 0, at: 0, files })
+  const me = peer('me', '/a', ['src/auth.ts', 'x.ts'])
+  const all = [me, peer('bob', '/a', ['src/auth.ts']), peer('wt', '/b', ['x.ts'])]
+  const msg = { kind: 'say' as const, from: 'session @bob', sender: 'bob', text: 'leave auth to me', at: 0 }
+  const chips = threadChips(me, all, msg, 1)
+  assert.deepEqual(chips.map(c => [c.text, c.tone]), [['@me +2', 'info'], ['shared: auth.ts', 'warn'], ['msg from @bob', 'info']])
+  assert.match(chips[1].title, /src\/auth\.ts \(@bob\)/)
+  assert.equal(chips[2].title, 'leave auth to me')
+  assert.equal(threadChips(me, all, msg, MAIL_MS).length, 2, 'the message went stale')
+}
 
 console.log('crew ok')
