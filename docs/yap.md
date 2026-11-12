@@ -174,6 +174,11 @@ yap.watch(thread.worktree, e => {
 })
 ```
 
+Codex's hooks speak Claude Code's format, so the same adapter serves them through `yap hook <event> codex`
+(the route's `?for=codex`). The differences: Codex edits with `apply_patch`, whose files are named in the patch
+(`*** Update File: …`) and get a verb each, and Codex's `Stop` carries on with `decision: block` and the
+context as `reason`, not `additionalContext`.
+
 An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an MCP server on stdio. It
 joins on `initialize`, named for the client, and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,

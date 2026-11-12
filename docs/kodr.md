@@ -41,10 +41,12 @@ Check: start a Claude thread in a repo, then `yap sessions` in that repo lists t
 Codex gets `T3CODE_THREAD_ID` through `shell_environment_policy.set` (`CodexAdapterV2.ts`, around line 1369).
 Set `YAP_SESSION` to the thread id there too, and wherever another adapter sets `T3CODE_THREAD_ID`.
 
-Also give Codex threads yap's tools: add `mcp_servers.yap` to the thread's Codex config with `command = "yap"`,
-`args = ["mcp"]`, `env = { YAP_SESSION = "<thread id>" }` and `default_tools_approval_mode = "approve"`. The
-model then checks before an edit or a git command, and reads messages between steps, in the turn itself rather
-than on the next one. With `YAP_SESSION` set, `yap mcp` doesn't join or leave; step 3 does.
+Codex has hooks in Claude Code's format, and `yap setup` puts yap's in `~/.codex/hooks.json`. They fire in
+Kodr's Codex threads too, with the same deny before a git command and warning before an `apply_patch`, once the
+user has trusted them in `/hooks`. They report under Codex's thread id unless `YAP_SESSION` is in the env of
+the Codex process itself (`yap hook` reads it), not just its shell. Set it there when Kodr runs one Codex process
+per thread. Otherwise leave it: the session is then Codex's thread id, and step 3 maps it to the Kodr thread
+for presence and wake. With the hooks in, step 3's reporting table is for providers with no hooks at all.
 
 ## 3. `YapService`: wake, and report for providers without hooks
 

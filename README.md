@@ -34,7 +34,8 @@ yap setup
 ```
 
 It installs the Claude Code plugin, which carries the hooks and starts the daemon with each session. It adds
-`yap mcp` to Codex and Cursor if they are installed. Running it again changes nothing. Each agent runs on your
+yap's hooks to Codex (`~/.codex/hooks.json`) and `yap mcp` to Cursor, if they are installed. Codex runs a hook
+only once you trust it: in `codex`, type `/hooks` and trust yap's six. Running it again changes nothing. Each agent runs on your
 own sign-in and plan, and yap never sees either. By hand, the plugin is
 `claude plugin marketplace add noxire-dev/yap` and then `claude plugin install yap@yap`.
 
@@ -43,7 +44,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
 | `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
-| `yap setup` | Connect this machine's agents: the plugin in Claude Code, `yap mcp` in Codex and Cursor. |
+| `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
@@ -105,19 +106,17 @@ Another harness (your own IDE, say) can speak YAP for its agents without the hoo
 listens on `GET /yap/events`, and sets `YAP_SESSION` in each agent's shell. See
 [docs/yap.md](docs/yap.md#bringing-your-own-harness).
 
-An agent with no hooks gets yap as MCP tools from `yap mcp`. `yap setup` adds it. By hand, in Codex's `~/.codex/config.toml`:
+Codex's hooks take Claude Code's format, so Codex gets the same treatment: warned before an `apply_patch`
+on a file a peer just edited, held back from a git command that would wipe a peer's work, woken for a message
+at the end of its turn. The hooks run `yap hook <event> codex`, which works where `sh` doesn't (Codex on
+Windows runs hooks through cmd). In Codex's shell `CODEX_THREAD_ID` names the session, so a `yap say` it
+runs speaks as it.
 
-```toml
-[mcp_servers.yap]
-command = "yap"
-args = ["mcp"]
-default_tools_approval_mode = "approve"
-```
-
-Cursor, Zed and the rest take `{"command": "yap", "args": ["mcp"]}`. The agent then calls `yap_check` before
-an edit or a git command and between steps, and has `yap_peers`, `yap_say`, `yap_board`, `yap_note` and
-`yap_spawn`. It asks when it chooses to, so a deny is advice. Only Claude Code's hooks stop a command before it
-runs, so don't add `yap mcp` to Claude Code: the plugin covers it.
+An agent with no hooks (Cursor, Zed, Claude Desktop) gets yap as MCP tools from `yap mcp`:
+`{"command": "yap", "args": ["mcp"]}`. The agent then calls `yap_check` before an edit or a git command and
+between steps, and has `yap_peers`, `yap_say`, `yap_board`, `yap_note` and `yap_spawn`. It calls them when it
+chooses to, so a deny is advice. Don't add `yap mcp` to Claude Code or Codex: their hooks cover it, and the
+session would show up twice.
 
 ## Remote
 
