@@ -21,7 +21,7 @@ yap setup           connect this machine's agents: the plugin in Claude Code, ya
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
-yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
+yap spawn [--codex] <text>  start a background Claude Code (or Codex) session here on that task; its last word comes back to you
 yap spawns           the background sessions yap started, and how each ended
 yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
 yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
@@ -416,7 +416,9 @@ try {
     console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
   } else if (cmd === 'spawn') {
     await daemon()
-    const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' ') })
+    // Codex when asked, or when it is the only agent here: the session runs on whichever plan the user has.
+    const codex = rest[0] === '--codex' ? !!rest.shift() : !Bun.which('claude') && !!Bun.which('codex')
+    const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' '), agent: codex ? 'codex' : undefined })
     console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${me ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
   } else if (cmd === 'pair') {
     const relay = String(rest[0] ?? '').replace(/\/$/, '')

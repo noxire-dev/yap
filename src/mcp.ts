@@ -36,8 +36,8 @@ const TOOLS = [
   },
   {
     name: 'yap_spawn',
-    description: 'Start a background Claude Code session in this repo on a task. It is a peer you can message; its last word comes back to you as a message.',
-    inputSchema: { type: 'object', properties: { task: s }, required: ['task'] },
+    description: 'Start a background agent session in this repo on a task: Claude Code, or Codex with agent "codex". It is a peer you can message; its last word comes back to you as a message.',
+    inputSchema: { type: 'object', properties: { task: s, agent: { type: 'string', enum: ['claude', 'codex'] } }, required: ['task'] },
   },
 ]
 
@@ -75,7 +75,7 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
     return ns.length ? ns.map(n => `#${n.id} ${n.author}: ${n.text}`).join('\n') : 'the board is empty'
   }
   if (name === 'yap_note') return `pinned #${(await me.note(String(a.text ?? ''))).id}`
-  if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''))).id}; its last word comes back to you through yap_check`
+  if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''), a.agent === 'codex' ? 'codex' : undefined)).id}; its last word comes back to you through yap_check`
   throw new Error(`no tool ${name}`)
 }
 

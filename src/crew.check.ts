@@ -447,6 +447,14 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(deny.hookSpecificOutput.permissionDecision, 'deny')
   await reg.say({ from: 'claude-1', cwd: '/repo', text: 'leave a.ts to me', to: 'a-2' })
   assert.deepEqual(Object.keys(await reg.hook('stop', { session_id: 'codex-1', cwd: '/repo', codex: true })).sort(), ['decision', 'reason', 'systemMessage'])
+
+  // A spawn runs on the agent asked for.
+  const runs: any[] = []
+  const spawner = new Sessions(ws, store, () => 1_000_000, undefined, { run: async o => (runs.push(o), { ok: true, text: 'done' }) })
+  await local(spawner)('spawn', { cwd: '/repo', text: 'tidy', agent: 'codex' })
+  await Bun.sleep(0)
+  assert.equal(runs[0].agent, 'codex')
+  assert.equal(spawner.spawns()[0].agent, 'codex')
 }
 
 // A session that gave a pid leaves when that process dies, even without a leave (Codex kills its MCP server).

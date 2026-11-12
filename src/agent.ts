@@ -1,5 +1,52 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { childEnv } from './env'
-import type { AgentRun, AgentRunner } from './ports'
+import type { Agent, AgentRun, AgentRunner } from './ports'
+
+/** The runner for the run's `agent`: a background session runs on whichever plan the user has. */
+export class Agents implements AgentRunner {
+  constructor(private by: Record<Agent, AgentRunner>) {}
+  run(o: AgentRun) {
+    return this.by[o.agent ?? 'claude'].run(o)
+  }
+}
+
+/**
+ * Headless Codex, for a peer only: `codex exec` in the workspace sandbox, never asking. Its hooks (yap setup)
+ * report under the peer's id through YAP_SESSION, the way a Claude peer's do under --session-id.
+ */
+export class CodexCli implements AgentRunner {
+  async run({ cwd, prompt, signal, peer }: AgentRun) {
+    const dir = mkdtempSync(join(tmpdir(), 'yap-codex-'))
+    const last = join(dir, 'last.txt')
+    try {
+      const yap = Object.fromEntries(['YAP_HOME', 'YAP_PORT'].filter(k => process.env[k]).map(k => [k, process.env[k]!]))
+      const args = ['codex', 'exec', '-s', 'workspace-write', '--skip-git-repo-check', '--ephemeral', '--color', 'never', '-o', last, '-']
+      const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'ignore', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...codexAuth(), ...yap, ...(peer ? { YAP_SESSION: peer } : {}) } })
+      p.stdin.write(prompt)
+      p.stdin.end()
+      const stderr = new Response(p.stderr).text()
+      await p.exited
+      let text = ''
+      try {
+        text = readFileSync(last, 'utf8').trim()
+      } catch {}
+      const ok = p.exitCode === 0
+      // Its stderr is mostly warnings and MCP chatter; Codex's own failure is the `ERROR: ` line.
+      const lines = (await stderr).trim().split(/\r?\n/)
+      if (!text) text = [...new Set(lines.filter(l => l.startsWith('ERROR: ')))].join('\n') || lines.slice(-3).join('\n') || `codex exited ${p.exitCode}`
+      return { ok, text }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+}
+
+/** OpenAI's own key, when Codex signs in with one rather than a ChatGPT plan. */
+function codexAuth() {
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(openai_api_key|codex_api_key)$/i.test(k)))
+}
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {

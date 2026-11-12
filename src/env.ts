@@ -33,7 +33,7 @@ export const build = Math.max(...readdirSync(import.meta.dir).map(f => statSync(
 // What a crew agent or a gate gets of the daemon's environment. The daemon is often started from inside a Claude
 // Code session or a Herdr pane, so its environment carries their ids, sockets and tokens: enough for an agent to
 // speak as that session or drive other panes. Plus whatever secrets the shell exported. YAP_PASS names more.
-const KEEP = /^(path|pathext|systemroot|systemdrive|windir|comspec|os|processor_\w+|number_of_processors|programfiles.*|programdata|programw6432|commonprogram.*|allusersprofile|public|computername|username|userdomain\w*|userprofile|homedrive|homepath|appdata|localappdata|temp|tmp|tmpdir|psmodulepath|home|user|logname|shell|lang|lc_\w+|tz|term|xdg_\w+|nvm_\w+|volta_home|pnpm_home|bun_install|deno_dir|java_home|gopath|goroot|cargo_home|rustup_home|dotnet_root|pyenv\w*|chocolateyinstall|claude_config_dir)$/i
+const KEEP = /^(path|pathext|systemroot|systemdrive|windir|comspec|os|processor_\w+|number_of_processors|programfiles.*|programdata|programw6432|commonprogram.*|allusersprofile|public|computername|username|userdomain\w*|userprofile|homedrive|homepath|appdata|localappdata|temp|tmp|tmpdir|psmodulepath|home|user|logname|shell|lang|lc_\w+|tz|term|xdg_\w+|nvm_\w+|volta_home|pnpm_home|bun_install|deno_dir|java_home|gopath|goroot|cargo_home|rustup_home|dotnet_root|pyenv\w*|chocolateyinstall|claude_config_dir|codex_home)$/i
 
 export function childEnv(env: Record<string, string | undefined> = process.env) {
   const pass = new Set((env.YAP_PASS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean))

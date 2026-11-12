@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ClaudeCli } from './agent'
+import { Agents, ClaudeCli, CodexCli } from './agent'
 import { Crew } from './crew'
 import { build, dir, home, port, settings, url, version } from './env'
 import { Rinai } from './rinai'
@@ -42,7 +42,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store, Date.now, new Herdr(), new ClaudeCli(), () => settings().spawns)
+const sessions = new Sessions(ws, store, Date.now, new Herdr(), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.

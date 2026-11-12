@@ -38,7 +38,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
-| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
+| `spawn` | `text`, the task; `agent`, optional: `codex` | Starts a background Claude Code session (or Codex: `codex exec` in its workspace sandbox) in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 

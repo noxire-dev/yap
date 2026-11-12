@@ -11,7 +11,7 @@ export function local(sessions: Sessions) {
     if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to') })
     if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
     if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
-    if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? '') })
+    if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? ''), agent: str('agent') === 'codex' ? 'codex' : undefined })
     if (verb === 'hello') return { ...PROTOCOL, verbs: ALL }
     if (verb === 'sessions') return sessions.peers(cwd)
     if (verb === 'notes') return sessions.notes(cwd)

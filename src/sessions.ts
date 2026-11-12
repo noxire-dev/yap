@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
-import type { AgentRunner, Panes, Store, Workspace } from './ports'
+import type { Agent, AgentRunner, Panes, Store, Workspace } from './ports'
 
 /** What `hello` answers. The version moves when a verb or an answer changes shape. */
 export const PROTOCOL = { protocol: 'yap', version: 0 }
@@ -120,6 +120,8 @@ interface Spawn {
   started: number
   /** Its name once it has one; kept here because it leaves the registry before it finishes. */
   name: string
+  /** Who ran it; Claude Code when missing. */
+  agent?: Agent
   done?: number
   ok?: boolean
   result?: string
@@ -503,7 +505,7 @@ export class Sessions {
    * others, they hear about it, and it can be messaged. Its final message goes back to whoever asked: a session
    * gets it in its inbox, the user reads it with `yap spawns`.
    */
-  async spawn(m: { from?: string; cwd: string; text: string; user?: boolean }) {
+  async spawn(m: { from?: string; cwd: string; text: string; user?: boolean; agent?: Agent }) {
     const task = m.text.trim()
     if (!task) throw new Error('say what the session should do')
     if (!this.runner) throw new Error('this daemon cannot start agents')
@@ -512,12 +514,12 @@ export class Sessions {
       throw Object.assign(new Error(`${running} background sessions are running, the most yap starts at once; raise it with \`yap config spawns <n>\``), { status: 429 })
     const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const id = randomUUID()
-    const sp: Spawn = { id, cwd: m.cwd, task, from: s?.id ?? '', started: this.now(), name: '' }
+    const sp: Spawn = { id, cwd: m.cwd, task, from: s?.id ?? '', started: this.now(), name: '', ...(m.agent ? { agent: m.agent } : {}) }
     this.spawned.set(id, sp)
     this.keep(sp)
     const who = s ? `session @${this.tag(s)}, which asked for it` : `${this.label(s, m.user)}, who asked for it, through \`yap spawns\``
     const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session and nobody can answer a question: make the calls yourself and say what you decided. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
-    void this.runner.run({ cwd: m.cwd, prompt, peer: id }).then(
+    void this.runner.run({ cwd: m.cwd, prompt, peer: id, agent: m.agent }).then(
       r => this.finished(sp, r.ok, r.text),
       e => this.finished(sp, false, String(e?.message ?? e)),
     )
@@ -527,6 +529,8 @@ export class Sessions {
   private async finished(sp: Spawn, ok: boolean, text: string) {
     Object.assign(sp, { done: this.now(), ok, result: text.trim(), name: sp.name || this.all.get(sp.id)?.name || '' })
     this.keep(sp)
+    // Its process is gone: a session whose end hook didn't come (or never had one) goes with it.
+    this.forget(sp.id)
     const s = this.all.get(sp.from)
     if (!s) return
     const said = sp.result!.slice(0, 2000)

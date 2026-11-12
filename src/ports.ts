@@ -157,7 +157,11 @@ export interface AgentRun {
   onActivity?: (line: string) => void
   /** A session id: the agent joins YAP as a peer under it, where the crew's own agents stay out. */
   peer?: string
+  /** Which agent runs it, on the user's own plan for it. Claude Code when not said. */
+  agent?: Agent
 }
+
+export type Agent = 'claude' | 'codex'
 
 export interface AgentRunner {
   run(o: AgentRun): Promise<{ ok: boolean; text: string; data?: any }>

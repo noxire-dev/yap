@@ -84,6 +84,8 @@ export interface Spawn {
   done?: number
   ok?: boolean
   result?: string
+  /** Who ran it; Claude Code when missing. */
+  agent?: 'claude' | 'codex'
 }
 
 /** A refusal: 400 a bad call, 403 a wrong token, 429 too many spawns running; 0 the daemon is not there. */
@@ -300,8 +302,8 @@ export class YapSession {
     return this.yap.call<Note>('note', { session: this.id, cwd: this.cwd, text })
   }
 
-  /** Start a background Claude Code session on `task`; its last word comes back to this one as a message. */
-  spawn(task: string) {
-    return this.yap.call<{ id: string }>('spawn', { session: this.id, cwd: this.cwd, text: task })
+  /** Start a background Claude Code (or `codex`) session on `task`; its last word comes back to this one as a message. */
+  spawn(task: string, agent?: 'claude' | 'codex') {
+    return this.yap.call<{ id: string }>('spawn', { session: this.id, cwd: this.cwd, text: task, agent })
   }
 }
