@@ -8,7 +8,7 @@ import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
-import { Sessions, gitRisk } from './sessions'
+import { Sessions, gitRisk, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
@@ -430,6 +430,23 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match((await call('yap_peers')).content[0].text, /@a in .*edited src\/a\.ts/)
   assert.equal((await call('nope')).isError, true)
   stop()
+}
+
+// Codex's hooks: the same adapter. apply_patch names its files in the patch, and Stop carries on with a block.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const patch = '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-x\n+y\n*** Add File: src/new.ts\n+z\n*** End Patch'
+  assert.deepEqual(patchFiles(patch), ['src/a.ts', 'src/new.ts'])
+  await reg.hook('post', { session_id: 'claude-1', cwd: '/repo', tool_name: 'Edit', tool_input: { file_path: 'src/a.ts' } })
+  const pre: any = await reg.hook('pre', { session_id: 'codex-1', cwd: '/repo', tool_name: 'apply_patch', tool_input: { command: patch }, codex: true })
+  assert.match(pre.hookSpecificOutput.additionalContext, /Another session is working on src\/a\.ts/)
+  await reg.hook('post', { session_id: 'codex-1', cwd: '/repo', tool_name: 'apply_patch', tool_input: { command: patch }, codex: true })
+  assert.match(((await reg.hook('pre', { session_id: 'claude-1', cwd: '/repo', tool_name: 'Edit', tool_input: { file_path: 'src/new.ts' } })) as any).systemMessage, /src\/new\.ts was just edited by @a-2/)
+  const deny: any = await reg.hook('pre', { session_id: 'codex-1', cwd: '/repo', tool_name: 'Bash', tool_input: { command: 'git stash' }, codex: true })
+  assert.equal(deny.hookSpecificOutput.permissionDecision, 'deny')
+  await reg.say({ from: 'claude-1', cwd: '/repo', text: 'leave a.ts to me', to: 'a-2' })
+  assert.deepEqual(Object.keys(await reg.hook('stop', { session_id: 'codex-1', cwd: '/repo', codex: true })).sort(), ['decision', 'reason', 'systemMessage'])
 }
 
 // A session that gave a pid leaves when that process dies, even without a leave (Codex kills its MCP server).

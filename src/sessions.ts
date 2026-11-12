@@ -199,6 +199,13 @@ export interface HookInput {
   tool_name?: string
   tool_input?: { file_path?: string; notebook_path?: string; command?: string }
   stop_hook_active?: boolean
+  /** Set by the route for Codex's hooks, whose answers differ from Claude Code's in places. */
+  codex?: boolean
+}
+
+/** The files a Codex patch touches: `*** Add File: a`, `*** Update File: b`, `*** Delete File: c`, `*** Move to: d`. */
+export function patchFiles(patch: string) {
+  return [...new Set([...patch.matchAll(/^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm)].map(m => m[1]))]
 }
 
 export function ago(ts: number, now = Date.now()) {
@@ -581,9 +588,9 @@ export class Sessions {
    */
   async hook(event: string, input: HookInput, ack?: number, got: { seq?: number } = {}): Promise<object> {
     const bash = input.tool_name === 'Bash' && typeof input.tool_input?.command === 'string'
-    const verb = ({ start: 'join', prompt: 'turn', stop: 'idle', end: 'leave', pre: bash ? 'will-run' : 'will-edit', post: bash ? 'ran' : 'edited' } as const)[event as 'start']
+    const verb = (({ start: 'join', prompt: 'turn', stop: 'idle', end: 'leave', pre: bash ? 'will-run' : 'will-edit', post: bash ? 'ran' : 'edited' }) as Record<string, Verb | undefined>)[event]
     if (!verb) return {}
-    const a = await this.yap(verb, {
+    const call = {
       session: input.session_id,
       cwd: input.cwd,
       prompt: input.prompt,
@@ -591,10 +598,20 @@ export class Sessions {
       path: input.tool_input?.file_path ?? input.tool_input?.notebook_path,
       continuing: input.stop_hook_active === true,
       ack,
-    })
-    got.seq = a.seq
+    }
+    // Codex edits through apply_patch: the files are named inside the patch, one verb each.
+    const patched = input.tool_name === 'apply_patch' ? patchFiles(String(input.tool_input?.command ?? '')) : null
+    const each = patched ? await Promise.all(patched.map(path => this.yap(verb, { ...call, command: undefined, path }))) : [await this.yap(verb, call)]
+    const a: Answer = {
+      context: each.map(x => x.context).filter(Boolean).join('\n\n'),
+      notice: each.map(x => x.notice).filter(Boolean).join('; '),
+      deny: each.find(x => x.deny)?.deny,
+    }
+    got.seq = Math.max(0, ...each.map(x => x.seq ?? 0)) || undefined
     const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : verb === 'idle' ? 'Stop' : 'PreToolUse'
     const notice = a.notice ? { systemMessage: a.notice } : {}
+    // Codex's Stop takes no additionalContext: carrying on is a block, and its reason is the next prompt.
+    if (verb === 'idle' && a.context && input.codex) return { ...notice, decision: 'block', reason: a.context }
     if (a.deny)
       return { ...notice, hookSpecificOutput: { hookEventName: name, permissionDecision: 'deny', permissionDecisionReason: a.deny, ...(a.context ? { additionalContext: a.context } : {}) } }
     return a.context ? { ...notice, hookSpecificOutput: { hookEventName: name, additionalContext: a.context } } : {}

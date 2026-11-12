@@ -33,8 +33,8 @@ yap notes           this repo's board
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 yap serve           the daemon in the foreground`
 
-/** The session a command speaks as: the harness's YAP_SESSION, else Claude Code's own id; none is the user. */
-const me = process.env.YAP_SESSION || process.env.CLAUDE_CODE_SESSION_ID
+/** The session a command speaks as: the harness's YAP_SESSION, else Claude Code's or Codex's own id; none is the user. */
+const me = process.env.YAP_SESSION || process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID
 
 // Written by the daemon on its first start; read on every call, so a fresh daemon's token is picked up.
 const auth = (): Record<string, string> => {
@@ -234,16 +234,33 @@ function setup() {
   }
   if (removed) out.push(`Claude Code: took out ${removed} hooks an older yap put in your settings (backup: settings.json.bak-yap).`)
 
-  const codex = join(homedir(), '.codex', 'config.toml')
+  // Codex's hooks speak Claude Code's format: the same adapter, through `yap hook`, which runs where sh doesn't.
+  const codex = join(homedir(), '.codex', 'hooks.json')
   if (!has('codex')) out.push('Codex: not installed.')
   else {
-    const toml = existsSync(codex) ? readFileSync(codex, 'utf8') : ''
-    if (/^\[mcp_servers\.yap\]/m.test(toml)) out.push('Codex: yap is already in its MCP servers.')
+    let cfg: { hooks?: Record<string, unknown[]> } | null = {}
+    try {
+      if (existsSync(codex)) cfg = JSON.parse(readFileSync(codex, 'utf8'))
+    } catch {
+      cfg = null
+    }
+    if (!cfg) out.push(`Codex: ${codex} isn't plain JSON, so it is left alone.`)
+    else if (JSON.stringify(cfg).includes('yap hook ')) out.push("Codex: yap's hooks are already in.")
     else {
+      const on = (event: string, ev: string, o: object = {}) => ({ ...o, hooks: [{ type: 'command', command: `yap hook ${ev} codex`, timeout: event === 'SessionEnd' ? 3 : 10 }] })
+      const ours: Record<string, object> = {
+        SessionStart: on('SessionStart', 'start'),
+        UserPromptSubmit: on('UserPromptSubmit', 'prompt'),
+        Stop: on('Stop', 'stop'),
+        PreToolUse: on('PreToolUse', 'pre', { matcher: 'Bash|apply_patch' }),
+        PostToolUse: on('PostToolUse', 'post', { matcher: 'Bash|apply_patch' }),
+        SessionEnd: on('SessionEnd', 'end'),
+      }
+      const hooks = { ...cfg.hooks }
+      for (const [event, entry] of Object.entries(ours)) hooks[event] = [...(hooks[event] ?? []), entry]
       mkdirSync(join(homedir(), '.codex'), { recursive: true })
-      const block = '[mcp_servers.yap]\ncommand = "yap"\nargs = ["mcp"]\ndefault_tools_approval_mode = "approve"\n'
-      writeFileSync(codex, `${toml}${toml && !toml.endsWith('\n') ? '\n' : ''}${toml ? '\n' : ''}${block}`)
-      out.push(`Codex: added yap to ${codex}. Its sessions get yap_check, yap_peers, yap_say and the rest.`)
+      writeFileSync(codex, JSON.stringify({ ...cfg, hooks }, null, 2) + '\n')
+      out.push(`Codex: added yap's hooks to ${codex}. Codex runs a hook only once you trust it: open \`codex\`, type /hooks and trust the six yap ones.`)
     }
   }
 
@@ -266,6 +283,37 @@ function setup() {
   }
   out.push('', "Each agent runs on your own plan: sign in inside it if you haven't (`claude`, `codex login`). yap never sees the sign-in.")
   return out.join('\n')
+}
+
+/**
+ * `yap hook <event> [codex]`: one agent hook, as hooks/yap.sh is for Claude Code, where sh isn't there (Codex on
+ * Windows runs hooks through cmd). The event's JSON to the daemon, its answer out. Never fails: a hook must not
+ * break the session.
+ */
+async function hook(event: string, codex: boolean) {
+  if (process.env.YAP_AGENT) return
+  try {
+    const input = await new Response(Bun.stdin.stream()).text()
+    if (event === 'start') await daemon()
+    const id = (me || (JSON.parse(input).session_id ?? '')).replace(/[^\w-]/g, '')
+    const cursor = join(home, 'sessions', `${id}.cursor`)
+    let ack = ''
+    try {
+      ack = readFileSync(cursor, 'utf8').trim()
+    } catch {}
+    const q = new URLSearchParams({ ...(ack ? { ack } : {}), ...(me ? { session: me } : {}), ...(codex ? { for: 'codex' } : {}) })
+    const res = await fetch(`${url}/api/hook/${event}?${q}`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth() }, body: input, signal: AbortSignal.timeout(2000) })
+    const body = await res.text()
+    if (!res.ok) return
+    if (body !== '{}') process.stdout.write(body)
+    if (!id) return
+    if (event === 'end') rmSync(cursor, { force: true })
+    const seq = res.headers.get('x-yap-seq')
+    if (seq && /^\d+$/.test(seq)) {
+      mkdirSync(join(home, 'sessions'), { recursive: true })
+      writeFileSync(cursor, seq)
+    }
+  } catch {}
 }
 
 /** Take out the hooks `yap hooks --install` once put in the user's settings: the plugin carries them now. */
@@ -430,6 +478,8 @@ try {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
+  } else if (cmd === 'hook') {
+    await hook(rest[0] ?? '', rest[1] === 'codex')
   } else if (cmd === 'setup') {
     console.log(setup())
   } else if (cmd === 'mcp') {

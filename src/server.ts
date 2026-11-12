@@ -166,7 +166,7 @@ Bun.serve({
           const as = q.get('session')
           const ack = q.get('ack')
           const got: { seq?: number } = {}
-          const out = await sessions.hook(req.params.event, as ? { ...input, session_id: as } : input, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
+          const out = await sessions.hook(req.params.event, { ...input, ...(as ? { session_id: as } : {}), codex: q.get('for') === 'codex' }, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
           return Response.json(out, got.seq ? { headers: { 'x-yap-seq': String(got.seq) } } : undefined)
         } catch {
           return Response.json({})
