@@ -42,9 +42,9 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
         .flatMap(s => (whose(s.repo) ? [{ project: whose(s.repo), id: s.id.slice(0, 8), name: s.name, at: s.at, files: s.files }] : [])),
     spawns: b => sessions.spawns().flatMap(s => (whose(s.cwd) && (!b.id || s.id === b.id) ? [{ ...s, cwd: undefined, project: whose(s.cwd) }] : [])),
     notes: async b => (await sessions.notes(project(b.project).path)).map(({ repo, ...n }) => n),
-    note: b => sessions.note({ cwd: project(b.project).path, text: text(b) }),
-    say: b => sessions.say({ cwd: project(b.project).path, text: text(b), to: typeof b.to === 'string' ? b.to : undefined }),
-    spawn: b => sessions.spawn({ cwd: project(b.project).path, text: text(b) }),
+    note: b => sessions.note({ cwd: project(b.project).path, text: text(b), user: true }),
+    say: b => sessions.say({ cwd: project(b.project).path, text: text(b), to: typeof b.to === 'string' ? b.to : undefined, user: true }),
+    spawn: b => sessions.spawn({ cwd: project(b.project).path, text: text(b), user: true }),
   }
   return async (verb: string, body: unknown) => {
     const fn = verbs[verb]

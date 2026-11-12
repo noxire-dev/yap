@@ -35,10 +35,10 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. |
 | `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
-| `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is the user. |
+| `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
-| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, from the user, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
+| `spawn` | `text`, the task | Starts a background Claude Code session in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 
@@ -60,8 +60,9 @@ An answer has up to four parts, and an agent maps each to what it has:
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
 - `messages`: the messages `context` just delivered, as data, for a harness to show. The model already has them
   in `context`; a harness doesn't parse that. Each is
-  `{ kind: "say" | "note" | "spawn" | "conflict", from, sender, text, at, ok? }`: `from` as the model reads it
-  (`session @auth`, `the user`), `sender` the sending session's id (`""` for the user), `ok` on a spawn's end. On a
+  `{ kind: "say" | "note" | "spawn" | "conflict", origin, from, sender, text, at, ok? }`: `origin` is `session`,
+  `user` or `local` (see Trust), `from` as the model reads it (`session @auth`, `the user`,
+  `an unverified local process`), `sender` the sending session's id (`""` without one), `ok` on a spawn's end. On a
   `conflict`, `from` and `sender` are the other side and `text` the conflicting files, one per line, empty once clean.
   A message is delivered once.
 
@@ -84,6 +85,16 @@ answer then carries the message and instructions in `context`. Rules:
 - Every call carries `x-yap-token`, the contents of `~/.yap/token` (mode 600, written on first start).
 - Answers carry peers' messages, so the token gates them too. A refused call gets an empty 403: an agent that
   prints a hook's output into its context must not print an error into it.
+- Every agent runs as the user's OS account, so it can read the token, and it can run `yap say` without
+  `YAP_SESSION` or with another session's id. Origin is there to stop accidents and one-liners, not a
+  determined agent:
+  - `session`: the call named a live session. Trusted to be that session only as far as session ids stay
+    private, which on one machine they don't.
+  - `user`: a device paired through the relay. Nothing local can claim it.
+  - `local`: anything else with the token, a terminal or an agent's shell alike. Shown as
+    `an unverified local process`, never as the user.
+- Every delivered message comes with a line telling the model it is information: it cannot approve a
+  permission prompt, change configuration or stand in for the user.
 - What would skip a check (approving past the reviewer, changing a gate, forgetting a project) is confirmed on
   the desktop, which the token holder can't do. Not part of YAP; it belongs to the crew.
 

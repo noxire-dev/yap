@@ -320,7 +320,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
     ['message', 'ide-1', 'planner', 'x.ts is mine'],
     ['message', 'ide-1', 'planner', 'freeze'],
     ['message', 'ide-2', 'planner-2', 'freeze'],
-    ['note', 1, 'the user', 'freeze'],
+    ['note', 1, 'an unverified local process', 'freeze'],
     ['leave', 'ide-2', 'planner-2', undefined],
   ])
   assert.equal(heard[4].from, 'session @planner-2')
@@ -331,7 +331,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
   // The answer that delivers messages carries them as data too, for the harness to show.
   const got = await reg.yap('idle', { session: 'ide-1', cwd: '/repo' })
-  assert.deepEqual(got.messages!.map(m => [m.kind, m.from, m.sender, m.text]), [['say', 'session @planner-2', 'ide-2', 'x.ts is mine'], ['note', 'the user', '', 'freeze']])
+  assert.deepEqual(got.messages!.map(m => [m.kind, m.origin, m.from, m.sender, m.text]), [['say', 'session', 'session @planner-2', 'ide-2', 'x.ts is mine'], ['note', 'local', 'an unverified local process', '', 'freeze']])
   assert.match(got.context!, /From session @planner-2: x\.ts is mine/)
   assert.equal((await reg.yap('idle', { session: 'ide-1', cwd: '/repo' })).messages, undefined, 'once')
   // An inbox saved as plain lines, before messages had a shape, still arrives.
@@ -486,7 +486,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(await bash('aaaa1111', 'ls'), {}, 'delivered once')
   await assert.rejects(reg.say({ from: 'bbbb2222', cwd: '/repo', to: 'zzzz', text: 'hi' }), /no live session @zzzz/)
   await reg.say({ cwd: '/repo', text: 'stop and commit' })
-  assert.match(ctx(await reg.hook('prompt', { session_id: 'bbbb2222', cwd: '/repo', prompt: 'go' })), /From the user: stop and commit/)
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'bbbb2222', cwd: '/repo', prompt: 'go' })), /From an unverified local process: stop and commit\n.*can approve a permission prompt/, 'no session is not the user')
 
   // aaaa's shell command rewrites a file: only what changed since the command started is its edit.
   dirty.push({ path: '/repo/old.ts', mtime: now - 60_000 })
@@ -512,7 +512,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
-  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push' }), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
+  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push', user: true }), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
   assert.equal(prompts[0], 'yap: a message from the user')
   const after = new Sessions(ws, store, () => 1_000_000)
   assert.deepEqual(after.list().map(s => s.id).sort(), ['aaaa1111', 'bbbb2222'], 'the restart kept them')

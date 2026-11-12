@@ -71,7 +71,7 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
   its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
 - Sessions talk: `yap say @<name> <text>` to one (a prefix of the name or id will do), `yap say <text>` to all
-  of them in the repo. A message lands on the recipient's next edit, shell command or prompt, or before it ends its turn. Run from your own terminal, it comes from "the user".
+  of them in the repo. A message lands on the recipient's next edit, shell command or prompt, or before it ends its turn. Run from your own terminal, it comes from "an unverified local process": anything on the machine could have sent it. Only a device paired through the relay speaks as the user.
   A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
   be typing in it. A woken session answers but is told not to start work on another session's word.
 - A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,

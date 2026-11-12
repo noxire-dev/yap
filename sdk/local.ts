@@ -24,6 +24,8 @@ export interface Answer {
 
 export interface Message {
   kind: 'say' | 'note' | 'spawn' | 'conflict'
+  /** `session`, `user` (a device paired through the relay) or `local` (unverified: anything on the machine). Missing from a daemon before it. */
+  origin?: 'session' | 'user' | 'local'
   /** As the model reads it: `session @auth`, `the user`. */
   from: string
   /** The sending session's id, `''` for the user. */
