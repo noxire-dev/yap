@@ -113,6 +113,10 @@ export interface Workspace {
   where(dir: string): Promise<{ top: string; common: string } | null>
   /** Modified and untracked files in a working tree, absolute, with their modification times. */
   changed(top: string): Promise<{ path: string; mtime: number }[]>
+  /** A commit of the working tree as it is, untracked files included, on top of HEAD; null when there is no HEAD. */
+  snapshot(top: string): Promise<string | null>
+  /** Files that would conflict merging commits `a` and `b`, [] when they merge cleanly, null when git can't tell. */
+  conflicts(dir: string, a: string, b: string): Promise<string[] | null>
   /** Make `dir` a repo with one commit, so the crew has a base to branch from. */
   init(dir: string): Promise<void>
   /** Current branch of a repo, or null if `repo` isn't one. */

@@ -33,7 +33,7 @@ Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (b
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
 | `will-run` | Before a shell command (`command`) | Notes the start time. If the command would move the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`, `restore`, `rebase`, `pull`, `merge`) or sweep it (`add -A`, `commit -a`) while a peer in the same tree edited in the last 30 minutes, answers with a **deny**. |
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. |
-| `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. |
+| `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
 | `say` | The agent or user sends a message (`text`, optional `to`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers. A peer idle in a pane is **woken**. Without `session`, the sender is the user. |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
@@ -47,7 +47,7 @@ Four more read the repo `cwd` sits in, for a harness or a tool, and change nothi
 | Verb | Answers |
 |---|---|
 | `hello` | `{ protocol: "yap", version, verbs }` |
-| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files }]`, `files` relative to `top` |
+| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own |
 | `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
 | `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
 
@@ -60,8 +60,9 @@ An answer has up to four parts, and an agent maps each to what it has:
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
 - `messages`: the messages `context` just delivered, as data, for a harness to show. The model already has them
   in `context`; a harness doesn't parse that. Each is
-  `{ kind: "say" | "note" | "spawn", from, sender, text, at, ok? }`: `from` as the model reads it
-  (`session @auth`, `the user`), `sender` the sending session's id (`""` for the user), `ok` on a spawn's end.
+  `{ kind: "say" | "note" | "spawn" | "conflict", from, sender, text, at, ok? }`: `from` as the model reads it
+  (`session @auth`, `the user`), `sender` the sending session's id (`""` for the user), `ok` on a spawn's end. On a
+  `conflict`, `from` and `sender` are the other side and `text` the conflicting files, one per line, empty once clean.
   A message is delivered once.
 
 An agent that can't receive answers on some verb still sends it: the daemon's record stays right, and the
@@ -116,7 +117,7 @@ curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
 | `join` | `session`, `name` | a session registers (any verb from a new id) |
 | `leave` | `session`, `name` | it leaves, or goes 2 hours silent |
 | `edited` | `session`, `name`, `path` (relative to its tree) | it edits a file, or a shell command of its does |
-| `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending |
+| `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending, a merge conflict found or cleared |
 | `note` | `id`, `author`, `text` | a note goes on the board |
 
 Every event also has `repo`, the repo's main checkout, normalized (forward slashes, lowercase on Windows). The
@@ -136,7 +137,8 @@ Herdr:
    speak as it and not as the user. For Claude Code with the yap plugin, that is all of steps 1 to 4.
 5. Be the pane host: on a `message` event for one of your sessions that sits idle, start a turn with the prompt
    `yap: a message from <from>`. Its `turn` answer carries the message and tells the model the user didn't type
-   it. A busy session needs nothing: the message comes with its next answer.
+   it. A busy session needs nothing: the message comes with its next answer. Don't wake for a `conflict`: it is
+   yap's finding, not a request, and waits for the session's next turn.
 
 `sdk/local.ts` does all of it in one file with no dependencies (Node 18+, Bun); vendor it:
 

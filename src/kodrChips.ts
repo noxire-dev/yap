@@ -3,7 +3,7 @@ import type { Message, Peer } from '../sdk/local'
 
 export interface Chip {
   text: string
-  tone: 'neutral' | 'info' | 'warn'
+  tone: 'neutral' | 'info' | 'warn' | 'error'
   title: string
 }
 
@@ -34,6 +34,15 @@ export function threadChips(s: Peer, sessions: Peer[], mail: Message | undefined
       text: shared.length === 1 ? `shared: ${first}` : `${shared.length} shared files`,
       tone: 'warn',
       title: `Also edited by another session in this working tree: ${shared.join(', ')}.`,
+    })
+  }
+  const named = (id: string) => sessions.find(o => o.id === id)?.name || id.slice(0, 8)
+  const clash = (s.conflicts ?? []).map(c => ({ who: `@${named(c.with)}`, files: c.files }))
+  if (clash.length) {
+    chips.push({
+      text: clash.length === 1 ? `conflicts with ${clash[0].who}` : `conflicts with ${clash.length} sessions`,
+      tone: 'error',
+      title: `Would conflict if merged: ${clash.map(c => `${c.files.join(', ')} (${c.who})`).join('; ')}.`,
     })
   }
   if (mail && now - mail.at < MAIL_MS) {

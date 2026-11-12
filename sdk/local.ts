@@ -23,7 +23,7 @@ export interface Answer {
 }
 
 export interface Message {
-  kind: 'say' | 'note' | 'spawn'
+  kind: 'say' | 'note' | 'spawn' | 'conflict'
   /** As the model reads it: `session @auth`, `the user`. */
   from: string
   /** The sending session's id, `''` for the user. */
@@ -38,7 +38,7 @@ export interface Message {
 export type YapEvent =
   | { type: 'join' | 'leave'; repo: string; session: string; name: string }
   | { type: 'edited'; repo: string; session: string; name: string; path: string }
-  /** For `session`: wake it if it sits idle (`wakePrompt`). */
+  /** For `session`: wake it if it sits idle (`wakePrompt`), unless it is a `conflict`, which waits for its next turn. */
   | ({ type: 'message'; repo: string; session: string; name: string } & Message)
   | { type: 'note'; repo: string; id: number; author: string; text: string }
 
@@ -54,6 +54,8 @@ export interface Peer {
   at: number
   /** Files it edited, relative to `top`. */
   files: string[]
+  /** Sessions in other worktrees whose working tree would conflict with its own if merged, and in which files. */
+  conflicts?: { with: string; files: string[] }[]
 }
 
 export interface Note {

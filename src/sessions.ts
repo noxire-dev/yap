@@ -38,9 +38,12 @@ export type YapEvent =
   | ({ type: 'message'; repo: string; session: string; name: string } & Message)
   | { type: 'note'; repo: string; id: number; author: string; text: string }
 
-/** Something left for a session: a `say` from a peer or the user, a new `note`, or the end of a `spawn` it started. */
+/**
+ * Something left for a session: a `say` from a peer or the user, a new `note`, the end of a `spawn` it started, or a
+ * `conflict` yap found test-merging its working tree with another worktree's.
+ */
 export interface Message {
-  kind: 'say' | 'note' | 'spawn'
+  kind: 'say' | 'note' | 'spawn' | 'conflict'
   /** Who, as the model reads it: `session @auth`, `the user`. */
   from: string
   /** The sending session's id, `''` for the user. */
@@ -84,6 +87,10 @@ interface Session {
   cwd: string
   /** When it last did something the others should hear about: started, prompted, edited. */
   news: number
+  /** Its working tree as of its last turn's end, as a commit nothing points at. */
+  snap?: string
+  /** Peer id to the files their working trees would conflict in if merged. */
+  clash?: Record<string, string[]>
 }
 
 /** A background session yap started, and what came of it. */
@@ -242,6 +249,49 @@ export class Sessions {
     if (s) this.emit({ type: 'leave', repo: checkout(s.repo), session: id, name: s.name })
     this.all.delete(id)
     this.store.dropSession(id)
+    for (const o of this.all.values())
+      if (o.clash?.[id]) {
+        delete o.clash[id]
+        this.save(o)
+      }
+  }
+
+  private merging = Promise.resolve()
+
+  /** The test-merges started at the end of a turn, done. */
+  settled() {
+    return this.merging
+  }
+
+  /**
+   * At the end of its turn, snapshot `s`'s working tree and test-merge it with every other worktree's latest snapshot
+   * in the repo. Both sides hear when the conflicting files change, and when they clear. One at a time, after the
+   * hook has answered, so a turn never waits on git.
+   */
+  private checkMerges(s: Session) {
+    this.merging = this.merging.then(async () => {
+      const snap = await this.ws.snapshot(s.top).catch(() => null)
+      if (!snap || !this.all.has(s.id)) return
+      s.snap = snap
+      const peers = this.others(s).filter(o => o.top !== s.top && o.snap && this.now() - o.at <= LIVE)
+      const found = await Promise.all(peers.map(o => this.ws.conflicts(s.top, snap, o.snap!).catch(() => null)))
+      peers.forEach((o, i) => {
+        const files = found[i]
+        if (files === null) return
+        const was = s.clash?.[o.id] ?? []
+        if (files.length === was.length && files.every(f => was.includes(f))) return
+        const list = files.slice(0, 8).join(', ') + (files.length > 8 ? ` and ${files.length - 8} more` : '')
+        for (const [a, b] of [[s, o], [o, s]]) {
+          if (files.length) (a.clash ??= {})[b.id] = files
+          else delete a.clash?.[b.id]
+          const line = files.length
+            ? `Your working tree and ${this.label(b)}'s, in another worktree, would conflict if merged, in ${list}. Agree with them who changes what (\`yap say @${this.tag(b)} <text>\`) before either of you goes further in those files, and tell the user if you can't.`
+            : `Your working tree and ${this.label(b)}'s merge cleanly again.`
+          this.post(a, { kind: 'conflict', from: this.label(b), sender: b.id, text: files.join('\n') }, line)
+        }
+      })
+      this.save(s, ...peers)
+    })
   }
 
   private async root(cwd: string) {
@@ -448,7 +498,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')) }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })) }))
   }
 
   /** The main checkout of the repo `cwd` sits in, as events and `list` name it. */
@@ -522,7 +572,11 @@ export class Sessions {
 
     // About to end its turn: what came in while it worked is read now, not after the user's next prompt. Once a
     // turn: a reply that lands while it carries on waits, so two sessions can't keep each other talking.
-    if (verb === 'idle') return call.continuing ? {} : arrived(drain())
+    if (verb === 'idle') {
+      if (call.continuing) return {}
+      this.checkMerges(s)
+      return arrived(drain())
+    }
 
     if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(WOKEN, drain()) }
     if (verb === 'turn') {

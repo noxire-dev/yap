@@ -1,13 +1,15 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { childEnv } from './env'
 import type { Ran, Workspace } from './ports'
 
 // windowsHide: the daemon has no console, so without it every child would open a visible one.
-async function sh(cmd: string[], cwd: string, signal?: AbortSignal): Promise<Ran> {
-  const p = Bun.spawn(cmd, { cwd, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', signal, windowsHide: true })
+async function sh(cmd: string[], cwd: string, env?: Record<string, string>): Promise<Ran & { code: number; out: string }> {
+  const p = Bun.spawn(cmd, { cwd, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', windowsHide: true, ...(env ? { env: { ...process.env, ...env } } : {}) })
   const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited])
-  return { ok: code === 0, log: (out + err).trim() }
+  return { ok: code === 0, log: (out + err).trim(), code, out }
 }
 
 const git = (cwd: string, ...args: string[]) => sh(['git', ...args], cwd)
@@ -46,6 +48,31 @@ export class LocalWorkspace implements Workspace {
       } catch {} // deleted
     }
     return out
+  }
+
+  async snapshot(top: string) {
+    // A copy of the real index keeps its stat cache, so `add -A` rehashes only what changed; the real one is untouched.
+    const index = resolve(top, (await git(top, 'rev-parse', '--git-path', 'index')).log)
+    const tmp = join(tmpdir(), `yap-index-${randomUUID()}`)
+    try {
+      if (existsSync(index)) copyFileSync(index, tmp)
+      const env = { GIT_INDEX_FILE: tmp }
+      if (!(await sh(['git', 'add', '-A'], top, env)).ok) return null
+      const tree = await sh(['git', 'write-tree'], top, env)
+      if (!tree.ok) return null
+      // ponytail: each snapshot leaves an unreachable commit for git gc to collect.
+      const c = await git(top, '-c', 'user.name=yap', '-c', 'user.email=yap@localhost', 'commit-tree', tree.log, '-p', 'HEAD', '-m', 'yap snapshot')
+      return c.ok ? c.log : null
+    } finally {
+      rmSync(tmp, { force: true })
+    }
+  }
+
+  async conflicts(dir: string, a: string, b: string) {
+    const r = await git(dir, 'merge-tree', '--write-tree', '--name-only', '--no-messages', a, b)
+    // 0 merges cleanly, 1 conflicts with the file names after the tree id; anything else (git before 2.38) is unknown.
+    if (r.code === 0) return []
+    return r.code === 1 ? [...new Set(r.out.split(/\r?\n/).slice(1).filter(Boolean))] : null
   }
 
   async init(dir: string) {

@@ -1,4 +1,4 @@
-// bun src/crew.check.ts — the loop against fakes: no git, no model, no network.
+// bun src/crew.check.ts — the loop against fakes: no model, no network, and git only for the merge check.
 import { Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
@@ -11,6 +11,10 @@ import type { AgentRunner, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
+import { LocalWorkspace } from './workspace'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { events, local } from './wire'
 
 const ok = { ok: true, log: '' }
@@ -29,6 +33,8 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     // `/wt` is a second worktree of `/repo`.
     where: async dir => (dir.startsWith('/elsewhere') ? { top: '/elsewhere', common: '/elsewhere/.git' } : { top: dir.startsWith('/wt') ? '/wt' : '/repo', common: '/repo/.git' }),
     changed: async () => dirty,
+    snapshot: async () => null,
+    conflicts: async () => [],
     init: async () => {},
     branch: async () => 'main',
     slug: async () => 'acme/toy',
@@ -597,6 +603,47 @@ for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', '
   assert.match(chips[1].title, /src\/auth\.ts \(@bob\)/)
   assert.equal(chips[2].title, 'leave auth to me')
   assert.equal(threadChips(me, all, msg, MAIL_MS).length, 2, 'the message went stale')
+  const clashed = threadChips({ ...me, conflicts: [{ with: 'wt', files: ['x.ts'] }] }, all, undefined, 1).at(-1)!
+  assert.deepEqual([clashed.text, clashed.tone], ['conflicts with @wt', 'error'])
+}
+
+// Two worktrees whose uncommitted work would conflict hear it when a turn ends, from real git, and hear it clear;
+// neither real index moves.
+{
+  const store = new SqliteStore(new Database(':memory:'))
+  const ws = new LocalWorkspace()
+  const dir = mkdtempSync(join(tmpdir(), 'yap-merge-'))
+  const [a, b] = [join(dir, 'a'), join(dir, 'b')]
+  const git = (cwd: string, ...args: string[]) => {
+    const r = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`)
+    return r.stdout.toString()
+  }
+  Bun.spawnSync(['git', 'init', '-q', '-b', 'main', a])
+  writeFileSync(join(a, 'notes.md'), 'one')
+  git(a, 'add', '-A')
+  git(a, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'base')
+  git(a, 'worktree', 'add', '-q', '-b', 'b', b)
+  writeFileSync(join(a, 'notes.md'), 'two')
+  writeFileSync(join(b, 'notes.md'), 'three')
+  writeFileSync(join(b, 'new.md'), 'untracked')
+  const status = git(b, 'status', '--porcelain')
+
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
+  await reg.hook('stop', { session_id: 'aaaa1111', cwd: a })
+  await reg.hook('stop', { session_id: 'bbbb2222', cwd: b })
+  await reg.settled()
+  assert.deepEqual(reg.list().find(s => s.id === 'aaaa1111')!.conflicts, [{ with: 'bbbb2222', files: ['notes.md'] }])
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: a, prompt: 'go' })), /session @bbbb2222's, in another worktree, would conflict if merged, in notes\.md/)
+  assert.equal(git(b, 'status', '--porcelain'), status, "the real index didn't move")
+
+  writeFileSync(join(b, 'notes.md'), 'two')
+  await reg.hook('stop', { session_id: 'bbbb2222', cwd: b })
+  await reg.settled()
+  assert.deepEqual(reg.list().find(s => s.id === 'aaaa1111')!.conflicts, [])
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: a, prompt: 'go' })), /merge cleanly again/)
+  rmSync(dir, { recursive: true, force: true })
 }
 
 console.log('crew ok')

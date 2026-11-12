@@ -152,6 +152,8 @@ yap.watch(
   async e => {
     if (e.type === 'join' || e.type === 'leave' || e.type === 'edited') return soon()
     if (e.type !== 'message') return
+    // A conflict is yap's finding, not someone asking: its chip comes from `sessions`, and it is read next turn.
+    if (e.kind === 'conflict') return soon()
     mail.set(e.session, e)
     soon()
     if (waking.has(e.session)) return
