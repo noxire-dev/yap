@@ -244,9 +244,12 @@ export class YapSession {
     return this.yap.call<Answer>(verb, { session: this.id, cwd: this.cwd, ack: this.ack, ...body })
   }
 
-  /** The conversation starts. `name`: what the harness calls it (`planner`); otherwise named from its first edit. */
-  join(name?: string) {
-    return this.verb('join', { name })
+  /**
+   * The conversation starts. `name`: what the harness calls it (`planner`); otherwise named from its first edit.
+   * `pid`: a process that lives exactly as long as the session; when it dies without `leave`, the session goes.
+   */
+  join(name?: string, pid?: number) {
+    return this.verb('join', { name, pid })
   }
 
   /** The user sent `prompt`. Tells it what peers did since it last heard; nothing when nothing moved. */

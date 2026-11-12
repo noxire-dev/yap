@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
-import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { SETTINGS, type Settings, build, dir, home, settings, url, version } from './env'
@@ -17,6 +17,7 @@ yap init            make this directory a git repo so the crew can work in it
 yap gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
 yap forget [name]   take this repo's project (or the named one) off the board
 yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
+yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
@@ -214,6 +215,59 @@ async function here(init = false) {
   return api.send('POST', '/api/projects', { path: target(), init }) as Promise<{ id: number; name: string; tracker: string | null }>
 }
 
+/**
+ * `yap setup`: every agent on this machine, connected. Claude Code gets the plugin (hooks, which can stop a
+ * command); Codex and Cursor get `yap mcp`. Each runs on its own sign-in and plan; yap never sees either.
+ */
+function setup() {
+  const has = (bin: string) => !!Bun.which(bin)
+  const run = (...cmd: string[]) => Bun.spawnSync(cmd, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const out: string[] = []
+
+  const removed = unhook()
+  if (!has('claude')) out.push('Claude Code: not installed. Install it, sign in, then run `yap setup` again.')
+  else if (/\byap@yap\b/.test(run('claude', 'plugin', 'list').stdout.toString())) out.push('Claude Code: the yap plugin is already in.')
+  else {
+    run('claude', 'plugin', 'marketplace', 'add', 'noxire-dev/yap')
+    const r = run('claude', 'plugin', 'install', 'yap@yap')
+    out.push(r.success ? 'Claude Code: installed the yap plugin. Sessions started from now on use it.' : `Claude Code: installing the plugin failed (${r.stderr.toString().trim() || r.exitCode}). Run \`claude plugin install yap@yap\`.`)
+  }
+  if (removed) out.push(`Claude Code: took out ${removed} hooks an older yap put in your settings (backup: settings.json.bak-yap).`)
+
+  const codex = join(homedir(), '.codex', 'config.toml')
+  if (!has('codex')) out.push('Codex: not installed.')
+  else {
+    const toml = existsSync(codex) ? readFileSync(codex, 'utf8') : ''
+    if (/^\[mcp_servers\.yap\]/m.test(toml)) out.push('Codex: yap is already in its MCP servers.')
+    else {
+      mkdirSync(join(homedir(), '.codex'), { recursive: true })
+      const block = '[mcp_servers.yap]\ncommand = "yap"\nargs = ["mcp"]\ndefault_tools_approval_mode = "approve"\n'
+      writeFileSync(codex, `${toml}${toml && !toml.endsWith('\n') ? '\n' : ''}${toml ? '\n' : ''}${block}`)
+      out.push(`Codex: added yap to ${codex}. Its sessions get yap_check, yap_peers, yap_say and the rest.`)
+    }
+  }
+
+  const cursor = join(homedir(), '.cursor')
+  if (!existsSync(cursor)) out.push('Cursor: not installed.')
+  else {
+    const file = join(cursor, 'mcp.json')
+    let cfg: { mcpServers?: Record<string, unknown> } | null = {}
+    try {
+      if (existsSync(file)) cfg = JSON.parse(readFileSync(file, 'utf8'))
+    } catch {
+      cfg = null
+    }
+    if (!cfg) out.push(`Cursor: ${file} isn't plain JSON, so it is left alone. Add "yap": {"command": "yap", "args": ["mcp"]} under mcpServers.`)
+    else if (cfg.mcpServers?.yap) out.push('Cursor: yap is already in its MCP servers.')
+    else {
+      writeFileSync(file, JSON.stringify({ ...cfg, mcpServers: { ...cfg.mcpServers, yap: { command: 'yap', args: ['mcp'] } } }, null, 2) + '\n')
+      out.push(`Cursor: added yap to ${file}.`)
+    }
+  }
+  out.push('', "Each agent runs on your own plan: sign in inside it if you haven't (`claude`, `codex login`). yap never sees the sign-in.")
+  return out.join('\n')
+}
+
 /** Take out the hooks `yap hooks --install` once put in the user's settings: the plugin carries them now. */
 function unhook() {
   const file = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json')
@@ -376,6 +430,8 @@ try {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
+  } else if (cmd === 'setup') {
+    console.log(setup())
   } else if (cmd === 'mcp') {
     await mcp()
   } else if (cmd === 'hooks') {

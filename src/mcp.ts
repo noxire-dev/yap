@@ -41,7 +41,15 @@ const TOOLS = [
   },
 ]
 
-const say = (a: Answer) => [a.deny && `Don't run it. ${a.deny}`, a.context].filter(Boolean).join('\n\n') || 'nothing from yap: go ahead'
+/** YAP's text names the `yap` commands; run from an agent's shell without YAP_SESSION, they'd speak as nobody. */
+const tools = (text: string) =>
+  text
+    .replace(/`yap say @<session> <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
+    .replace(/`yap say @[^`]*`/g, 'yap_say')
+    .replace(/`yap note <text>`/g, 'yap_note')
+    .replace(/, and take a note down with `yap note -d <id>` once it no longer holds/g, '')
+
+const say = (a: Answer) => tools([a.deny && `Don't run it. ${a.deny}`, a.context].filter(Boolean).join('\n\n')) || 'nothing from yap: go ahead'
 
 async function tool(me: YapSession, name: string, a: Record<string, any>): Promise<string> {
   const yap = me.yap
@@ -79,17 +87,16 @@ export async function rpc(me: YapSession, owned: boolean, m: { id?: unknown; met
   if (m.id === undefined) return
   const ok = (result: unknown) => ({ jsonrpc: '2.0', id: m.id, result })
   if (m.method === 'initialize') {
-    // Codex calls itself `codex-mcp-client`. ponytail: a client killed rather than closed never says leave, so
-    // its session lingers until the daemon's two-hour cutoff; send a pid with join if that starts to matter.
+    // Codex calls itself `codex-mcp-client`, and kills this process rather than close it: the pid says leave.
     const name = String(m.params?.clientInfo?.name ?? 'mcp').replace(/[-_ ]?mcp[-_ ]?client$/i, '') || 'mcp'
-    const joined = owned ? await me.join(name).catch(() => ({}) as Answer) : {}
+    const joined = owned ? await me.join(name, process.pid).catch(() => ({}) as Answer) : {}
     return ok({
       protocolVersion: m.params?.protocolVersion ?? '2025-06-18',
       capabilities: { tools: {} },
       serverInfo: { name: 'yap', version },
       instructions: [
         'Other agent sessions may be working in this repo, some in this same working tree. Call yap_check before editing a file or running a git command that switches, resets, stashes or commits, and between steps; do what it says. Message a peer with yap_say.',
-        joined.context,
+        joined.context && tools(joined.context),
       ]
         .filter(Boolean)
         .join('\n\n'),

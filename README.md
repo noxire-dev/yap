@@ -27,18 +27,23 @@ cd ~/some/repo
 yap                   # the crew's board; the repo becomes a project, the daemon starts if it isn't running
 ```
 
-Then the Claude Code plugin, which carries the hooks and starts the daemon with each session:
+Then connect the agents on this machine:
 
 ```
-claude plugin marketplace add noxire-dev/yap
-claude plugin install yap@yap
+yap setup
 ```
+
+It installs the Claude Code plugin, which carries the hooks and starts the daemon with each session. It adds
+`yap mcp` to Codex and Cursor if they are installed. Running it again changes nothing. Each agent runs on your
+own sign-in and plan, and yap never sees either. By hand, the plugin is
+`claude plugin marketplace add noxire-dev/yap` and then `claude plugin install yap@yap`.
 
 | Command | |
 |---|---|
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
 | `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
+| `yap setup` | Connect this machine's agents: the plugin in Claude Code, `yap mcp` in Codex and Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
@@ -100,7 +105,7 @@ Another harness (your own IDE, say) can speak YAP for its agents without the hoo
 listens on `GET /yap/events`, and sets `YAP_SESSION` in each agent's shell. See
 [docs/yap.md](docs/yap.md#bringing-your-own-harness).
 
-An agent with no hooks gets yap as MCP tools from `yap mcp`. In Codex's `~/.codex/config.toml`:
+An agent with no hooks gets yap as MCP tools from `yap mcp`. `yap setup` adds it. By hand, in Codex's `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.yap]

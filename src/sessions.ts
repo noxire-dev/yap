@@ -106,6 +106,8 @@ interface Session {
   snap?: string
   /** Peer id to the files their working trees would conflict in if merged. */
   clash?: Record<string, string[]>
+  /** The process that speaks for it (`yap mcp`), when it said: once that process is gone, so is the session. */
+  pid?: number
 }
 
 /** A background session yap started, and what came of it. */
@@ -168,6 +170,8 @@ export interface Call {
   continuing?: boolean
   /** join: what the harness calls this session; it goes by it instead of a name from its first file. */
   name?: string
+  /** join: the process speaking for the session, so it leaves when that process dies without saying so. */
+  pid?: number
   /** The highest `seq` this session showed its model. A session that sends it gets unacked messages again. */
   ack?: number
 }
@@ -221,6 +225,14 @@ export class Sessions {
     private runner?: AgentRunner,
     /** How many background sessions may run at once: `spawns` in ~/.yap/config.json. */
     private cap = () => 3,
+    /** Whether a process on this machine still runs. */
+    private alive: (pid: number) => boolean = pid => {
+      try {
+        return process.kill(pid, 0)
+      } catch (e: any) {
+        return e?.code === 'EPERM'
+      }
+    },
   ) {
     for (const row of store.sessions()) {
       const s = JSON.parse(row)
@@ -332,9 +344,15 @@ export class Sessions {
     return r
   }
 
-  private async touch(input: { session?: string; cwd?: string; name?: string }) {
+  /** Drop sessions not heard from in two hours, and those whose process died without a `leave`. */
+  private prune() {
     const now = this.now()
-    for (const [id, s] of this.all) if (now - s.at > LIVE) this.forget(id)
+    for (const [id, s] of this.all) if (now - s.at > LIVE || (s.pid && !this.alive(s.pid))) this.forget(id)
+  }
+
+  private async touch(input: { session?: string; cwd?: string; name?: string; pid?: number }) {
+    const now = this.now()
+    this.prune()
     const id = String(input.session ?? '')
     if (!id || !input.cwd) return null
     let s = this.all.get(id)
@@ -347,6 +365,7 @@ export class Sessions {
     } else if (s.cwd !== input.cwd) {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
+    if (input.pid) s.pid = input.pid
     s.at = now
     return s
   }
@@ -530,6 +549,7 @@ export class Sessions {
 
   /** Live sessions, for `yap sessions`. */
   list() {
+    this.prune()
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)

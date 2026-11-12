@@ -27,7 +27,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 
 | Verb | When the agent sends it | What the daemon does |
 |---|---|---|
-| `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. |
+| `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. `pid`, optional: a process that lives as long as the session; when it is gone the session leaves, `leave` or not. |
 | `turn` | The user sends a prompt | Answers with what peers did since it last heard, and nothing at all when nothing moved. Prompts that are harness markup (`<agent-message …>`) don't count as news. |
 | `will-edit` | Before a file write (`path`) | If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
@@ -133,7 +133,7 @@ curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
 
 | `type` | Fields | When |
 |---|---|---|
-| `join` | `session`, `name` | a session registers (any verb from a new id) |
+| `join` | `session`, `name`, `pid` | a session registers (any verb from a new id) |
 | `leave` | `session`, `name` | it leaves, or goes 2 hours silent |
 | `edited` | `session`, `name`, `path` (relative to its tree) | it edits a file, or a shell command of its does |
 | `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending, a merge conflict found or cleared |
@@ -175,7 +175,7 @@ yap.watch(thread.worktree, e => {
 ```
 
 An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an MCP server on stdio. It
-joins on `initialize`, named for the client, and leaves when stdin closes. With `YAP_SESSION` set it is that
+joins on `initialize`, named for the client, and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
 `run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
 `yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.

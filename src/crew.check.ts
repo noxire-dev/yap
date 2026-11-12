@@ -416,9 +416,11 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const call = async (name: string, args: object = {}) => ((await rpc(cx, true, { id: 1, method: 'tools/call', params: { name, arguments: args } }, '0')) as any).result
   const init: any = await rpc(cx, true, { id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'codex' } } }, '0')
   assert.match(init.result.instructions, /Call yap_check before editing[\s\S]*@a \(k2\)/)
+  assert.doesNotMatch(init.result.instructions, /`yap (say|note)/, 'the tools, not the CLI')
   assert.equal(await rpc(cx, true, { method: 'notifications/initialized' }, '0'), undefined)
   assert.ok(((await rpc(cx, true, { id: 2, method: 'tools/list' }, '0')) as any).result.tools.some((t: any) => t.name === 'yap_check'))
   assert.match((await call('yap_check', { run: 'git stash' })).content[0].text, /^Don't run it\. yap: another session is working/)
+  assert.doesNotMatch((await call('yap_check', { run: 'git stash' })).content[0].text, /`yap say/)
   assert.match((await call('yap_check', { edit: 'src/a.ts' })).content[0].text, /Another session is working on src\/a\.ts/)
   await call('yap_check', { edited: ['src/b.ts'] })
   assert.match((await b.willEdit('src/b.ts')).notice!, /by @codex/)
@@ -428,6 +430,21 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match((await call('yap_peers')).content[0].text, /@a in .*edited src\/a\.ts/)
   assert.equal((await call('nope')).isError, true)
   stop()
+}
+
+// A session that gave a pid leaves when that process dies, even without a leave (Codex kills its MCP server).
+{
+  const { store, ws } = rig([])
+  const dead = new Set<number>()
+  const reg = new Sessions(ws, store, () => 1_000_000, undefined, undefined, undefined, pid => !dead.has(pid))
+  const left: string[] = []
+  reg.listen(e => e.type === 'leave' && left.push(e.session))
+  await reg.yap('join', { session: 'mcp-x', cwd: '/repo', name: 'codex', pid: 41 })
+  await reg.yap('join', { session: 'hook-y', cwd: '/repo' })
+  assert.deepEqual((await reg.peers('/repo')).map(s => s.id).sort(), ['hook-y', 'mcp-x'])
+  dead.add(41)
+  assert.deepEqual((await reg.peers('/repo')).map(s => s.id), ['hook-y'])
+  assert.deepEqual(left, ['mcp-x'])
 }
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
