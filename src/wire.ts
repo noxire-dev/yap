@@ -25,6 +25,7 @@ export function local(sessions: Sessions) {
       prompt: str('prompt'),
       name: str('name'),
       continuing: b.continuing === true,
+      ack: typeof b.ack === 'number' ? b.ack : undefined,
     })
   }
 }

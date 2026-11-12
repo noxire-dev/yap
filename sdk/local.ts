@@ -18,11 +18,17 @@ export interface Answer {
   notice?: string
   /** willRun only: don't run the command; give the model this reason instead. */
   deny?: string
-  /** The messages `context` just delivered, as data, to show. Each is delivered once. */
+  /** The messages `context` just delivered, as data, to show. Once unless the session acks (`YapSession.ack`). */
   messages?: Message[]
+  /** With `messages`: the highest `seq` among them. */
+  seq?: number
 }
 
 export interface Message {
+  /** Missing from a daemon before acks, like `seq`. */
+  id?: string
+  /** Only goes up. */
+  seq?: number
   kind: 'say' | 'note' | 'spawn' | 'conflict'
   /** `session`, `user` (a device paired through the relay) or `local` (unverified: anything on the machine). Missing from a daemon before it. */
   origin?: 'session' | 'user' | 'local'
@@ -58,6 +64,8 @@ export interface Peer {
   files: string[]
   /** Sessions in other worktrees whose working tree would conflict with its own if merged, and in which files. */
   conflicts?: { with: string; files: string[] }[]
+  /** Messages it never acked after 3 deliveries. */
+  undelivered?: { id: string; from: string; text: string }[]
 }
 
 export interface Note {
@@ -225,8 +233,15 @@ export class YapSession {
     public cwd: string,
   ) {}
 
+  /**
+   * Set it to an answer's `seq` once that answer's context reached the model; every verb sends it. Once set, a
+   * message whose answer got lost comes again, up to 3 times with the same `id`; drop ids you already showed.
+   * Unset, each message is delivered once.
+   */
+  ack?: number
+
   private verb(verb: string, body: object = {}) {
-    return this.yap.call<Answer>(verb, { session: this.id, cwd: this.cwd, ...body })
+    return this.yap.call<Answer>(verb, { session: this.id, cwd: this.cwd, ack: this.ack, ...body })
   }
 
   /** The conversation starts. `name`: what the harness calls it (`planner`); otherwise named from its first edit. */

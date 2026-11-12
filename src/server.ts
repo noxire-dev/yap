@@ -160,8 +160,14 @@ Bun.serve({
           // A harness that hosts Claude Code (Kodr) sets YAP_SESSION to its own id for the conversation, which
           // outlives Claude's session id; the hooks pass it as ?session=.
           const input = await req.json()
-          const as = new URL(req.url).searchParams.get('session')
-          return Response.json(await sessions.hook(req.params.event, as ? { ...input, session_id: as } : input))
+          // ?ack=: the seq of the last answer the hook printed. Its answer's seq comes back as a header, so the
+          // body stays what Claude Code reads.
+          const q = new URL(req.url).searchParams
+          const as = q.get('session')
+          const ack = q.get('ack')
+          const got: { seq?: number } = {}
+          const out = await sessions.hook(req.params.event, as ? { ...input, session_id: as } : input, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
+          return Response.json(out, got.seq ? { headers: { 'x-yap-seq': String(got.seq) } } : undefined)
         } catch {
           return Response.json({})
         }

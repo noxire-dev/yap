@@ -23,7 +23,7 @@ Checked on Nov 11 against `kumi` at `dd3e0fd`:
 | # | Item | Size | Depends on |
 | --- | --- | --- | --- |
 | 1 | User origin and authority wording (done; the TUI handshake was dropped, the TUI sends no messages) | S | none |
-| 2 | Message ids, seq and acks | M | none |
+| 2 | Message ids, seq and acks (done; seq is clock-based, undelivered shows in `yap sessions`, not `yap status`) | M | none |
 | 3 | `re` and message kinds | S | 2 |
 | 4 | `claim` verb | M | 2 |
 | 5 | Merge conflict check (done) | M | none |

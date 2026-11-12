@@ -56,7 +56,8 @@ agent is mid-ticket or a spawn is running.
 ## Parallel sessions
 
 Every Claude Code session on this machine reports to the daemon through six hooks that come with the plugin
-(`hooks/hooks.json`: a `curl` to `127.0.0.1:4170/api/hook/*`, silent when the daemon is down). The first one,
+(`hooks/hooks.json` runs `hooks/yap.sh`: a `curl` to `127.0.0.1:4170/api/hook/*`, silent when the daemon is down,
+that acks the messages it printed so a lost answer is sent again). The first one,
 on session start, starts the daemon if it isn't running. Hooks an older yap put in `~/.claude/settings.json`
 would fire twice next to the plugin's: `yap hooks` takes them out, keeping a `.bak-yap` copy. Sessions are
 grouped by repo, worktrees included, and the crew counts as one more worker.

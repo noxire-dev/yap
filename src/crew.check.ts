@@ -341,6 +341,40 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual([old.messages![0].text, /- From the user: hi/.test(old.context!)], ['From the user: hi', true])
 }
 
+// Acks, through the /yap handler: a session that acks keeps a message until it does. Unacked, it comes again with
+// the same id once the resend window is past, a daemon restart in between included, three times at most; then
+// `sessions` lists it as undelivered. A session that never acks gets each message once.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const as = (reg: Sessions, session = 'ack-1') => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd: '/repo', ...b }) as Promise<any>
+  const reg = new Sessions(ws, store, () => now)
+  const verb = as(reg)
+  await verb('join', { ack: 0 })
+  await reg.say({ cwd: '/repo', to: 'ack-1', text: 'one' })
+  await reg.say({ cwd: '/repo', to: 'ack-1', text: 'two' })
+  const first = await verb('will-edit', { ack: 0 })
+  assert.deepEqual(first.messages.map((m: any) => m.text), ['one', 'two'])
+  assert.ok(first.messages[0].seq < first.messages[1].seq && first.seq === first.messages[1].seq, 'in order, seq rising')
+  assert.equal((await verb('will-edit', { ack: 0 })).messages, undefined, 'not again while a parallel hook may still be printing it')
+  now += 10_000
+  const back = new Sessions(ws, store, () => now)
+  const again = await as(back)('will-edit', { ack: 0 })
+  assert.deepEqual(again.messages.map((m: any) => [m.id, m.seq]), first.messages.map((m: any) => [m.id, m.seq]), 'the restart lost nothing')
+  now += 10_000
+  assert.equal((await as(back)('turn', { ack: again.seq, prompt: 'go' })).messages, undefined, 'acked: gone')
+  await back.say({ cwd: '/repo', to: 'ack-1', text: 'three' })
+  const tries = []
+  for (let i = 0; i < 4; i++, now += 10_000) tries.push((await as(back)('will-edit', { ack: again.seq })).messages?.length ?? 0)
+  assert.deepEqual(tries, [1, 1, 1, 0])
+  assert.deepEqual(back.list().find(s => s.id === 'ack-1')!.undelivered.map(m => m.text), ['three'])
+  const v0 = as(back, 'v0-1')
+  await v0('join')
+  await back.say({ cwd: '/repo', to: 'v0-1', text: 'four' })
+  assert.deepEqual((await v0('will-edit')).messages.map((m: any) => m.text), ['four'], 'no ack: delivered when sent')
+  assert.equal((await v0('will-edit')).messages, undefined, 'once')
+}
+
 // The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.
 {
   const { store, ws } = rig([])

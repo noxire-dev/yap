@@ -298,11 +298,12 @@ try {
     console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
   } else if (cmd === 'sessions') {
     if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
-    const list = await api.get<{ id: string; name: string; top: string; at: number; files: string[] }[]>('/api/sessions')
+    const list = await api.get<{ id: string; name: string; top: string; at: number; files: string[]; undelivered?: { from: string; text: string }[] }[]>('/api/sessions')
     const show = (s: (typeof list)[number]) =>
       [
         `${s.id.slice(0, 8)}  ${ago(s.at).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.top}`,
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
+        ...(s.undelivered ?? []).map(m => `          undelivered, from ${m.from}: ${m.text.split('\n')[0].slice(0, 80)}`),
       ].join('\n')
     console.log(list.length ? list.map(show).join('\n') : 'no sessions')
   } else if (cmd === 'say') {

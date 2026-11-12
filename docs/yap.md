@@ -23,7 +23,7 @@ Status: draft, version 0. Everything here runs today.
 
 ## Verbs
 
-Every call carries `session` (the id) and `cwd`. Each answer is an **answer** (below) or nothing.
+Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answers). Each answer is an **answer** (below) or nothing.
 
 | Verb | When the agent sends it | What the daemon does |
 |---|---|---|
@@ -47,24 +47,32 @@ Four more read the repo `cwd` sits in, for a harness or a tool, and change nothi
 | Verb | Answers |
 |---|---|
 | `hello` | `{ protocol: "yap", version, verbs }` |
-| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own |
+| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts, undelivered }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries |
 | `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
 | `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
 
 ## Answers
 
-An answer has up to four parts, and an agent maps each to what it has:
+An answer has up to five parts, and an agent maps each to what it has:
 
 - `context`: text for the model only. Peers, warnings, messages. Never shown to the user as if they typed it.
 - `notice`: one line for the user (`yap: src/auth.ts was just edited by @auth`).
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
 - `messages`: the messages `context` just delivered, as data, for a harness to show. The model already has them
   in `context`; a harness doesn't parse that. Each is
-  `{ kind: "say" | "note" | "spawn" | "conflict", origin, from, sender, text, at, ok? }`: `origin` is `session`,
+  `{ id, seq, kind: "say" | "note" | "spawn" | "conflict", origin, from, sender, text, at, ok? }`: `seq` only
+  goes up, across repos and daemon restarts; `origin` is `session`,
   `user` or `local` (see Trust), `from` as the model reads it (`session @auth`, `the user`,
   `an unverified local process`), `sender` the sending session's id (`""` without one), `ok` on a spawn's end. On a
   `conflict`, `from` and `sender` are the other side and `text` the conflicting files, one per line, empty once clean.
-  A message is delivered once.
+- `seq`: with `messages`, the highest `seq` among them.
+
+A message is delivered once, unless the session acks. Once the harness has put an answer's `context` in front of
+the model, it sends that answer's `seq` as `ack` on its next call (any verb), and `0` before it has one. A session
+that acks keeps each message until an `ack` reaches its `seq`; one still unacked ten seconds after it was
+delivered comes again with the same `id`, three deliveries at most, then `sessions` lists it as `undelivered`. A
+message whose answer was lost to a hook timeout or a daemon restart comes again. The model may see a message twice;
+a harness that shows `messages` drops ids it already showed.
 
 An agent that can't receive answers on some verb still sends it: the daemon's record stays right, and the
 messages wait for the next verb that can answer.
@@ -107,8 +115,8 @@ answer then carries the message and instructions in `context`. Rules:
 ```
 
 The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
-`prompt` (turn), `name` (join), `text` and `to` (say), `text` (note and spawn), `id` (unnote). The answer is `{}` or any of
-`{ "context", "notice", "deny" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
+`prompt` (turn), `name` (join), `text` and `to` (say), `text` (note and spawn), `id` (unnote), and `ack` on the
+session's own verbs. The answer is `{}` or any of `{ "context", "notice", "deny", "messages", "seq" }`; `say` answers `{ "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
 verb or a bad argument is a 400 with `{ "error" }`. A missing or wrong token is a 403. `GET /yap` answers
 `{ protocol, version, verbs }`.
 
@@ -192,6 +200,9 @@ to its own id for the conversation and needs no adapter of its own for Claude: t
 | `leave` | `SessionEnd` → `end` | `session_id` | none |
 
 `context` becomes `additionalContext`, `notice` `systemMessage`, `deny` `permissionDecision: deny` with the reason.
+The hooks ack: each one runs `hooks/yap.sh`, which sends `?ack=` from `~/.yap/sessions/<id>.cursor`, prints the
+answer, then writes its `seq` to that file. The `seq` comes back in an `x-yap-seq` header, so the body stays
+what Claude Code reads. `SessionEnd` removes it.
 
 Another agent is one more adapter like it, or none (above): a harness can call `/yap` directly.
 
