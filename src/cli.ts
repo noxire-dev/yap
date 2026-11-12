@@ -22,6 +22,7 @@ yap sessions        the Claude Code sessions the hooks have seen, and what each 
 yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
 yap spawn <text>     start a background Claude Code session here on that task; its last word comes back to you
 yap spawns           the background sessions yap started, and how each ended
+yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
 yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
 yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
 yap unpair           forget the pairing, here and on the relay: every web client's token stops working
@@ -236,6 +237,29 @@ function unhook() {
   return n
 }
 
+/** `yap mcp`: stdout carries only JSON-RPC, so anything else goes to stderr. */
+async function mcp() {
+  const { YapLocal } = await import('../sdk/local')
+  const { rpc } = await import('./mcp')
+  await daemon()
+  const yap = await YapLocal.connect()
+  // A session the hooks or a harness already report for (YAP_SESSION) is theirs to join and leave.
+  const session = yap.session(me || `mcp-${crypto.randomUUID().slice(0, 8)}`, target())
+  const out = (m: unknown) => m && process.stdout.write(JSON.stringify(m) + '\n')
+  for await (const line of console) {
+    if (!line.trim()) continue
+    let m: any
+    try {
+      m = JSON.parse(line)
+    } catch {
+      out({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'not JSON' } })
+      continue
+    }
+    out(await rpc(session, !me, m, version))
+  }
+  if (!me) await session.leave().catch(() => {})
+}
+
 const [cmd, ...rest] = process.argv.slice(2)
 const cols = process.stdout.columns || 100
 try {
@@ -351,6 +375,8 @@ try {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
     }
+  } else if (cmd === 'mcp') {
+    await mcp()
   } else if (cmd === 'hooks') {
     const n = unhook()
     console.log(

@@ -166,6 +166,12 @@ yap.watch(thread.worktree, e => {
 })
 ```
 
+An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an MCP server on stdio. It
+joins on `initialize`, named for the client, and leaves when stdin closes. With `YAP_SESSION` set it is that
+session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
+`run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
+`yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
+
 ## Claude Code's adapter
 
 Claude Code's hooks (the yap plugin) post to `/api/hook/<event>` with their own payload, and get their own

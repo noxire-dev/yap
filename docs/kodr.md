@@ -41,6 +41,11 @@ Check: start a Claude thread in a repo, then `yap sessions` in that repo lists t
 Codex gets `T3CODE_THREAD_ID` through `shell_environment_policy.set` (`CodexAdapterV2.ts`, around line 1369).
 Set `YAP_SESSION` to the thread id there too, and wherever another adapter sets `T3CODE_THREAD_ID`.
 
+Also give Codex threads yap's tools: add `mcp_servers.yap` to the thread's Codex config with `command = "yap"`,
+`args = ["mcp"]`, `env = { YAP_SESSION = "<thread id>" }` and `default_tools_approval_mode = "approve"`. The
+model then checks before an edit or a git command, and reads messages between steps, in the turn itself rather
+than on the next one. With `YAP_SESSION` set, `yap mcp` doesn't join or leave; step 3 does.
+
 ## 3. `YapService`: wake, and report for providers without hooks
 
 `apps/server/src/yap/YapService.ts`, shaped like `IdleCompactionService` (`make`, `start()` forking a stream

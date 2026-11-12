@@ -39,6 +39,7 @@ claude plugin install yap@yap
 | `yap sessions` | The live sessions, their names and what each edited. |
 | `yap say [@name] <text>` | Message one session in this repo, or all of them. |
 | `yap spawn <text>` / `yap spawns` | Start a background Claude Code session here on a task, or see how those went. |
+| `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
 | `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
@@ -97,6 +98,20 @@ The crew's own agents run with `YAP_AGENT=1` and stay out of the registry.
 Another harness (your own IDE, say) can speak YAP for its agents without the hooks: it posts the verbs,
 listens on `GET /yap/events`, and sets `YAP_SESSION` in each agent's shell. See
 [docs/yap.md](docs/yap.md#bringing-your-own-harness).
+
+An agent with no hooks gets yap as MCP tools from `yap mcp`. In Codex's `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.yap]
+command = "yap"
+args = ["mcp"]
+default_tools_approval_mode = "approve"
+```
+
+Cursor, Zed and the rest take `{"command": "yap", "args": ["mcp"]}`. The agent then calls `yap_check` before
+an edit or a git command and between steps, and has `yap_peers`, `yap_say`, `yap_board`, `yap_note` and
+`yap_spawn`. It asks when it chooses to, so a deny is advice. Only Claude Code's hooks stop a command before it
+runs, so don't add `yap mcp` to Claude Code: the plugin covers it.
 
 ## Remote
 

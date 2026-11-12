@@ -16,6 +16,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { events, local } from './wire'
+import { rpc } from './mcp'
 
 const ok = { ok: true, log: '' }
 const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
@@ -375,6 +376,23 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual((await a.idle()).messages!.map(m => m.text), ['done with a.ts'])
   assert.deepEqual((await yap.sessions('/repo')).map(s => s.name).sort(), ['a', 'kodr-planner'])
   await assert.rejects(yap.call('nope', {}), (e: any) => e instanceof LocalError && e.status === 400 && /no verb nope/.test(e.message))
+
+  // `yap mcp`: a Codex session with no hooks joins as itself and asks yap_check itself.
+  const cx = yap.session('mcp-1', '/repo')
+  const call = async (name: string, args: object = {}) => ((await rpc(cx, true, { id: 1, method: 'tools/call', params: { name, arguments: args } }, '0')) as any).result
+  const init: any = await rpc(cx, true, { id: 0, method: 'initialize', params: { protocolVersion: '2025-06-18', clientInfo: { name: 'codex' } } }, '0')
+  assert.match(init.result.instructions, /Call yap_check before editing[\s\S]*@a \(k2\)/)
+  assert.equal(await rpc(cx, true, { method: 'notifications/initialized' }, '0'), undefined)
+  assert.ok(((await rpc(cx, true, { id: 2, method: 'tools/list' }, '0')) as any).result.tools.some((t: any) => t.name === 'yap_check'))
+  assert.match((await call('yap_check', { run: 'git stash' })).content[0].text, /^Don't run it\. yap: another session is working/)
+  assert.match((await call('yap_check', { edit: 'src/a.ts' })).content[0].text, /Another session is working on src\/a\.ts/)
+  await call('yap_check', { edited: ['src/b.ts'] })
+  assert.match((await b.willEdit('src/b.ts')).notice!, /by @codex/)
+  assert.match((await call('yap_say', { to: '@a', text: 'hi' })).content[0].text, /^sent to @a$/)
+  await b.say('b.ts is fine', 'codex')
+  assert.match((await call('yap_check')).content[0].text, /b\.ts is fine/)
+  assert.match((await call('yap_peers')).content[0].text, /@a in .*edited src\/a\.ts/)
+  assert.equal((await call('nope')).isError, true)
   stop()
 }
 
