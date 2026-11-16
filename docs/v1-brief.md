@@ -1,198 +1,115 @@
 # YAP v1 brief
 
-Nov 11, 2026. Revised from Fable's brief of Nov 10, which is checked against `src/` and folds in what Kodr's own coordination build (Kodr `dbac1d71dd`, since reverted) proved in a live run.
+Nov 16, 2026. Third revision. The first was Fable's brief of Nov 10; the second (Nov 11) checked it against `src/` and folded in Kodr's reverted coordination build. This one follows `docs/research/protocols.md` and three council rounds (Claude Opus and GPT Sol), whose objections are folded in below.
 
 ## Summary
 
-YAP owns coordination between agents. It rides on hooks, so it works under plain Claude Code, Herdr and Kodr alike; Kodr only shows what YAP reports, through its plugin API. Kodr built and live-tested the same ideas this week, then reverted them so there is one source of truth. v1 fixes the user-origin gap, makes delivery survive a dropped answer, adds claims, message ids and kinds, and moves Kodr's merge conflict check into the daemon.
+YAP owns coordination between agents on one machine. It stays its own localhost HTTP protocol with adapters: hooks have to fire on every edit and command, and MCP tools only fire when the model chooses to call one, with no push into another session's context. The implementers of YAP are harnesses (Claude Code, Codex, Kodr, Herdr, MCP-only agents), not other daemons, so v1 is designed for clients and cuts machinery that only matters with several servers.
 
 Hand this to a coding agent one item at a time.
 
-## What the code says today
+## Done
 
-Checked on Nov 11 against `kumi` at `dd3e0fd`:
-
-- A `say` with no `from` is attributed to the user (`src/sessions.ts`, `say()`).
-- One machine token in `~/.yap/token` authorises every caller (`src/server.ts`).
-- The edit guard is a 30-minute lookback (`RECENT` in `src/sessions.ts`).
-- `turn` reads only the prompt's first line, to recognise harness markup and wakes. It is not stored.
-- State is in `bun:sqlite` through `src/store.ts`; sessions are JSON rows.
+- **Origin** (`f809d85`): `session`, `user` (relay-paired device) or `local` ("an unverified local process"); an authority sentence on every delivery.
+- **Ids, seq and acks** (`712befc`): `seq` is clock-based and global; unacked messages come again up to 3 times, then `sessions` lists them as `undelivered`.
+- **Merge conflict check** (`1006b67`): snapshots at `idle`, `git merge-tree` against peers in other worktrees, the `conflict` kind, Kodr's conflict chip.
+- **Second harness**: Codex through its hooks (`52f8229`) and `yap mcp` for agents with none. This was item 8; it is done.
 
 ## Order
 
-| # | Item | Size | Depends on |
-| --- | --- | --- | --- |
-| 1 | User origin and authority wording (done; the TUI handshake was dropped, the TUI sends no messages) | S | none |
-| 2 | Message ids, seq and acks (done; seq is clock-based, undelivered shows in `yap sessions`, not `yap status`) | M | none |
-| 3 | `re` and message kinds | S | 2 |
-| 4 | `claim` verb | M | 2 |
-| 5 | Merge conflict check (done) | M | none |
-| 6 | Small fixes (6b needs 4) | S | none |
-| 7 | Kodr surfaces | S | 3, 4, 5 |
-| 8 | Second harness adapter (optional) | L | 1 to 6 |
-| 9 | Core and extensions split, version 1 | M | 8, or 1 to 6 if 8 is skipped |
-
-The split comes after the second adapter on purpose: the adapter is what shows which verbs are really core.
+| # | Item | Size |
+| --- | --- | --- |
+| 1 | MCP adapter: version and discovery | S |
+| 2 | `re`, `question` and `blocker` | S |
+| 3 | Claims | M |
+| 4 | Spec v1: core, extensions, version 1 | S |
+| 5 | Kodr chips (optional, not a release gate) | S |
 
 ## Ground rules
 
-1. Read `docs/yap.md`, `src/sessions.ts`, `src/server.ts` and `src/ports.ts` first. If the code disagrees with this brief, stop and report it.
+1. Read `docs/yap.md`, `src/sessions.ts`, `src/server.ts`, `src/wire.ts` and `src/mcp.ts` first. If the code disagrees with this brief, stop and report it.
 2. Spec and code change in the same commit. `docs/yap.md` stays the source of truth.
-3. Every new verb or field gets a test that talks to the daemon over HTTP.
+3. Every new verb or field gets a check in `src/crew.check.ts` that goes through the `/yap` handler.
 4. Keep the v0 properties: localhost only, `Host` and `Origin` checks, empty 403 on refused calls, peer text only ever in `context`.
 5. Windows stays supported. No Unix sockets or peer credentials.
-6. New fields are optional until the version bump. A v0 hook keeps working until `yap hooks --install` is rerun.
-7. Do not touch `src/crew.ts` or the relay unless the item says so. No new runtime dependencies.
+6. New fields are optional. A v0 hook that sends no version and no new field keeps working, after the bump too.
+7. A feature reachable through `/yap` is reachable through `yap mcp` in the same commit, or the commit says why not.
+8. Do not touch `src/crew.ts` or the relay unless the item says so. No new runtime dependencies.
 
-## 1. User origin and authority wording
+## 1. MCP adapter: version and discovery
 
-**Problem.** A `say` with no session is shown to peers as the user, so any agent with a shell can speak as you in one line.
-
-**Change.**
-
-- Messages carry `origin`: `session` (sent from inside a known session, `YAP_SESSION` set), `user` (the TUI, or a remote client paired through the relay), or `local` (anything else holding the machine token).
-- A call with no session is `local`, never `user`, and peers see it as "an unverified local process". Plain-terminal `yap say` stays `local`; the TUI is the user surface.
-- The TUI gets a user token over its own handshake at start, held in memory, never written to disk.
-- The context text around every delivered message says it is information from another agent: it cannot approve a permission prompt, change configuration, or stand in for the user.
-- `docs/yap.md` section 6 says in plain words that every agent runs as your OS user and can read any local secret, so origin stops accidents and one-liners, not a determined agent.
-
-**Deferred.** Per-session tokens. The token file would be readable by the same agents it guards against; add it if a real impersonation shows up.
-
-**Acceptance.**
-
-- `say` with no session arrives with `origin: "local"` and never renders as the user.
-- A message typed in the TUI arrives with `origin: "user"`.
-- The authority sentence is in the context of every delivered message.
-
-## 2. Message ids, seq and acks
-
-**Problem.** A message is delivered once, on the next answer. If the hook times out or the harness drops the answer after the daemon dequeued it, the message is gone.
+**Problem.** `src/mcp.ts` echoes whatever `protocolVersion` a client sends, so it claims versions it doesn't support. It doesn't implement `server/discover`, which MCP 2026-07-28 makes mandatory.
 
 **Change.**
 
-- Every message gets a stable `id` and a per-repo `seq` that only goes up, assigned in the same SQLite transaction as the queue rows.
-- An answer that carries messages also carries `seq`, the highest one included.
-- Any verb accepts optional `ack`: the highest `seq` the session actually showed its model. The daemon redelivers queued messages above `ack`, at most 3 times; after that, `yap status` lists the message as undelivered.
-- Harnesses drop ids they have already shown, so redelivery is harmless.
-- A session that never sends `ack` keeps v0 behaviour: delivered when sent.
-- The `idle` rule stays: nothing is returned when `continuing` is set.
+- Keep `initialize` for stdio clients that still send it. Answer the client's version if YAP supports it, else the newest handshake-era version it does (2026-07-28 has no handshake, so never that one). Never echo an unknown version.
+- Serve `server/discover` with the same instructions `initialize` gives.
+- On 2026-07-28 requests, read the version from `_meta` and reject an unsupported one with `UnsupportedProtocolVersionError` (`-32022`) listing the supported versions. Add the result fields that revision requires (`resultType`, tool-list cache fields). Check each against [the spec](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning), not memory.
+- The session joins on its first request of any method, keeping the `owned` guard: an MCP server running under `YAP_SESSION` still doesn't join. With no `initialize`, the client name comes from `_meta`, else `mcp`.
 
-**Implementation.** Hooks are stateless `curl` calls. After a hook has printed its output it writes the answer's `seq` to `~/.yap/sessions/<id>.cursor`; the next hook sends it as `ack`.
+**Acceptance.** An `initialize` asking for an unknown version gets a supported one back. A `server/discover` with no `initialize` first lists the tools and joins the session. A 2026-07-28 request with an unsupported version gets `-32022`.
 
-**Deferred.** SSE replay with `Last-Event-ID`, retention windows and 410. Add them when a client actually reconnects and needs the gap; Kodr reads current state from `sessions`.
-
-**Acceptance.**
-
-- Kill the daemon after commit and before the HTTP response: after restart the message arrives on the session's next verb.
-- A hook that never acks gets the message again, at most 3 times, with the same `id`.
-- Two messages sent in order arrive in order with increasing `seq`.
-- A v0 hook that sends no `ack` behaves exactly as before.
-
-## 3. `re` and message kinds
+## 2. `re`, `question` and `blocker`
 
 **Change.**
 
-- `say` accepts optional `kind`: `question`, `blocker`, `handoff`, `contract`, `answer` or `note` (default). Kodr's live run had a real agent pick `question` unprompted; the kinds also rank what needs the user (blocker above question above handoff).
-- `say` accepts optional `re`: the id of the message being answered. An `re` that names no message in this repo answers 400.
-- A `question`, `blocker` or `contract` stays open until a message with `re` pointing at it arrives. `yap status` lists open ones.
-- The context text shows the id in short form and how to answer: `yap say --re <id> <text>`.
-- Read-only verb `thread` with `id` returns the message and its replies, oldest first.
+- `say` takes optional `kind`: `question` or `blocker`, added to the existing message kinds (`say`, `note`, `spawn`, `conflict`). No other kinds. A plain `say` stays `say`.
+- `say` takes optional `re`: the id, or an 8-character prefix, of the message being answered. A message with `re` carries it.
+- A `question` or `blocker` is kept on the asker's session row as `unanswered: [{ id, to, kind, text }]`. The first message with an `re` pointing at it removes it. It also goes when the asker leaves or lapses. This records a fact, that a reply exists, not that the question is resolved: a reply may ask for clarification.
+- A `say` mints one message id and passes it to every recipient's `post` (`seq` stays per delivery). Today `post()` mints one per inbox, so a broadcast question would carry a different id for each recipient. `say` answers that `id`. The first reply from any recipient clears a broadcast question.
+- An `re` that matches nothing is delivered anyway, not refused.
+- `sessions` rows list `unanswered`. The context text shows the short id and how to answer: `yap say --re <id> <text>`.
+- MCP: `yap_say` takes `kind` and `re`; `yap_peers` shows unanswered items. The tool-name mapping in `tools()` only knows `yap say @…` and `yap say <text>`; add a rule turning `yap say --re <id>` into `yap_say` with `re`.
 
-**Acceptance.**
+**Cut.** The `thread` verb, kinds `handoff`, `contract`, `answer` and `note`-as-a-kind.
 
-- A reply with `--re` arrives with `re` set, closes the question, and `thread` returns both in order.
-- An unknown `re` answers 400.
-- An unanswered `blocker` shows as open in `yap status`.
+**Acceptance.** A `question` shows on the asker's row; a reply with `--re` arrives with `re` set and removes it. An unknown `re` is delivered. An unanswered `blocker` stays listed until a reply or the asker leaves.
 
-## 4. The `claim` verb
+## 3. Claims
 
-**Problem.** Claims exist only as free-text notes, and the guard reacts after a peer has already written.
-
-**Change.**
-
-| Verb | Fields | Behaviour |
+| Verb | Fields | Answer |
 | --- | --- | --- |
-| `claim` | `path`, `why`, `ttl` (optional, seconds) | Records that this session is about to work under `path`. Answers the claim `id`, or `conflict` naming the holder when a live claim by a peer in the same working tree overlaps. |
-| `release` | `id` | Ends the claim early. |
-| `claims` (read-only) | none | `[{ id, session, name, path, why, expires }]` |
+| `claim` | `path`, `why` | `{ id }`, or `{ held: { session, name, path, why } }` when a peer's live claim overlaps |
+| `release` | `id` | `{}` |
+| `claims` (read-only) | none | `[{ id, session, name, top, path, why, expires }]` |
 
-- `path` is a file or directory prefix relative to the working tree. No globs. Two claims overlap when one is a prefix of the other. Normalise like the repo key.
-- Default `ttl` 20 minutes, maximum 2 hours. An `edited` under the path by the holder renews it.
-- Claims end on `release`, expiry, `leave`, or lapsed liveness. First claim wins; no queue.
-- `will-edit` checks claims before the lookback and warns once, naming the claim and its reason.
-- Warn only on edits made after the claim existed. Kodr's first version also warned on earlier edits, and the noise made the warning useless.
-- Claims in another worktree of the same repo are listed, never conflict.
-- `join` and `turn` include live claims in their context. The skill says: claim a directory when a task touches more than two files in it.
-- Remove "claims" from the board's description in the spec.
+- One exclusive mode. Claims only warn; `will-edit` never denies on a claim.
+- `path` is a file or directory, repo-relative. Overlap compares path components, so `src/auth` covers `src/auth/token.ts` and not `src/author`. Normalise like the repo key.
+- Claims are compared across every worktree of the repo. A cross-worktree overlap is the merge conflict the `idle` check finds too late.
+- Fixed 20-minute life, renewed by the holder's edits under the path. Ends on `release`, `leave` or lapse. First claim wins; no queue.
+- `will-edit` inside a peer's claim warns once, naming the holder and the reason. Only for edits made after the claim existed.
+- `join` and `turn` include live claims in their context. The skill says to claim a directory when a task touches more than two files in it.
+- MCP: one tool, `yap_claim`, taking `{ path, why }` or `{ release }`; `yap_peers` lists live claims.
+- Remove "claims" from the board's description in the spec, and the join context's advice to post "a claim on an area" on the board (`src/sessions.ts`, the board part of `overview`), in the same commit.
 
-**Acceptance.**
+**Cut.** Shared claims, the `ttl` parameter, strict mode (deny on a claim).
 
-- A claims `src/auth/`; B's claim on `src/auth/token.ts` answers `conflict` with A's name and reason.
-- B's `will-edit` under A's claim warns once. An edit B made before A claimed does not warn.
-- A's claim disappears on `leave` and after `ttl` without edits; an edit by A extends it.
+**Acceptance.** A claims `src/auth/`; B's claim on `src/auth/token.ts` answers `held` with A's name and reason, and so does C's in another worktree. B's `will-edit` under A's claim warns once; an edit B made before A claimed does not. A's claim ends on `leave` and 20 minutes after its last edit under the path.
 
-## 5. Merge conflict check
+## 4. Spec v1
 
-**Problem.** Two sessions in different worktrees can each be fine alone and still not merge. Today nobody finds out until someone merges.
+- `hello` answers `{ protocol, version, verbs, extensions }`. Extensions are short names, `board`, `claims`, `conflicts` and `spawn`, detected and never negotiated: no URIs and no `required`.
+- Core, marked in the spec: `join`, `turn`, `will-edit`, `edited`, `will-run`, `ran`, `idle`, `leave`, `say` (with `re` and `kind`), `sessions`, `hello`, `GET /yap/events`, the answer shape, and the fields `session`, `cwd`, `ack`.
+- One client rule: ignore unknown fields, message kinds and verbs, and render `text`.
+- One sentence next to `ran`: when two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first.
+- Bump `version` to 1. It gates nothing.
+- The relay gets its own section; it is not an extension.
 
-**Change.** At `idle` (end of a turn, `continuing` unset), the daemon snapshots that session's working tree and test-merges it against the latest snapshot of every other live session in the same repo with a different working tree. Conflicts go into both sessions' next context and into `sessions` as `conflicts: [{ with, files }]`.
+**Cut.** `_meta`, a version on every call, a conformance suite for other servers. The checks in `src/crew.check.ts` stay the conformance check.
 
-**Implementation.** This is what Kodr ran, adapted to working trees instead of Kodr's checkpoint refs:
+## 5. Kodr chips (optional)
 
-```sh
-# snapshot, without touching the real index
-GIT_INDEX_FILE=$tmp git read-tree HEAD
-GIT_INDEX_FILE=$tmp git add -A
-tree=$(GIT_INDEX_FILE=$tmp git write-tree)
-snap=$(git commit-tree $tree -p HEAD -m yap-snapshot)
+Through `src/kodrChips.ts`, no Kodr core change. The conflict chip exists. Add a `warn` chip for an unanswered `blocker` or `question` to or from the thread, and one for editing inside a peer's claim.
 
-# test-merge; exit 1 means conflict, the file names follow the tree id
-git merge-tree --write-tree --name-only --no-messages $snapA $snapB
-```
+## Cut from v1
 
-- Needs git 2.38 or newer. If `merge-tree --write-tree` is missing, skip the check and say so once in `yap status`.
-- Repos are grouped by `git rev-parse --git-common-dir`, which the repo key already approximates.
-- Run the merges in parallel and cap the work per idle; a repo with ten live sessions is nine merges.
-- A conflict clears when a later snapshot of either side merges cleanly.
-
-**Acceptance.**
-
-- Two worktrees that both add `feature.txt` with different contents report `feature.txt` to both sessions after the second `idle`.
-- Editing one side to match clears it on the next `idle`.
-- The real index and working tree are untouched (`git status` identical before and after).
-
-## 6. Small fixes
-
-**6a. `turn` without the prompt.** Add optional `synthetic` to `turn`: a harness that knows the turn came from a wake or an agent message sets it and omits `prompt`. `prompt` stays accepted, is checked for markup, then discarded; never stored, logged or put on the stream. Test: send a marker string as a prompt and grep the SQLite file and `daemon.log` for it.
-
-**6b. Strict mode.** A per-repo setting, off by default, that lets `will-edit` answer `deny` inside a peer's live claim. The lookback never denies; only an explicit claim can. Update section 3 of the spec, which reserves `deny` for `will-run`.
-
-**6c. Shell edit attribution.** When two `will-run` windows overlap in one working tree, mark files changed in the overlap `shared` instead of guessing an owner, and warn both. State the limit in the spec next to `ran`.
-
-**Acceptance.** A `synthetic` turn with no prompt makes no news. The marker test finds nothing on disk. Strict mode denies with the holder's name and reason; off, it warns. Two overlapping shell commands that change one file leave it `shared`.
-
-## 7. Kodr surfaces
-
-Kodr shows YAP's state through the chips in `src/kodrChips.ts`; no Kodr core change. Kodr's chip tones are `neutral`, `info`, `ok`, `warn` and `error`.
-
-- A merge conflict: `error` chip naming the other session and the file count.
-- An open `blocker` or `question` to or from the thread: `warn` chip.
-- Inside a peer's claim: `warn` chip with the claim's reason.
-
-**Deferred.** Kodr's reverted build also had a ranked "needs you" list and a replay slider over the log. Both need a plugin panel, which Kodr's plugin API does not have yet; ask for one there rather than building it into Kodr core.
-
-## 8. Second harness adapter (optional)
-
-Worth doing only if YAP is meant as a protocol other people implement; the current user runs Claude only. If it goes ahead: pick OpenCode or Codex CLI, answer first whether it can run code around edits and shell commands and block them, and inject text at session start and each turn. Core verbs only, in `adapters/<harness>/`, HTTP only, nothing imported from `src/`. The deliverable is `adapters/<harness>/SPEC-NOTES.md`: every place the spec assumed Claude Code.
-
-## 9. Core and extensions split
-
-As in Fable's brief: `hello` and `GET /yap` answer `{ protocol, version, verbs, extensions }`; core is the session lifecycle, `say`, `note`, `sessions`, `notes` and the answer shape; `claims`, `threads` (`re`, `kind`, `thread`), `conflicts`, `spawn` and `relay` are extensions. `spawn` is redefined without naming Claude Code. The HTTP tests from items 1 to 6 become `tests/conformance/`, runnable against any base URL, with extension tests skipping themselves when `hello` does not list the extension. Bump `version` to 1 once, here.
+- `synthetic` on `turn`. The prompt is already discarded, and wakes are recognised as markup.
+- Strict mode.
+- Shell-edit `shared` attribution in code. It is replaced by the sentence in item 4.
+- A git pre-commit guard. It would write into the user's repo hooks, clash with husky or lefthook, and fire on the human. Hooked agents are covered by `will-run`.
+- An ACP adapter. Add one when an ACP harness asks.
+- Per-session tokens, SSE replay and retention, globbed claims, symbol-level claims, and the orchestrator-versus-peer benchmark.
 
 ## Delivery stays direct
 
-Kodr's build only let a message reach another agent when the user clicked a button. YAP keeps delivering straight into the recipient's context: gating every message would turn the user into a mail carrier, and item 1's authority sentence covers the risk that made gating attractive.
-
-## Left out of v1
-
-Per-session tokens, SSE replay and retention, globbed claims, symbol-level claims through LSP, delegated authority, and the orchestrator versus peer benchmark.
+Kodr's reverted build only let a message reach another agent when the user clicked a button. YAP keeps delivering straight into the recipient's context. Gating every message would turn the user into a mail carrier, and the authority sentence covers the risk that made gating attractive.
