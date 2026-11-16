@@ -181,7 +181,7 @@ export class YapLocal {
   }
 
   hello() {
-    return this.call<{ protocol: 'yap'; version: number; verbs: string[] }>('hello', {})
+    return this.call<{ protocol: 'yap'; version: number; verbs: string[]; extensions?: string[] }>('hello', {})
   }
 
   /** Live sessions in the repo `cwd` sits in, this harness's and everyone else's. */

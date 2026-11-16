@@ -8,7 +8,7 @@ import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
-import { Sessions, gitRisk, patchFiles } from './sessions'
+import { Sessions, gitRisk, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
@@ -19,7 +19,6 @@ import { events, local } from './wire'
 import { rpc } from './mcp'
 
 const ok = { ok: true, log: '' }
-const norm = (p: string) => (process.platform === 'win32' ? resolve(p).replace(/\\/g, '/').toLowerCase() : resolve(p))
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
 function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean } = {}) {
@@ -422,6 +421,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const { store, ws } = rig([])
   const reg = new Sessions(ws, store, () => 1_000_000)
   const answer = local(reg)
+  assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn'], 'v1: extensions by short name')
   const fetcher = async (url: string, init: RequestInit) => {
     if (url.includes('/yap/events'))
       return new Response((await events(reg, new URL(url).searchParams.get('cwd'))).pipeThrough(new TextEncoderStream()))
@@ -826,6 +826,13 @@ for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', '
   assert.deepEqual(reg.list().find(s => s.id === 'aaaa1111')!.conflicts, [])
   assert.match(ctx(await reg.hook('prompt', { session_id: 'aaaa1111', cwd: a, prompt: 'go' })), /merge cleanly again/)
   rmSync(dir, { recursive: true, force: true })
+}
+
+// Git Bash's /c/... is drive C on Windows, not a folder `c` on the current drive.
+if (process.platform === 'win32') {
+  assert.equal(norm('/c/Users/Me/repo'), 'c:/users/me/repo')
+  assert.equal(norm('/c/Users/Me/repo', 'src/a.ts'), norm('C:\\Users\\Me\\repo\\src\\a.ts'))
+  assert.equal(norm('/tmp/x'), norm(resolve('/tmp/x')), 'only a one-letter first segment is a drive')
 }
 
 console.log('crew ok')

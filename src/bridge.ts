@@ -34,7 +34,7 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
   const whose = (path: string) => projects().find(p => norm(path) === norm(p.path))?.name
   const text = (b: any) => String(b.text ?? '')
   const verbs: Record<string, (b: any) => unknown> = {
-    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs) }),
+    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn'] }),
     projects: () => projects().map(p => ({ name: p.name, base: p.base })),
     sessions: () =>
       sessions

@@ -4,7 +4,7 @@ How coding agents on one machine see each other, message each other and stay out
 daemon is the first implementation (`src/sessions.ts`); Claude Code is the first agent wired to it. This file
 is the protocol without either, so another agent, or a web client, can speak it.
 
-Status: draft, version 0. Everything here runs today.
+Status: version 1. Everything here runs today.
 
 ## The model
 
@@ -35,7 +35,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `will-edit` | Before a file write (`path`) | If the file is inside a peer's live claim, in any worktree, answers with the holder and reason, once per claim. If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. Neither denies. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
 | `will-run` | Before a shell command (`command`) | Notes the start time. If the command would move the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`, `restore`, `rebase`, `pull`, `merge`) or sweep it (`add -A`, `commit -a`) while a peer in the same tree edited in the last 30 minutes, answers with a **deny**. |
-| `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. |
+| `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. When two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first. |
 | `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
 | `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
@@ -51,11 +51,28 @@ Five more read the repo `cwd` sits in, for a harness or a tool, and change nothi
 
 | Verb | Answers |
 |---|---|
-| `hello` | `{ protocol: "yap", version, verbs }` |
-| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts, undelivered }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries; `unanswered` is `[{ id, to, kind, text }]`, its questions and blockers nobody has replied to with `re` |
+| `hello` | `{ protocol: "yap", version, verbs, extensions }` |
+| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts, undelivered, unanswered }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries; `unanswered` is `[{ id, to, kind, text }]`, its questions and blockers nobody has replied to with `re` |
 | `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
 | `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
 | `claims` | its live claims, every worktree: `[{ id, session, name, top, path, why, expires }]`, `path` relative to `top` |
+
+## Core and extensions
+
+Every YAP daemon has the core: `join`, `turn`, `will-edit`, `edited`, `will-run`, `ran`, `idle`, `leave`, `say`
+(with `kind` and `re`), `sessions`, `hello`, `GET /yap/events`, the answer shape (below), and the fields
+`session`, `cwd` and `ack`. The rest are extensions, listed by short name in `hello`'s `extensions`:
+
+| Extension | What it adds |
+|---|---|
+| `board` | `note`, `unnote`, `notes` |
+| `claims` | `claim`, `release`, `claims` |
+| `conflicts` | the merge check at `idle` and the `conflict` message kind |
+| `spawn` | `spawn`, `spawns` |
+
+A daemon has an extension or it doesn't; nothing negotiates. The relay (Remote, below) is not an extension.
+
+One rule for clients: ignore fields, message kinds and verbs you don't know, and render a message's `text`.
 
 ## Answers
 
@@ -124,7 +141,7 @@ The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited),
 `prompt` (turn), `name` (join), `text`, `to`, `kind` and `re` (say), `text` (note and spawn), `id` (unnote), and `ack` on the
 session's own verbs. The answer is `{}` or any of `{ "context", "notice", "deny", "messages", "seq" }`; `say` answers `{ "id", "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
 verb or a bad argument is a 400 with `{ "error" }`. A missing or wrong token is a 403. `GET /yap` answers
-`{ protocol, version, verbs }`.
+`{ protocol, version, verbs, extensions }`.
 
 ```sh
 curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
@@ -264,7 +281,7 @@ token was given it by the user.
 
 | Verb | Body | Answer |
 |---|---|---|
-| `hello` | | `{ protocol: "yap", version, verbs }`; check `version` before relying on a shape |
+| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board` and `spawn` |
 | `projects` | | `[{ name, base }]` |
 | `sessions` | | live sessions in projects: `[{ project, id, name, at, files }]` |
 | `spawns` | `id`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result? }]`; `id` picks one |
@@ -297,8 +314,8 @@ Each remote verb is a method; a refusal throws `YapError` with the status above.
 
 ### Version
 
-`hello` (remote), `GET /yap` (local) and `GET /` (relay) answer with the protocol version. It is 0: shapes may
-still change, and the version moves when one does.
+`hello` (remote), `GET /yap` (local) and `GET /` (relay) answer with the protocol version. It is 1, and gates
+nothing: a v0 hook that sends no version and no new field works as before. Shapes grow; see the client rule.
 
 The risk is the point of the shape: a website that can make your PC run agents is a remote code execution
 channel. A leaked token gets "start an agent in a repo you already gave yap" and no more, and `yap unpair` ends

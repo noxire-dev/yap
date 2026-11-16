@@ -169,7 +169,7 @@ async function route(req: Request, env: Env): Promise<Response> {
   if (parts[0] === 'd' && /^[0-9a-f]{16}$/.test(parts[1] ?? '') && ((req.method === 'POST' && parts.length === 3) || (req.method === 'DELETE' && parts.length === 2)))
     return env.DEVICE.getByName(parts[1]).fetch(req)
 
-  if (req.method === 'GET' && url.pathname === '/') return Response.json({ protocol: 'yap', version: 0 })
+  if (req.method === 'GET' && url.pathname === '/') return Response.json({ protocol: 'yap', version: 1 })
 
   return fail(404, 'not found')
 }

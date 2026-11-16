@@ -2,8 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { Agent, AgentRunner, Panes, Store, Workspace } from './ports'
 
-/** What `hello` answers. The version moves when a verb or an answer changes shape. */
-export const PROTOCOL = { protocol: 'yap', version: 0 }
+/**
+ * What `hello` answers. The version marks the spec a daemon follows and gates nothing: a client ignores what it
+ * doesn't know. Extensions are the parts past the core, by short name, detected and never negotiated.
+ */
+export const PROTOCOL = { protocol: 'yap', version: 1, extensions: ['board', 'claims', 'conflicts', 'spawn'] }
 
 /** A session silent this long has gone away without saying so. */
 const LIVE = 2 * 60 * 60_000
@@ -73,8 +76,12 @@ export type Kind = 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict
 export type Origin = 'session' | 'user' | 'local'
 const origin = (s: object | null, user?: boolean): Origin => (s ? 'session' : user ? 'user' : 'local')
 
-export const norm = (p: string) => {
-  const r = resolve(p).replace(/\\/g, '/')
+/** On Windows, Git Bash's `/c/Users/...` is `c:/Users/...`; `resolve` alone makes it `C:\c\Users\...`. */
+export const native = (p: string) => (process.platform === 'win32' ? p.replace(/^\/([a-z])(?=\/|$)/i, '$1:') : p)
+
+/** `resolve` of the parts, the one way a path is compared: forward slashes, lower case on Windows. */
+export const norm = (...ps: string[]) => {
+  const r = resolve(...ps.map(native)).replace(/\\/g, '/')
   return process.platform === 'win32' ? r.toLowerCase() : r
 }
 
@@ -364,6 +371,7 @@ export class Sessions {
   }
 
   private async root(cwd: string) {
+    cwd = native(cwd)
     let r = this.roots.get(cwd)
     if (!r) {
       const w = await this.ws.where(cwd)
@@ -391,7 +399,7 @@ export class Sessions {
       this.all.set(id, s)
       if (input.name) s.name = this.unique(s, slug(input.name))
       this.emit({ type: 'join', repo: checkout(repo), session: id, name: s.name })
-    } else if (s.cwd !== input.cwd) {
+    } else if (norm(s.cwd) !== norm(input.cwd)) {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
     if (input.pid) s.pid = input.pid
@@ -487,7 +495,7 @@ export class Sessions {
   async claim(m: { from?: string; cwd: string; path: string; why: string }) {
     const s = await this.touch({ session: m.from, cwd: m.cwd })
     if (!s) throw new Error('a claim is made by a session: run it from inside one')
-    const path = this.rel(s, norm(resolve(m.cwd, m.path)))
+    const path = this.rel(s, norm(m.cwd, m.path))
     if (!path || path.startsWith('..') || isAbsolute(path)) throw new Error(`claim a file or directory inside the working tree, not ${m.path || 'all of it'}`)
     for (const o of this.others(s))
       for (const c of this.claimed(o))
@@ -616,7 +624,7 @@ export class Sessions {
     this.keep(sp)
     const who = s ? `session @${this.tag(s)}, which asked for it` : `${this.label(s, m.user)}, who asked for it, through \`yap spawns\``
     const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session and nobody can answer a question: make the calls yourself and say what you decided. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
-    void this.runner.run({ cwd: m.cwd, prompt, peer: id, agent: m.agent }).then(
+    void this.runner.run({ cwd: native(m.cwd), prompt, peer: id, agent: m.agent }).then(
       r => this.finished(sp, r.ok, r.text),
       e => this.finished(sp, false, String(e?.message ?? e)),
     )
@@ -799,7 +807,7 @@ export class Sessions {
 
     const path = call.path
     if (verb === 'edited') {
-      const file = path && norm(resolve(call.cwd ?? '', path))
+      const file = path && norm(call.cwd ?? '', path)
       // Outside its working tree (a scratchpad, a temp file) is nobody's conflict.
       const rel = file && relative(s.top, file)
       if (file && rel && !rel.startsWith('..') && !isAbsolute(rel)) this.edited(s, file)
@@ -809,7 +817,7 @@ export class Sessions {
     // will-edit
     const mail = drain()
     if (!path) return arrived(mail)
-    const file = norm(resolve(call.cwd ?? '', path))
+    const file = norm(call.cwd ?? '', path)
     // Inside a peer's claim, in any worktree: once a claim, and only ever about the edit about to happen.
     const inside = this.others(s).flatMap(o => this.claimed(o).filter(c => covers(c.path, this.rel(s, file)) && !s.warned.has(`claim:${c.id}`)).map(c => ({ o, c })))
     for (const { c } of inside) s.warned.set(`claim:${c.id}`, this.now())
