@@ -42,7 +42,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | Command | |
 |---|---|
 | `yap sessions` | The live sessions, their names and what each edited. |
-| `yap say [@name] <text>` | Message one session in this repo, or all of them. |
+| `yap say [--question\|--blocker] [--re <id>] [@name] <text>` | Message one session, or all of them in this repo. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
 | `yap spawn [--codex] <text>` / `yap spawns` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. |
 | `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |

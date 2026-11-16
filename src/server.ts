@@ -195,7 +195,7 @@ Bun.serve({
       POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),
     },
     '/api/notes/:id': { DELETE: api((req, b) => sessions.unnote(String(b.cwd ?? ''), Number(req.params.id))) },
-    '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined })) },
+    '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined, kind: b.kind || undefined, re: b.re || undefined })) },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },

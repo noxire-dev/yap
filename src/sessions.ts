@@ -49,7 +49,9 @@ export interface Message {
   id: string
   /** Only goes up, across repos and restarts; what a session acks. */
   seq: number
-  kind: 'say' | 'note' | 'spawn' | 'conflict'
+  kind: Kind
+  /** The id of the message this answers. */
+  re?: string
   /**
    * `session`: from a known session. `user`: from a device paired through the relay. `local`: anything else on
    * this machine holding the token, which an agent's shell can be.
@@ -65,6 +67,7 @@ export interface Message {
   ok?: boolean
 }
 
+export type Kind = 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict'
 export type Origin = 'session' | 'user' | 'local'
 const origin = (s: object | null, user?: boolean): Origin => (s ? 'session' : user ? 'user' : 'local')
 
@@ -108,6 +111,8 @@ interface Session {
   clash?: Record<string, string[]>
   /** The process that speaks for it (`yap mcp`), when it said: once that process is gone, so is the session. */
   pid?: number
+  /** Questions and blockers it sent that nobody has answered with `re` yet. */
+  unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
 }
 
 /** A background session yap started, and what came of it. */
@@ -276,8 +281,8 @@ export class Sessions {
   }
 
   /** Queue `m` for `o`, `line` for its model, and tell the listeners whom it is for. */
-  private post(o: Session, m: Omit<Message, 'at' | 'id' | 'seq'>, line: string) {
-    const msg = { ...m, id: randomUUID(), seq: this.next(), at: this.now() }
+  private post(o: Session, m: Omit<Message, 'at' | 'id' | 'seq'> & { id?: string }, line: string) {
+    const msg = { id: randomUUID(), ...m, seq: this.next(), at: this.now() }
     o.inbox.push({ ...msg, line })
     this.emit({ type: 'message', repo: checkout(o.repo), session: o.id, name: o.name, ...msg })
   }
@@ -480,14 +485,27 @@ export class Sessions {
    * sender with no session is the user only with `user` (a paired device); otherwise it is unverified. Delivered on each recipient's next hook call; one sitting
    * idle in a pane is prompted, so that call comes now.
    */
-  async say(m: { from?: string; cwd: string; text: string; to?: string; user?: boolean }) {
+  async say(m: { from?: string; cwd: string; text: string; to?: string; user?: boolean; kind?: string; re?: string }) {
     const text = m.text.trim()
     if (!text) throw new Error('say something')
     const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
-    const to = m.to?.replace(/^@/, '').toLowerCase()
     const now = this.now()
     const live = [...this.all.values()].filter(o => o.id !== s?.id && now - o.at <= LIVE)
+    // `re` answers a question or blocker: the first reply takes it off the asker's list, and with no `to` goes to the
+    // asker. One that matches nothing is delivered anyway.
+    let re = m.re?.trim().replace(/^#/, '') || undefined
+    let asker: Session | undefined
+    for (const o of re ? this.all.values() : []) {
+      const q = o.unanswered?.find(q => q.id === re || (re!.length >= 8 && q.id.startsWith(re!)))
+      if (!q) continue
+      re = q.id
+      asker = o
+      o.unanswered = o.unanswered!.filter(x => x !== q)
+      this.save(o)
+      break
+    }
+    const to = m.to?.replace(/^@/, '').toLowerCase() || (asker && asker.id !== s?.id ? asker.id : undefined)
     // An exact name wins over a prefix, so @auth reaches `auth` even with `auth-tests` around.
     const pick = (pool: Session[]) => {
       const exact = pool.filter(o => o.name === to)
@@ -499,10 +517,19 @@ export class Sessions {
     if (!them.length) throw new Error(to ? `no live session @${to}` : 'nobody else is working in this repo')
     if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => `@${this.tag(o)}`).join(' or ')}; give more of it`)
     const from = this.label(s, m.user)
-    for (const o of them) this.post(o, { kind: 'say', origin: origin(s, m.user), from, sender: s?.id ?? '', text }, `From ${from}: ${text}`)
+    // One id for every recipient, so whichever of them answers, the reply points at the same question.
+    const id = randomUUID()
+    const kind = m.kind === 'question' || m.kind === 'blocker' ? m.kind : 'say'
+    const short = id.slice(0, 8)
+    const line =
+      kind === 'say'
+        ? `From ${from}${re ? `, answering ${re.slice(0, 8)}` : ''}: ${text}`
+        : `${kind === 'blocker' ? 'Blocker' : 'Question'} ${short} from ${from}: ${text} (answer with \`yap say --re ${short} <text>\`)`
+    for (const o of them) this.post(o, { id, kind, origin: origin(s, m.user), from, sender: s?.id ?? '', text, ...(re ? { re } : {}) }, line)
+    if (s && kind !== 'say') (s.unanswered ??= []).push({ id, to: them.map(o => o.id), kind, text })
     this.save(s, ...them)
     const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + from)))
-    return { to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
+    return { id, to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
   }
 
   /**
@@ -569,7 +596,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })) }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })), unanswered: (s.unanswered ?? []).map(q => ({ ...q, to: q.to.map(id => this.all.get(id)).map(o => (o ? `@${this.tag(o)}` : 'a session that left')) })) }))
   }
 
   /** The main checkout of the repo `cwd` sits in, as events and `list` name it. */

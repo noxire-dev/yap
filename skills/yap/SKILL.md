@@ -24,6 +24,8 @@ Run every command from inside the repo. The daemon starts on demand.
 | A directory with no git yet | `yap init` |
 | Which other Claude sessions are in this repo, and what they are doing | `yap sessions` |
 | Tell another session something, or all of them in this repo | `yap say [@<name>] <text>` |
+| Ask something you need answered, or say you're blocked on another session | `yap say --question [@<name>] <text>` or `--blocker`; it stays on your row in `yap sessions` until a reply |
+| Answer a question or blocker | `yap say --re <its id> <text>`: it goes to the asker |
 | Leave a note for every session in this repo, now and later | `yap note <text>` · `yap notes` · `yap note -d <id>` |
 
 A goal is planned into drafts first and nothing runs until `yap go`. Ask the user before running `yap go`

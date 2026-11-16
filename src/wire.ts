@@ -8,7 +8,7 @@ export function local(sessions: Sessions) {
   return async (verb: string, b: Record<string, unknown>): Promise<unknown> => {
     const str = (k: string) => (typeof b[k] === 'string' ? (b[k] as string) : undefined)
     const cwd = String(b.cwd ?? '')
-    if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to') })
+    if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to'), kind: str('kind'), re: str('re') })
     if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? '') })
     if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
     if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? ''), agent: str('agent') === 'codex' ? 'codex' : undefined })

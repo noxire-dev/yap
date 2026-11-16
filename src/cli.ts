@@ -20,7 +20,9 @@ yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
-yap say [@id] <text>  message the other Claude Code sessions in this repo, or one of them
+yap say [--question|--blocker] [--re <id>] [@id] <text>
+                    message the other sessions in this repo, or one of them; a question or blocker
+                    stays on your list until a reply with --re <its id>
 yap spawn [--codex] <text>  start a background Claude Code (or Codex) session here on that task; its last word comes back to you
 yap spawns           the background sessions yap started, and how each ended
 yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
@@ -400,18 +402,27 @@ try {
     console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
   } else if (cmd === 'sessions') {
     if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
-    const list = await api.get<{ id: string; name: string; top: string; at: number; files: string[]; undelivered?: { from: string; text: string }[] }[]>('/api/sessions')
+    const list = await api.get<{ id: string; name: string; top: string; at: number; files: string[]; undelivered?: { from: string; text: string }[]; unanswered?: { id: string; kind: string; to: string[]; text: string }[] }[]>('/api/sessions')
     const show = (s: (typeof list)[number]) =>
       [
         `${s.id.slice(0, 8)}  ${ago(s.at).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.top}`,
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
         ...(s.undelivered ?? []).map(m => `          undelivered, from ${m.from}: ${m.text.split('\n')[0].slice(0, 80)}`),
+        ...(s.unanswered ?? []).map(q => `          unanswered ${q.kind} ${q.id.slice(0, 8)} to ${q.to.join(', ')}: ${q.text.split('\n')[0].slice(0, 80)}`),
       ].join('\n')
     console.log(list.length ? list.map(show).join('\n') : 'no sessions')
   } else if (cmd === 'say') {
+    let kind: string | undefined
+    let re: string | undefined
+    for (;;) {
+      if (rest[0] === '--question' || rest[0] === '--blocker') kind = rest.shift()!.slice(2)
+      else if (rest[0] === '--re') (rest.shift(), (re = rest.shift()))
+      else break
+    }
     const to = rest[0]?.startsWith('@') ? rest.shift() : undefined
     await daemon()
-    const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' ') })
+    const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' '), kind, re })
+    if (kind) console.log(`${kind} ${r.id.slice(0, 8)}: a reply with \`--re ${r.id.slice(0, 8)}\` takes it off your list`)
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
     console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
   } else if (cmd === 'spawn') {

@@ -16,13 +16,14 @@ const TOOLS = [
   },
   {
     name: 'yap_peers',
-    description: 'The other agent sessions working in this repo: their names, working trees, the files each edited, and worktrees whose work would conflict with theirs if merged.',
+    description: 'The other agent sessions working in this repo: their names, working trees, the files each edited, worktrees whose work would conflict with theirs if merged, and the questions and blockers nobody has answered yet.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'yap_say',
-    description: 'Message another agent session in this repo (`to`: its name or id, without @) or all of them. An idle one wakes to read it.',
-    inputSchema: { type: 'object', properties: { text: s, to: s }, required: ['text'] },
+    description:
+      'Message another agent session in this repo (`to`: its name or id, without @) or all of them. An idle one wakes to read it. `kind` "question" or "blocker" keeps it on your list until someone replies with `re` set to its id; answer one sent to you the same way.',
+    inputSchema: { type: 'object', properties: { text: s, to: s, kind: { type: 'string', enum: ['question', 'blocker'] }, re: s }, required: ['text'] },
   },
   {
     name: 'yap_board',
@@ -44,6 +45,7 @@ const TOOLS = [
 /** YAP's text names the `yap` commands; run from an agent's shell without YAP_SESSION, they'd speak as nobody. */
 const tools = (text: string) =>
   text
+    .replace(/`yap say --re (\S+) <text>`/g, 'yap_say with re "$1"')
     .replace(/`yap say @<session> <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
     .replace(/`yap say @[^`]*`/g, 'yap_say')
     .replace(/`yap note <text>`/g, 'yap_note')
@@ -58,17 +60,23 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
     return say(a.run ? await me.willRun(String(a.run)) : await me.willEdit(a.edit ? String(a.edit) : ''))
   }
   if (name === 'yap_peers') {
-    const peers = (await yap.sessions(me.cwd)).filter(p => p.id !== me.id)
+    const all = await yap.sessions(me.cwd)
+    const peers = all.filter(p => p.id !== me.id)
+    const open = (p: (typeof all)[number]) => (p.unanswered ?? []).map(q => `  unanswered ${q.kind} ${q.id.slice(0, 8)} to ${q.to.join(', ')}: ${q.text}`)
     const line = (p: (typeof peers)[number]) =>
       [
         `@${p.name || p.id.slice(0, 8)} in ${p.top}${p.files.length ? `, edited ${p.files.slice(-5).join(', ')}` : ''}`,
         ...(p.conflicts ?? []).map(c => `  would conflict with @${c.with} if merged, in ${c.files.join(', ')}`),
+        ...open(p),
       ].join('\n')
-    return peers.length ? peers.map(line).join('\n') : 'no other session in this repo'
+    const mine = open(all.find(p => p.id === me.id) ?? ({} as (typeof all)[number]))
+    return [peers.length ? peers.map(line).join('\n') : 'no other session in this repo', mine.length && `yours:\n${mine.join('\n')}`].filter(Boolean).join('\n')
   }
   if (name === 'yap_say') {
-    const r = await me.say(String(a.text ?? ''), a.to ? String(a.to).replace(/^@/, '') : undefined)
-    return r.to.length ? `sent to ${r.to.join(', ')}${r.woke.length ? `; ${r.woke.join(', ')} woke to read it` : ''}` : 'nobody to send it to'
+    const kind = a.kind === 'question' || a.kind === 'blocker' ? a.kind : undefined
+    const r = await me.say(String(a.text ?? ''), a.to ? String(a.to).replace(/^@/, '') : undefined, { kind, re: a.re ? String(a.re) : undefined })
+    const sent = `sent to ${r.to.join(', ')}${r.woke.length ? `; ${r.woke.join(', ')} woke to read it` : ''}`
+    return kind ? `${sent}. Your ${kind} is ${r.id.slice(0, 8)}; it stays on your list until a reply with that re.` : sent
   }
   if (name === 'yap_board') {
     const ns = await yap.notes(me.cwd)
@@ -79,31 +87,52 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
   throw new Error(`no tool ${name}`)
 }
 
+/** 2026-07-28 has no handshake: each request names its version in `_meta`. The rest negotiate in `initialize`. */
+const MODERN = '2026-07-28'
+const LEGACY = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
+const SUPPORTED = [MODERN, ...LEGACY]
+const META = 'io.modelcontextprotocol/'
+
+const GUIDE =
+  'Other agent sessions may be working in this repo, some in this same working tree. Call yap_check before editing a file or running a git command that switches, resets, stashes or commits, and between steps; do what it says. Message a peer with yap_say.'
+
+/** The join, once per session, on its first request. */
+const joins = new WeakMap<YapSession, Promise<Answer>>()
+
 /**
  * One JSON-RPC message in, its reply out (none for a notification). `owned`: this server is the session's only
- * YAP voice, so it joins on `initialize`, named for the client; a session hooks already report for doesn't.
+ * YAP voice, so it joins on its first request, named for the client; a session hooks already report for doesn't.
  */
 export async function rpc(me: YapSession, owned: boolean, m: { id?: unknown; method?: string; params?: any }, version: string) {
   if (m.id === undefined) return
-  const ok = (result: unknown) => ({ jsonrpc: '2.0', id: m.id, result })
-  if (m.method === 'initialize') {
+  const meta = m.params?._meta ?? {}
+  const asked = meta[`${META}protocolVersion`]
+  if (asked !== undefined && !SUPPORTED.includes(asked))
+    return { jsonrpc: '2.0', id: m.id, error: { code: -32022, message: 'Unsupported protocol version', data: { supported: SUPPORTED, requested: asked } } }
+  // A 2026-07-28 result says it is complete and who answered.
+  const modern = asked === MODERN
+  const ok = (result: Record<string, unknown>) => ({
+    jsonrpc: '2.0',
+    id: m.id,
+    result: modern ? { resultType: 'complete', ...result, _meta: { [`${META}serverInfo`]: { name: 'yap', version } } } : result,
+  })
+
+  if (owned && !joins.has(me)) {
     // Codex calls itself `codex-mcp-client`, and kills this process rather than close it: the pid says leave.
-    const name = String(m.params?.clientInfo?.name ?? 'mcp').replace(/[-_ ]?mcp[-_ ]?client$/i, '') || 'mcp'
-    const joined = owned ? await me.join(name, process.pid).catch(() => ({}) as Answer) : {}
-    return ok({
-      protocolVersion: m.params?.protocolVersion ?? '2025-06-18',
-      capabilities: { tools: {} },
-      serverInfo: { name: 'yap', version },
-      instructions: [
-        'Other agent sessions may be working in this repo, some in this same working tree. Call yap_check before editing a file or running a git command that switches, resets, stashes or commits, and between steps; do what it says. Message a peer with yap_say.',
-        joined.context && tools(joined.context),
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    })
+    const client = m.method === 'initialize' ? m.params?.clientInfo : meta[`${META}clientInfo`]
+    const name = String(client?.name ?? 'mcp').replace(/[-_ ]?mcp[-_ ]?client$/i, '') || 'mcp'
+    joins.set(me, me.join(name, process.pid).catch(() => ({}) as Answer))
   }
+  const instructions = async () => [GUIDE, tools((await joins.get(me))?.context ?? '')].filter(Boolean).join('\n\n')
+
+  if (m.method === 'initialize') {
+    const v = m.params?.protocolVersion
+    return ok({ protocolVersion: LEGACY.includes(v) ? v : LEGACY[0], capabilities: { tools: {} }, serverInfo: { name: 'yap', version }, instructions: await instructions() })
+  }
+  if (m.method === 'server/discover')
+    return ok({ supportedVersions: SUPPORTED, capabilities: { tools: {} }, instructions: await instructions(), _meta: { [`${META}serverInfo`]: { name: 'yap', version } } })
   if (m.method === 'ping') return ok({})
-  if (m.method === 'tools/list') return ok({ tools: TOOLS })
+  if (m.method === 'tools/list') return ok({ tools: TOOLS, ...(modern ? { ttlMs: 3_600_000, cacheScope: 'public' } : {}) })
   if (m.method === 'tools/call') {
     try {
       return ok({ content: [{ type: 'text', text: await tool(me, m.params?.name, m.params?.arguments ?? {}) }] })

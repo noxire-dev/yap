@@ -429,6 +429,42 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match((await call('yap_check')).content[0].text, /b\.ts is fine/)
   assert.match((await call('yap_peers')).content[0].text, /@a in .*edited src\/a\.ts/)
   assert.equal((await call('nope')).isError, true)
+
+  // The MCP version: a supported one back, never an echo; 2026-07-28 has no handshake, so discover joins.
+  const v1: any = await rpc(yap.session('mcp-0', '/repo'), false, { id: 0, method: 'initialize', params: { protocolVersion: '1999-01-01' } }, '0')
+  assert.equal(v1.result.protocolVersion, '2025-11-25')
+  const zed = yap.session('mcp-2', '/repo')
+  const _meta = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientInfo': { name: 'zed' }, 'io.modelcontextprotocol/clientCapabilities': {} }
+  const disc: any = await rpc(zed, true, { id: 0, method: 'server/discover', params: { _meta } }, '0')
+  assert.equal(disc.result.resultType, 'complete')
+  assert.ok(disc.result.supportedVersions.includes('2026-07-28'))
+  assert.match(disc.result.instructions, /Call yap_check/)
+  assert.ok((await yap.sessions('/repo')).some(s => s.id === 'mcp-2' && s.name === 'zed'), 'discover joined')
+  assert.equal(((await rpc(zed, true, { id: 1, method: 'tools/list', params: { _meta } }, '0')) as any).result.ttlMs > 0, true)
+  const bad: any = await rpc(zed, true, { id: 2, method: 'tools/list', params: { _meta: { ..._meta, 'io.modelcontextprotocol/protocolVersion': '2030-01-01' } } }, '0')
+  assert.deepEqual([bad.error.code, bad.error.data.requested], [-32022, '2030-01-01'])
+  await zed.leave()
+
+  // A question to everyone: one id for every recipient, on the asker's row until a reply with re takes it off.
+  const q = await b.say('which branch do we merge into?', undefined, { kind: 'question' })
+  assert.deepEqual((await yap.sessions('/repo')).find(s => s.id === 'k2')!.unanswered!.map(u => [u.id, u.kind]), [[q.id, 'question']])
+  const asked = (await a.idle()).messages!.find(m => m.kind === 'question')!
+  assert.equal(asked.id, q.id)
+  const viaMcp = (await call('yap_check')).content[0].text
+  assert.match(viaMcp, new RegExp(`Question ${q.id.slice(0, 8)} from session @a: which branch[\\s\\S]*yap_say with re "${q.id.slice(0, 8)}"`))
+  assert.match((await call('yap_say', { text: 'main', re: q.id.slice(0, 8) })).content[0].text, /^sent to @a$/, 'a reply goes to the asker')
+  const reply = (await b.idle()).messages!.find(m => m.text === 'main')!
+  assert.equal(reply.re, q.id)
+  assert.deepEqual((await yap.sessions('/repo')).find(s => s.id === 'k2')!.unanswered, [])
+  // An re that matches nothing is still delivered.
+  await a.say('late answer', 'a', { re: 'deadbeef' })
+  assert.equal((await b.idle()).messages!.find(m => m.text === 'late answer')!.re, 'deadbeef')
+  // A blocker stays listed until the asker leaves.
+  await a.say('I need the db schema first', 'a', { kind: 'blocker' })
+  assert.equal((await yap.sessions('/repo')).find(s => s.id === 'k1')!.unanswered!.length, 1)
+  assert.match((await call('yap_peers')).content[0].text, /unanswered blocker .* to @a: I need the db schema/)
+  await a.leave()
+  assert.equal((await yap.sessions('/repo')).find(s => s.id === 'k1'), undefined)
   stop()
 }
 
@@ -565,7 +601,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.hook('prompt', { session_id: 'aaaa1111', cwd: '/repo', prompt: 'fix the login redirect' })
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   assert.match(ctx(await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })), /You are session @bbbb2222.*yap say/s)
-  assert.deepEqual(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' }), { to: ['@auth'], woke: [] })
+  assert.deepEqual((({ id, ...r }) => r)(await reg.say({ from: 'bbbb2222', cwd: '/repo', to: '@aaaa', text: 'leave auth.ts to me' })), { to: ['@auth'], woke: [] })
   assert.match(ctx(await bash('aaaa1111', 'ls')), /From session @bbbb2222: leave auth\.ts to me/)
   // Named from the first file it edits, addressed by it; a prompt names nothing, a generic file takes its directory.
   await reg.hook('prompt', { session_id: 'eeee5555', cwd: '/repo', prompt: 'fix the login redirect' })
@@ -611,7 +647,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
-  assert.deepEqual(await reg.say({ cwd: '/repo', text: 'pull before you push', user: true }), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
+  assert.deepEqual((({ id, ...r }) => r)(await reg.say({ cwd: '/repo', text: 'pull before you push', user: true })), { to: ['@auth', '@bbbb2222'], woke: ['@auth'] })
   assert.equal(prompts[0], 'yap: a message from the user')
   const after = new Sessions(ws, store, () => 1_000_000)
   assert.deepEqual(after.list().map(s => s.id).sort(), ['aaaa1111', 'bbbb2222'], 'the restart kept them')

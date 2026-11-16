@@ -10,6 +10,12 @@
  *   const stop = yap.watch(worktree, e => { if (e.type === 'message' && idle(e.session)) startTurn(e.session, wakePrompt(e)) })
  */
 
+/** `kind`: a question or blocker stays on the sender's `unanswered` until a reply with `re` (its id, or 8 characters of it). */
+export interface Said {
+  kind?: 'question' | 'blocker'
+  re?: string
+}
+
 /** What a verb answers. `{}` is "say nothing". */
 export interface Answer {
   /** For the model only: peers, warnings, messages. Put it in front of the next model call. */
@@ -29,7 +35,9 @@ export interface Message {
   id?: string
   /** Only goes up. */
   seq?: number
-  kind: 'say' | 'note' | 'spawn' | 'conflict'
+  kind: 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict'
+  /** The id of the message this answers. */
+  re?: string
   /** `session`, `user` (a device paired through the relay) or `local` (unverified: anything on the machine). Missing from a daemon before it. */
   origin?: 'session' | 'user' | 'local'
   /** As the model reads it: `session @auth`, `the user`. */
@@ -66,6 +74,8 @@ export interface Peer {
   conflicts?: { with: string; files: string[] }[]
   /** Messages it never acked after 3 deliveries. */
   undelivered?: { id: string; from: string; text: string }[]
+  /** Questions and blockers it sent that nobody has answered with `re` yet; `to` as names. */
+  unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
 }
 
 export interface Note {
@@ -179,8 +189,8 @@ export class YapLocal {
   }
 
   /** The user's message to one session (`to`: a name or id prefix) or all of them in the repo. */
-  say(cwd: string, text: string, to?: string) {
-    return this.call<{ to: string[]; woke: string[] }>('say', { cwd, text, to })
+  say(cwd: string, text: string, to?: string, o: Said = {}) {
+    return this.call<{ id: string; to: string[]; woke: string[] }>('say', { cwd, text, to, ...o })
   }
 
   /** The user's note on the repo's board. */
@@ -293,8 +303,8 @@ export class YapSession {
   }
 
   /** Message one peer (`to`: a name or id prefix) or every session in the repo, as this session. */
-  say(text: string, to?: string) {
-    return this.yap.call<{ to: string[]; woke: string[] }>('say', { session: this.id, cwd: this.cwd, text, to })
+  say(text: string, to?: string, o: Said = {}) {
+    return this.yap.call<{ id: string; to: string[]; woke: string[] }>('say', { session: this.id, cwd: this.cwd, text, to, ...o })
   }
 
   /** Pin a note on the repo's board, as this session. */
