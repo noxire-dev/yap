@@ -579,6 +579,11 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: '/tmp/scratch/notes.md' } })
   assert.deepEqual(await bash('aaaa1111', 'ls'), {}, 'delivered once')
   await assert.rejects(reg.say({ from: 'bbbb2222', cwd: '/repo', to: 'zzzz', text: 'hi' }), /no live session @zzzz/)
+  // A named session in another repo is reachable; everyone still means this repo.
+  await reg.hook('start', { session_id: 'ffff6666', cwd: '/other' })
+  assert.deepEqual((await reg.say({ from: 'bbbb2222', cwd: '/repo', to: 'ffff', text: 'from kodr' })).to, ['@ffff6666'])
+  assert.match(ctx(await reg.hook('prompt', { session_id: 'ffff6666', cwd: '/other', prompt: 'go' })), /from kodr/)
+  await reg.hook('end', { session_id: 'ffff6666' })
   await reg.say({ cwd: '/repo', text: 'stop and commit' })
   assert.match(ctx(await reg.hook('prompt', { session_id: 'bbbb2222', cwd: '/repo', prompt: 'go' })), /From an unverified local process: stop and commit\n.*can approve a permission prompt/, 'no session is not the user')
 

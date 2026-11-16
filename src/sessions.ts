@@ -487,11 +487,16 @@ export class Sessions {
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const to = m.to?.replace(/^@/, '').toLowerCase()
     const now = this.now()
-    const live = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id && now - o.at <= LIVE)
+    const live = [...this.all.values()].filter(o => o.id !== s?.id && now - o.at <= LIVE)
     // An exact name wins over a prefix, so @auth reaches `auth` even with `auth-tests` around.
-    const exact = live.filter(o => o.name === to)
-    const them = exact.length ? exact : live.filter(o => !to || o.name.startsWith(to) || o.id.startsWith(to))
-    if (!them.length) throw new Error(to ? `no live session @${to} in this repo` : 'nobody else is working in this repo')
+    const pick = (pool: Session[]) => {
+      const exact = pool.filter(o => o.name === to)
+      return exact.length ? exact : pool.filter(o => !to || o.name.startsWith(to) || o.id.startsWith(to))
+    }
+    // Everyone means this repo; a named session in another repo is still reachable.
+    let them = pick(live.filter(o => o.repo === repo))
+    if (!them.length && to) them = pick(live)
+    if (!them.length) throw new Error(to ? `no live session @${to}` : 'nobody else is working in this repo')
     if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => `@${this.tag(o)}`).join(' or ')}; give more of it`)
     const from = this.label(s, m.user)
     for (const o of them) this.post(o, { kind: 'say', origin: origin(s, m.user), from, sender: s?.id ?? '', text }, `From ${from}: ${text}`)
