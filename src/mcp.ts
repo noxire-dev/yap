@@ -36,6 +36,12 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { text: s }, required: ['text'] },
   },
   {
+    name: 'yap_claim',
+    description:
+      'Before a task that touches several files in one directory, claim it (a file or directory, relative to the repo root), so other sessions are warned before they edit there. Says who holds it when another session already claimed an overlapping path. Lasts 20 minutes past your last edit under it. Pass release with the claim id when you are done.',
+    inputSchema: { type: 'object', properties: { path: s, why: s, release: s } },
+  },
+  {
     name: 'yap_spawn',
     description: 'Start a background agent session in this repo on a task: Claude Code, or Codex with agent "codex". It is a peer you can message; its last word comes back to you as a message.',
     inputSchema: { type: 'object', properties: { task: s, agent: { type: 'string', enum: ['claude', 'codex'] } }, required: ['task'] },
@@ -49,6 +55,8 @@ const tools = (text: string) =>
     .replace(/`yap say @<session> <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
     .replace(/`yap say @[^`]*`/g, 'yap_say')
     .replace(/`yap note <text>`/g, 'yap_note')
+    .replace(/`yap claim <path> <why>`/g, 'yap_claim')
+    .replace(/`yap release <id>`/g, 'yap_claim with release')
     .replace(/, and take a note down with `yap note -d <id>` once it no longer holds/g, '')
 
 const say = (a: Answer) => tools([a.deny && `Don't run it. ${a.deny}`, a.context].filter(Boolean).join('\n\n')) || 'nothing from yap: go ahead'
@@ -62,7 +70,11 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
   if (name === 'yap_peers') {
     const all = await yap.sessions(me.cwd)
     const peers = all.filter(p => p.id !== me.id)
-    const open = (p: (typeof all)[number]) => (p.unanswered ?? []).map(q => `  unanswered ${q.kind} ${q.id.slice(0, 8)} to ${q.to.join(', ')}: ${q.text}`)
+    const claims = await yap.claims(me.cwd)
+    const open = (p: (typeof all)[number]) => [
+      ...claims.filter(c => c.session === p.id).map(c => `  claimed ${c.path} (${c.id}): ${c.why}`),
+      ...(p.unanswered ?? []).map(q => `  unanswered ${q.kind} ${q.id.slice(0, 8)} to ${q.to.join(', ')}: ${q.text}`),
+    ]
     const line = (p: (typeof peers)[number]) =>
       [
         `@${p.name || p.id.slice(0, 8)} in ${p.top}${p.files.length ? `, edited ${p.files.slice(-5).join(', ')}` : ''}`,
@@ -77,6 +89,11 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
     const r = await me.say(String(a.text ?? ''), a.to ? String(a.to).replace(/^@/, '') : undefined, { kind, re: a.re ? String(a.re) : undefined })
     const sent = `sent to ${r.to.join(', ')}${r.woke.length ? `; ${r.woke.join(', ')} woke to read it` : ''}`
     return kind ? `${sent}. Your ${kind} is ${r.id.slice(0, 8)}; it stays on your list until a reply with that re.` : sent
+  }
+  if (name === 'yap_claim') {
+    if (a.release) return (await me.release(String(a.release)), `released ${a.release}`)
+    const r = await me.claim(String(a.path ?? ''), String(a.why ?? ''))
+    return 'held' in r ? `already claimed: ${r.held.path} by @${r.held.name}, ${r.held.why}. Ask them with yap_say before working there.` : `claimed as ${r.id}; release it with yap_claim release "${r.id}" when done`
   }
   if (name === 'yap_board') {
     const ns = await yap.notes(me.cwd)

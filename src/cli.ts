@@ -32,6 +32,9 @@ yap unpair           forget the pairing, here and on the relay: every web client
 yap bridge           whether this machine is paired, and connected
 yap note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
 yap notes           this repo's board
+yap claim <path> <why>   tell the other sessions you're working under that file or directory; they're warned before editing there
+yap release <id>    end a claim early
+yap claims          this repo's live claims, every worktree
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
 yap serve           the daemon in the foreground`
 
@@ -425,6 +428,19 @@ try {
     if (kind) console.log(`${kind} ${r.id.slice(0, 8)}: a reply with \`--re ${r.id.slice(0, 8)}\` takes it off your list`)
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
     console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
+  } else if (cmd === 'claim' || cmd === 'release' || cmd === 'claims') {
+    await daemon()
+    const cwd = target()
+    if (cmd === 'claims') {
+      const cs = await api.send('POST', '/yap/claims', { cwd })
+      console.log(cs.length ? cs.map((c: any) => `${c.id}  @${c.name}  ${c.path}  for ${Math.max(0, Math.round((c.expires - Date.now()) / 60_000))}m: ${c.why}`).join('\n') : 'no claims')
+    } else if (cmd === 'release') {
+      await api.send('POST', '/yap/release', { session: me, cwd, id: rest[0] })
+      console.log(`released ${rest[0]}`)
+    } else {
+      const r = await api.send('POST', '/yap/claim', { session: me, cwd, path: rest.shift() ?? '', why: rest.join(' ') })
+      console.log(r.held ? `already claimed: ${r.held.path} by @${r.held.name}, ${r.held.why}. Ask them first: yap say @${r.held.name} <text>` : `claimed as ${r.id}: the others are warned before they edit there, for 20 minutes past your last edit under it. \`yap release ${r.id}\` ends it.`)
+    }
   } else if (cmd === 'spawn') {
     await daemon()
     // Codex when asked, or when it is the only agent here: the session runs on whichever plan the user has.

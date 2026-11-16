@@ -9,6 +9,8 @@ export const PROTOCOL = { protocol: 'yap', version: 0 }
 const LIVE = 2 * 60 * 60_000
 /** An edit this recent is worth a warning to whoever touches the same file next. */
 const RECENT = 30 * 60_000
+/** A claim lasts this long past its making or the holder's last edit under it. */
+const CLAIM = 20 * 60_000
 /** A message delivered to an acking session and not acked this long after is sent again, at most `TRIES` times in all. Longer than a hook's timeout, so parallel hooks don't both get it. */
 const RESEND = 10_000
 const TRIES = 3
@@ -113,7 +115,20 @@ interface Session {
   pid?: number
   /** Questions and blockers it sent that nobody has answered with `re` yet. */
   unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
+  /** Files and directories it said it is about to work under, relative to its working tree. */
+  claims?: Claim[]
 }
+
+/** `at`: made, or last renewed by the holder's edit under `path`. */
+interface Claim {
+  id: string
+  path: string
+  why: string
+  at: number
+}
+
+/** Whether claim path `a` takes in `b`: the same, or a directory above it. By components: `src/auth` isn't over `src/author`. */
+const covers = (a: string, b: string) => a === b || b.startsWith(`${a}/`)
 
 /** A background session yap started, and what came of it. */
 interface Spawn {
@@ -392,6 +407,7 @@ export class Sessions {
   /** Record an edit to `file` (normalized, inside its tree); the first one names the session, unique in its repo. */
   private edited(s: Session, file: string) {
     s.files.set(file, (s.news = this.now()))
+    for (const c of this.claimed(s)) if (covers(c.path, this.rel(s, file))) c.at = this.now()
     s.name ||= this.naming(s, file)
     this.emit({ type: 'edited', repo: checkout(s.repo), session: s.id, name: s.name, path: relative(s.top, file).replace(/\\/g, '/') })
   }
@@ -409,6 +425,16 @@ export class Sessions {
     let name = base
     for (let i = 2; taken.has(name); i++) name = `${base}-${i}`
     return name
+  }
+
+  /** `file` (normalized) relative to the session's working tree, with forward slashes. */
+  private rel(s: Session, file: string) {
+    return relative(s.top, file).replace(/\\/g, '/')
+  }
+
+  /** Its claims still in force. */
+  private claimed(s: Session) {
+    return (s.claims ?? []).filter(c => this.now() - c.at < CLAIM)
   }
 
   private others(s: Session) {
@@ -439,6 +465,7 @@ export class Sessions {
     const lines = [...this.others(s).map(o => this.line(o, s)), ...this.crew(s)]
     const notes = this.store.notes(s.repo).slice(0, BOARD)
     const stale = notes.some(n => this.now() - n.ts > STALE)
+    const claims = this.others(s).flatMap(o => this.claimed(o).map(c => `- ${c.path}, by @${this.tag(o)}${o.top === s.top ? '' : ' in another worktree'}: ${c.why}`))
     const board = notes.map(n => `- #${n.id} ${ago(n.ts, this.now())}${this.now() - n.ts > STALE ? ', may be stale' : ''}, ${n.author}: ${n.text.slice(0, 300)}`)
     if (stale) board.push(`Notes marked "may be stale" are over a day old. If you can tell one no longer holds, take it down; if you can't, don't act on it without checking.`)
     s.told = this.now()
@@ -447,9 +474,47 @@ export class Sessions {
       ...(lines.length
         ? [`Other agents are working in this repository right now. Don't redo their work, and re-read a file listed here before you edit it:`, ...lines]
         : []),
+      ...(claims.length ? [`Claimed by another session: leave these to their holder, or ask them first:`, ...claims] : []),
       ...(board.length ? [`This repository's yap board, what sessions and the user left for whoever works here next:`, ...board] : []),
-      `You are session @${this.tag(s)}. Message the others with \`yap say @<session> <text>\` or \`yap say <text>\` for all of them. Leave something on the board for later sessions (a claim on an area, a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds.`,
+      `You are session @${this.tag(s)}. Message the others with \`yap say @<session> <text>\` or \`yap say <text>\` for all of them. Before a task that touches more than two files in one directory, claim it with \`yap claim <path> <why>\`, so the others are warned before they edit there, and \`yap release <id>\` when you are done. Leave something on the board for later sessions (a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds.`,
     ].join('\n')
+  }
+
+  /**
+   * Claim `path`, a file or directory in the session's working tree, before working under it. Answers its `id`, or
+   * `held` when a live claim by a peer in any worktree of the repo overlaps it. A claim only warns.
+   */
+  async claim(m: { from?: string; cwd: string; path: string; why: string }) {
+    const s = await this.touch({ session: m.from, cwd: m.cwd })
+    if (!s) throw new Error('a claim is made by a session: run it from inside one')
+    const path = this.rel(s, norm(resolve(m.cwd, m.path)))
+    if (!path || path.startsWith('..') || isAbsolute(path)) throw new Error(`claim a file or directory inside the working tree, not ${m.path || 'all of it'}`)
+    for (const o of this.others(s))
+      for (const c of this.claimed(o))
+        if (covers(c.path, path) || covers(path, c.path)) return { held: { session: o.id, name: this.tag(o), path: c.path, why: c.why } }
+    const c = { id: randomUUID().slice(0, 8), path, why: m.why.trim().slice(0, 300), at: this.now() }
+    s.claims = [...this.claimed(s), c]
+    s.news = this.now()
+    this.save(s)
+    return { id: c.id }
+  }
+
+  /** End one of the session's claims early. */
+  release(m: { from?: string; id: string }) {
+    const s = this.all.get(String(m.from ?? ''))
+    const c = s?.claims?.find(c => c.id === m.id)
+    if (!s || !c) throw new Error(`no claim ${m.id} of yours`)
+    s.claims = s.claims!.filter(x => x !== c)
+    this.save(s)
+    return {}
+  }
+
+  /** The live claims in the repo `cwd` sits in. */
+  async claims(cwd: string) {
+    const { repo } = await this.root(cwd)
+    return [...this.all.values()]
+      .filter(s => s.repo === repo && this.now() - s.at <= LIVE)
+      .flatMap(s => this.claimed(s).map(c => ({ id: c.id, session: s.id, name: this.tag(s), top: s.top, path: c.path, why: c.why, expires: c.at + CLAIM })))
   }
 
   /** Pin a note on the board of the repo `cwd` sits in. Live sessions there hear about it on their next hook call. */
@@ -745,21 +810,35 @@ export class Sessions {
     const mail = drain()
     if (!path) return arrived(mail)
     const file = norm(resolve(call.cwd ?? '', path))
+    // Inside a peer's claim, in any worktree: once a claim, and only ever about the edit about to happen.
+    const inside = this.others(s).flatMap(o => this.claimed(o).filter(c => covers(c.path, this.rel(s, file)) && !s.warned.has(`claim:${c.id}`)).map(c => ({ o, c })))
+    for (const { c } of inside) s.warned.set(`claim:${c.id}`, this.now())
     const hits = this.others(s)
       .filter(o => o.top === s.top)
       .map(o => ({ o, at: o.files.get(file) ?? 0 }))
       .filter(h => this.now() - h.at < RECENT && h.at > (s.warned.get(file) ?? 0))
-    if (!hits.length) return arrived(mail)
-    s.warned.set(file, Math.max(...hits.map(h => h.at)))
+    if (!hits.length && !inside.length) return arrived(mail)
+    if (hits.length) s.warned.set(file, Math.max(...hits.map(h => h.at)))
     // As the session spelled it: `file` is lowercased on Windows.
     const name = relative(call.cwd ?? '', resolve(call.cwd ?? '', path)).replace(/\\/g, '/')
     const who = hits.map(h => `${this.label(h.o)} edited it ${ago(h.at, this.now())}`)
+    const held = inside.map(({ o, c }) => `${this.label(o)} claimed ${c.path}${o.top === s.top ? '' : ' in another worktree'}: ${c.why}`)
     return {
       context: both(
-        `Another session is working on ${name} in this same working tree: ${who.join('; ')}. Re-read the file before you edit it, keep their change intact, and if your task overlaps theirs, tell them with \`yap say @<session> <text>\` and tell the user instead of redoing it.`,
+        inside.length
+          ? `${name} is inside another session's claim (${held.join('; ')}). Leave it to them: if your task needs it, ask them with \`yap say @<session> <text>\` before you edit, and tell the user.`
+          : '',
+        hits.length
+          ? `Another session is working on ${name} in this same working tree: ${who.join('; ')}. Re-read the file before you edit it, keep their change intact, and if your task overlaps theirs, tell them with \`yap say @<session> <text>\` and tell the user instead of redoing it.`
+          : '',
         mail,
       ),
-      notice: `yap: ${name} was just edited by ${hits.map(h => `@${this.tag(h.o)}`).join(', ')}`,
+      notice: [
+        inside.length && `yap: ${name} is inside the claim of ${inside.map(({ o }) => `@${this.tag(o)}`).join(', ')}`,
+        hits.length && `yap: ${name} was just edited by ${hits.map(h => `@${this.tag(h.o)}`).join(', ')}`,
+      ]
+        .filter(Boolean)
+        .join('; '),
     }
   }
 }

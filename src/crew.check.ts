@@ -375,6 +375,48 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal((await v0('will-edit')).messages, undefined, 'once')
 }
 
+// Claims, through the /yap handler: an overlapping claim is held in every worktree of the repo, by path components;
+// a peer is warned once before editing inside one; the holder's edits renew it; it ends on release, leave or lapse.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const reg = new Sessions(ws, store, () => now)
+  const as = (session: string, cwd = '/repo') => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd, ...b }) as Promise<any>
+  const [A, B, C] = [as('aaaa1111'), as('bbbb2222'), as('cccc3333', '/wt')]
+  await A('join', { name: 'auth' })
+  await B('join', { name: 'api' })
+  await C('join', { name: 'wt' })
+  assert.equal((await B('will-edit', { path: 'src/auth/token.ts' })).context, undefined, 'nothing claimed yet')
+  const { id } = await A('claim', { path: 'src/auth/', why: 'rewriting token refresh' })
+  assert.match(id, /^[0-9a-f]{8}$/)
+  const held = { held: { session: 'aaaa1111', name: 'auth', path: 'src/auth', why: 'rewriting token refresh' } }
+  assert.deepEqual(await B('claim', { path: 'src/auth/token.ts', why: 'x' }), held)
+  assert.deepEqual(await C('claim', { path: 'src', why: 'x' }), held, 'another worktree, and a directory above it')
+  assert.ok((await B('claim', { path: 'src/author', why: 'names' })).id, 'src/author is not under src/auth')
+  await assert.rejects(A('claim', { path: '../elsewhere', why: 'x' }), /inside the working tree/)
+  await assert.rejects(local(reg)('claim', { cwd: '/repo', path: 'src', why: 'x' }), /made by a session/)
+  const w = await B('will-edit', { path: 'src/auth/token.ts' })
+  assert.match(w.context, /src\/auth\/token\.ts is inside another session's claim \(session @auth claimed src\/auth: rewriting token refresh\)/)
+  assert.equal(w.notice, 'yap: src/auth/token.ts is inside the claim of @auth')
+  assert.equal((await B('will-edit', { path: 'src/auth/other.ts' })).context, undefined, 'once a claim')
+  assert.match((await C('will-edit', { path: 'src/auth/x.ts' })).context, /claimed src\/auth in another worktree/)
+  assert.equal((await A('will-edit', { path: 'src/auth/token.ts' })).context, undefined, 'not about its own')
+  assert.match((await as('dddd4444')('join')).context, /Claimed by another session[\s\S]*- src\/auth, by @auth: rewriting token refresh/)
+  // An edit under it renews it; 20 minutes past the last one, it is gone.
+  now += 15 * 60_000
+  await A('edited', { path: 'src/auth/token.ts' })
+  now += 15 * 60_000
+  assert.deepEqual((await reg.claims('/wt')).map(c => c.path), ['src/auth'], "renewed; B's lapsed")
+  now += 6 * 60_000
+  assert.deepEqual(await reg.claims('/repo'), [])
+  const two = await A('claim', { path: 'docs', why: 'spec' })
+  assert.deepEqual(await A('release', { id: two.id }), {})
+  await assert.rejects(B('release', { id: two.id }), /no claim/)
+  await A('claim', { path: 'docs', why: 'spec' })
+  await A('leave')
+  assert.deepEqual(await reg.claims('/repo'), [], 'gone with its session')
+}
+
 // The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.
 {
   const { store, ws } = rig([])
@@ -428,6 +470,11 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await b.say('b.ts is fine', 'codex')
   assert.match((await call('yap_check')).content[0].text, /b\.ts is fine/)
   assert.match((await call('yap_peers')).content[0].text, /@a in .*edited src\/a\.ts/)
+  const claimed = (await call('yap_claim', { path: 'src/c', why: 'moving c' })).content[0].text
+  assert.match(claimed, /^claimed as [0-9a-f]{8}/)
+  assert.match((await b.claim('src/c/d.ts', 'x') as any).held.name, /^codex$/)
+  assert.match((await call('yap_peers')).content[0].text, /yours:\n  claimed src\/c \([0-9a-f]{8}\): moving c/)
+  assert.match((await call('yap_claim', { release: claimed.slice(11, 19) })).content[0].text, /^released/)
   assert.equal((await call('nope')).isError, true)
 
   // The MCP version: a supported one back, never an echo; 2026-07-28 has no handshake, so discover joins.

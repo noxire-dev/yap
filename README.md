@@ -5,8 +5,8 @@ Claude Code sessions on one machine that see each other, message each other and 
 Open two sessions on one repo and each knows who else is there and which files they edited. Each is warned
 before it edits a file the other just changed, can't `git checkout` or `git stash` the tree out from under the
 other, and can ask it something: `yap say @auth are you done with the session refactor?`. A session idle in a
-Herdr pane is woken to answer. A repo's notes board carries claims and handoffs to the
-sessions that come later.
+Herdr pane is woken to answer. A session can claim a directory before working in it, so the others are warned
+before they edit there. A repo's notes board carries decisions and handoffs to the sessions that come later.
 
 The protocol underneath is [YAP](docs/yap.md): a handful of verbs over local HTTP. Claude Code speaks it through
 hooks; any agent that can run a command around its tools can speak it directly.
@@ -85,7 +85,10 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - A git command that moves or discards the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`,
   `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
-- Notes: `yap note <text>` pins a note on the repo's board (a claim, a decision, a handoff), `yap notes`
+- Claims: `yap claim src/auth <why>` before a task that touches several files there. Sessions in any worktree
+  of the repo are warned once before they edit under it, and a claim that overlaps it says who holds it. It lasts
+  20 minutes past your last edit there; `yap release <id>` ends it, `yap claims` lists them.
+- Notes: `yap note <text>` pins a note on the repo's board (a decision, a warning, a handoff), `yap notes`
   reads it, `yap note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
   starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
   note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
@@ -114,7 +117,7 @@ runs speaks as it.
 
 An agent with no hooks (Cursor, Zed, Claude Desktop) gets yap as MCP tools from `yap mcp`:
 `{"command": "yap", "args": ["mcp"]}`. The agent then calls `yap_check` before an edit or a git command and
-between steps, and has `yap_peers`, `yap_say`, `yap_board`, `yap_note` and `yap_spawn`. It calls them when it
+between steps, and has `yap_peers`, `yap_say`, `yap_claim`, `yap_board`, `yap_note` and `yap_spawn`. It calls them when it
 chooses to, so a deny is advice. Don't add `yap mcp` to Claude Code or Codex: their hooks cover it, and the
 session would show up twice.
 

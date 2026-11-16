@@ -26,6 +26,7 @@ Run every command from inside the repo. The daemon starts on demand.
 | Tell another session something, or all of them in this repo | `yap say [@<name>] <text>` |
 | Ask something you need answered, or say you're blocked on another session | `yap say --question [@<name>] <text>` or `--blocker`; it stays on your row in `yap sessions` until a reply |
 | Answer a question or blocker | `yap say --re <its id> <text>`: it goes to the asker |
+| Before a task that touches more than two files in one directory, claim it | `yap claim <path> <why>` · `yap claims` · `yap release <id>` |
 | Leave a note for every session in this repo, now and later | `yap note <text>` · `yap notes` · `yap note -d <id>` |
 
 A goal is planned into drafts first and nothing runs until `yap go`. Ask the user before running `yap go`

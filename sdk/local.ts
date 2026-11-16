@@ -78,6 +78,17 @@ export interface Peer {
   unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
 }
 
+/** A live claim: `path` relative to the holder's working tree `top`; `expires` moves on with the holder's edits under it. */
+export interface Claim {
+  id: string
+  session: string
+  name: string
+  top: string
+  path: string
+  why: string
+  expires: number
+}
+
 export interface Note {
   id: number
   ts: number
@@ -202,6 +213,11 @@ export class YapLocal {
     return this.call<{}>('unnote', { cwd, id })
   }
 
+  /** The live claims in the repo, every worktree. */
+  claims(cwd: string) {
+    return this.call<Claim[]>('claims', { cwd })
+  }
+
   /**
    * Hear what happens in the repo `cwd` sits in (every repo without it), from now on. Comes back by itself
    * when the daemon restarts; read `sessions` after `onOpen` for who was already there. Returns the way to stop.
@@ -310,6 +326,18 @@ export class YapSession {
   /** Pin a note on the repo's board, as this session. */
   note(text: string) {
     return this.yap.call<Note>('note', { session: this.id, cwd: this.cwd, text })
+  }
+
+  /**
+   * Claim a file or directory before working under it, so peers in any worktree are warned before they edit there.
+   * `held` when a peer's live claim overlaps it. It lasts 20 minutes past this session's last edit under it.
+   */
+  claim(path: string, why: string) {
+    return this.yap.call<{ id: string } | { held: { session: string; name: string; path: string; why: string } }>('claim', { session: this.id, cwd: this.cwd, path, why })
+  }
+
+  release(id: string) {
+    return this.yap.call<{}>('release', { session: this.id, cwd: this.cwd, id })
   }
 
   /** Start a background Claude Code (or `codex`) session on `task`; its last word comes back to this one as a message. */

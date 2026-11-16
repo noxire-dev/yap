@@ -18,8 +18,11 @@ Status: draft, version 0. Everything here runs today.
 - A session's **name** comes from the first file it edits inside its tree (`src/auth.ts` gives `auth`, a generic
   `src/api/index.ts` gives `api-index`), made unique in the repo with `-2`, `-3`. Before that it goes by the
   first 8 characters of its id. Never from a prompt: prompts are the user's words, and peers would read them.
-- The **board** is a repo's notes: claims, decisions, handoffs. Notes outlive sessions. A note over a day old is
+- The **board** is a repo's notes: decisions, warnings, handoffs. Notes outlive sessions. A note over a day old is
   stale.
+- A **claim** is a session saying it is about to work under a file or directory. It only warns: peers in any
+  worktree of the repo hear of it before they edit there. It lasts 20 minutes past its making or the holder's last
+  edit under it, and ends sooner on `release` or when the session leaves.
 
 ## Verbs
 
@@ -29,7 +32,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 |---|---|---|
 | `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. `pid`, optional: a process that lives as long as the session; when it is gone the session leaves, `leave` or not. |
 | `turn` | The user sends a prompt | Answers with what peers did since it last heard, and nothing at all when nothing moved. Prompts that are harness markup (`<agent-message …>`) don't count as news. |
-| `will-edit` | Before a file write (`path`) | If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. |
+| `will-edit` | Before a file write (`path`) | If the file is inside a peer's live claim, in any worktree, answers with the holder and reason, once per claim. If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. Neither denies. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
 | `will-run` | Before a shell command (`command`) | Notes the start time. If the command would move the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`, `restore`, `rebase`, `pull`, `merge`) or sweep it (`add -A`, `commit -a`) while a peer in the same tree edited in the last 30 minutes, answers with a **deny**. |
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. |
@@ -38,11 +41,13 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
+| `claim` | `path`, `why` | Claims a file or directory inside the session's working tree, before working under it. Answers `{ id }`, or `{ held: { session, name, path, why } }` when a peer's live claim in any worktree of the repo overlaps it. Overlap is by path components: `src/auth` covers `src/auth/token.ts`, not `src/author`. First claim wins; nothing queues. Join and turn context list peers' claims. |
+| `release` | `id` | Ends one of the session's claims early. |
 | `spawn` | `text`, the task; `agent`, optional: `codex` | Starts a background Claude Code session (or Codex: `codex exec` in its workspace sandbox) in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 
-Four more read the repo `cwd` sits in, for a harness or a tool, and change nothing:
+Five more read the repo `cwd` sits in, for a harness or a tool, and change nothing:
 
 | Verb | Answers |
 |---|---|
@@ -50,6 +55,7 @@ Four more read the repo `cwd` sits in, for a harness or a tool, and change nothi
 | `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts, undelivered }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries; `unanswered` is `[{ id, to, kind, text }]`, its questions and blockers nobody has replied to with `re` |
 | `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
 | `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
+| `claims` | its live claims, every worktree: `[{ id, session, name, top, path, why, expires }]`, `path` relative to `top` |
 
 ## Answers
 
@@ -183,8 +189,8 @@ An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an M
 joins on its first request, named for the client (`clientInfo`, from `initialize` or `_meta`), and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
 `run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
-`yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
-`yap_say` takes `kind` and `re`, and `yap_peers` lists unanswered questions and blockers. It speaks MCP
+`yap_claim` (`path` and `why`, or `release`), `yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
+`yap_say` takes `kind` and `re`, and `yap_peers` lists claims and unanswered questions and blockers. It speaks MCP
 2026-07-28 (no handshake: `server/discover`, the version in each request's `_meta`, `-32022` for one it doesn't
 support) and the handshake versions before it, answering an `initialize` with the client's version when it
 knows it and 2025-11-25 when it doesn't.

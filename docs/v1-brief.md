@@ -21,7 +21,7 @@ Hand this to a coding agent one item at a time.
 | --- | --- | --- |
 | 1 | MCP adapter: version and discovery | S |
 | 2 | `re`, `question` and `blocker` | S |
-| 3 | Claims | M |
+| 3 | Claims (done) | M |
 | 4 | Spec v1: core, extensions, version 1 | S |
 | 5 | Kodr chips (optional, not a release gate) | S |
 
