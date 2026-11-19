@@ -42,6 +42,10 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
+// Tasks handed to the crew on the board. A pull, once a minute: nothing on the web can reach this machine.
+const watch = () => void crew.watch().catch(() => {})
+watch()
+setInterval(watch, 60_000)
 const sessions = new Sessions(ws, store, Date.now, new Herdr(), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from

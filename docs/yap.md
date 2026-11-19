@@ -238,6 +238,15 @@ what Claude Code reads. `SessionEnd` removes it.
 
 Another agent is one more adapter like it, or none (above): a harness can call `/yap` directly.
 
+## Handed on the board
+
+A Rinai board hands an issue to the crew with one label, `crew`. Nothing on the web reaches the machine: the
+daemon reads each registered project's board once a minute (`Crew.watch`), and for an open issue carrying the
+label it reads who put it there (GitHub's issue events, the latest `labeled`). It takes the issue only if that
+login is the one `gh` is signed in as, and only once: an issue that has ever been on the rail, a failed one
+included, waits for `yap take`. The label is the go for that issue, so its tickets start as soon as they are
+planned. Progress goes back as it already does: claimed, commented, In review or Blocked.
+
 ## Remote
 
 A web client (Rinai first) reaches a machine through a **relay**: the machine's daemon dials out and holds one

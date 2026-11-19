@@ -7,7 +7,7 @@ import { Bridge, remote } from './bridge'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
-import type { AgentRunner, Tracker, Workspace } from './ports'
+import type { AgentRunner, Card, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
@@ -21,7 +21,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -94,6 +94,8 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     claim: async (_r, n) => void told.push(`claim ${n}`),
     move: async (_r, n, column) => void told.push(`move ${n} ${column}`),
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`, ...(text.includes('The crew did') ? ['the reporter summary leaked'] : [])),
+    handed: async () => o.handed ?? [],
+    me: async () => 'you',
   }
   const crew = new Crew(store, ws, agent, tracker, '/tmp/yap')
   return { store, crew, merged, squashed, prompts, told, ws, dirty }
@@ -199,6 +201,29 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(told, ['claim 7', 'claim 7', 'comment 7 yap merged this on local main. Pushing closes the issue. The summary is on the yap board.', 'move 7 in-review'])
   assert.equal(store.goals()[0].summary, 'The crew did the thing in x.', 'the goal carries the reporter\'s summary')
   assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
+}
+
+// Handed on the board: the crew label from the person this machine works for is the go for that issue. Anyone
+// else's label is left alone, and an issue already on the rail is not taken twice.
+{
+  const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false }
+  const { store, crew } = rig([true, true], { handed: [{ ...card, by: 'You' }, { ...card, number: 8, by: 'stranger' }, { ...card, number: 9, by: null }] })
+  await crew.openProject('.')
+  await crew.watch()
+  await until(() => store.tickets().length === 2 && store.tickets().every(t => t.status !== 'draft'))
+  assert.deepEqual(store.goals().map(g => g.issue), [7], 'only the issue its own person handed')
+  await crew.watch()
+  assert.equal(store.goals().length, 1, 'not taken twice')
+}
+// A handed issue whose plan failed is not retaken every minute: `yap take` is the retry.
+{
+  const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, by: 'you' }
+  const { store, crew } = rig([], { plan: { tickets: [] }, handed: [card] })
+  await crew.openProject('.')
+  await crew.watch()
+  await until(() => store.goals()[0]?.status === 'failed')
+  await crew.watch()
+  assert.equal(store.goals().length, 1, 'a failed plan waits for a human')
 }
 
 // An author that reports BLOCKED goes to a human, not to the reviewer.

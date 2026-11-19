@@ -256,6 +256,9 @@ function receipt(t: Ticket, checks: Check[] | null, ref: string) {
   ].join('\n')
 }
 
+/** The label that hands an issue to the crew on a Rinai board (noxire-dev/issues src/crew.ts). */
+export const CREW_LABEL = 'crew'
+
 export class Crew {
   private live = new Map<number, { abort: AbortController; activity: string; at: number; done: Promise<void> }>()
   private gates = new Map<number, Promise<unknown>>()
@@ -357,13 +360,40 @@ export class Crew {
     return (await this.tracker.cards(p.tracker)).map(c => ({ ...c, onRail: taken.has(c.number) }))
   }
 
-  /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. */
-  async take(project_id: number, issue: number, title: string) {
+  /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. `go` starts them once planned. */
+  async take(project_id: number, issue: number, title: string, go = false) {
     const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no board')
     if (this.store.goals().some(g => g.project_id === p.id && g.issue === issue && g.status !== 'failed'))
       throw new Error(`#${issue} is already on the rail`)
-    return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue))
+    return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue), go)
+  }
+
+  private watching = false
+  /**
+   * Issues handed to the crew on the board: the `crew` label, put there by the person this machine works for. The
+   * board only asks; this machine decides, so a label from anyone else, or an issue that ever came onto the rail
+   * (a failed one included: `yap take` again is the retry), is left alone. The label is the go for that issue.
+   */
+  async watch() {
+    if (this.watching) return
+    this.watching = true
+    try {
+      for (const p of this.store.projects()) {
+        if (!p.tracker) continue
+        const handed = await this.tracker.handed(p.tracker, CREW_LABEL).catch(() => [])
+        if (!handed.length) continue
+        const me = (await this.tracker.me().catch(() => '')).toLowerCase()
+        const seen = new Set(this.store.goals().filter(g => g.project_id === p.id).map(g => g.issue))
+        for (const c of handed) {
+          if (!me || seen.has(c.number) || c.by?.toLowerCase() !== me) continue
+          this.store.log(p.id, null, 'tracker', { did: 'handed', issue: c.number, by: c.by })
+          await this.take(p.id, c.number, c.title, true).catch(() => {})
+        }
+      }
+    } finally {
+      this.watching = false
+    }
   }
 
   /** A goal typed by the human, optionally filed on the tracker first so the board knows about it. */
@@ -454,7 +484,7 @@ export class Crew {
   }
 
   /** Turn a goal into draft tickets. Returns at once; the planner runs behind it. */
-  plan(project_id: number, text: string, issue: number | null = null, brief = '') {
+  plan(project_id: number, text: string, issue: number | null = null, brief = '', go = false) {
     const p = this.project(project_id)
     const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief, summary: '' })
     this.changed()
@@ -470,6 +500,7 @@ export class Crew {
         }
         this.store.patchGoal(goal.id, { status: 'ready' })
         this.store.log(project_id, null, 'plan', { goal: goal.text, tickets: ids })
+        if (go) this.startGoal(goal.id)
       })
       .catch(e => this.store.patchGoal(goal.id, { status: 'failed', note: String(e?.message ?? e) }))
       .finally(this.changed)

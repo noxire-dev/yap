@@ -2,6 +2,7 @@ import type { Card, Tracker } from './ports'
 
 // A constant, as in gh-rinai: nothing an issue says can send the token anywhere else.
 const HOST = process.env.RINAI_URL ?? 'https://rinai.dev'
+const GITHUB = 'https://api.github.com'
 const ORDER = ['ongoing', 'todo', 'in-review', 'blocked', 'future']
 
 /** Rinai (rinai.dev), a board over GitHub issues. Acts as the user, through gh's own token. */
@@ -60,5 +61,30 @@ export class Rinai implements Tracker {
 
   async comment(repo: string, n: number, text: string) {
     await this.call('POST', `/api/${repo}/issues/${n}/comments`, text)
+  }
+
+  /** GitHub itself, for the two facts Rinai does not answer: who applied a label, and who we are. */
+  private async github(path: string) {
+    const res = await fetch(GITHUB + path, { headers: { authorization: `Bearer ${await this.auth()}`, 'user-agent': 'yap', accept: 'application/vnd.github+json' } })
+    if (!res.ok) throw new Error(`github answered ${res.status}`)
+    return res.json() as Promise<any>
+  }
+
+  async handed(repo: string, label: string) {
+    const cards = (JSON.parse(await this.call('GET', `/api/${repo}/issues?label=${encodeURIComponent(label)}`)).issues as Card[]).filter(c => c.column !== 'done')
+    return Promise.all(
+      cards.map(async c => {
+        // ponytail: the first 100 events, oldest first. On a busier issue the latest `labeled` may be past them,
+        // and then nobody is known to have handed it: it waits for `yap take`. Page by the Link header if that bites.
+        const events: any[] = await this.github(`/repos/${repo}/issues/${c.number}/events?per_page=100`).catch(() => [])
+        const last = events.filter(e => e.event === 'labeled' && e.label?.name === label).pop()
+        return { ...c, by: (last?.actor?.login as string | undefined) ?? null }
+      }),
+    )
+  }
+
+  private login?: string
+  async me() {
+    return (this.login ??= (await this.github('/user')).login as string)
   }
 }

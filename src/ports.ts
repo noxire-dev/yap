@@ -186,6 +186,10 @@ export interface Tracker {
   claim(repo: string, n: number): Promise<void>
   move(repo: string, n: number, column: 'in-review' | 'blocked'): Promise<void>
   comment(repo: string, n: number, text: string): Promise<void>
+  /** Open cards carrying `label`, each with who last put it there (null when that can't be read). */
+  handed(repo: string, label: string): Promise<(Card & { by: string | null })[]>
+  /** The login the tracker acts as: the person this machine works for. */
+  me(): Promise<string>
 }
 
 /** The terminal multiplexer the Claude Code sessions run in, when there is one. */
