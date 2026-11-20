@@ -565,7 +565,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const runs: any[] = []
   let finish: (r: { ok: boolean; text: string }) => void = () => {}
   let tick = 0
-  const chats = new Chats({ run: o => (runs.push(o), o.onActivity?.('Read src/a.ts'), o.onText?.('it reads a'), new Promise(r => {
+  const chats = new Chats({ run: o => (runs.push(o), o.onActivity?.(`Read ${o.cwd}\\src\\a.ts`), o.onText?.('it reads a'), new Promise(r => {
     finish = r
     o.signal?.addEventListener('abort', () => r({ ok: false, text: 'killed' }))
   })) }, ws, '/home/.yap', () => ++tick)
@@ -581,7 +581,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   finish({ ok: true, text: 'it reads a' })
   await until(async () => !((await answer('chat.read', { thread })) as any).busy)
   const read: any = await answer('chat.read', { thread, after: 1 })
-  assert.deepEqual(read.events.map((e: any) => [e.kind, e.text]), [['tool', 'Read src/a.ts'], ['text', 'it reads a'], ['done', '']], 'what came after the question')
+  assert.deepEqual(read.events.map((e: any) => [e.kind, e.text]), [['tool', 'Read src\\a.ts'], ['text', 'it reads a'], ['done', '']], 'what came after the question; paths read from the project root')
 
   await answer('chat', { project: 'app', text: 'and b?', thread })
   assert.equal(runs[1].chat.session, runs[0].chat.session)

@@ -31,6 +31,12 @@ const SAYS = (edits: boolean) =>
       : 'You can read and search the project, not change it. If they want changes, say so: they can start a chat with edits allowed.'
   }`
 
+/** A tool line with the project's own root taken off its paths, however the path is spelled. */
+export function rooted(line: string, dir: string) {
+  for (const d of new Set([dir, dir.replace(/\\/g, '/')])) for (const sep of ['\\', '/']) line = line.split(d + sep).join('')
+  return line
+}
+
 /**
  * Chats from the web: one Claude Code session per thread, a turn per message. Read-only in the project's own
  * checkout, or with edits in a worktree of its own, so a page never writes where the user is working.
@@ -86,7 +92,8 @@ export class Chats {
         signal: run.signal,
         chat: { session: chat.session, resume: chat.resumable, system: SAYS(!!chat.branch) },
         onText: s => ((heard = true), this.push(chat, 'text', s)),
-        onActivity: line => ((heard = true), this.push(chat, 'tool', line)),
+        // Paths inside the project read from its root: the page has no use for where it sits on this disk.
+        onActivity: line => ((heard = true), this.push(chat, 'tool', rooted(line, chat.cwd))),
       })
       .then(
         r => {
