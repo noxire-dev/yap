@@ -37,7 +37,10 @@ A verb, a field or a message shape lives in all of these. Before finishing, say 
 
 ## Checks
 
-- `bun src/crew.check.ts` prints `crew ok`; `bunx tsc --noEmit -p .` prints nothing.
+- `bun run check` prints `all checks passed`: `src/crew.check.ts` (behaviour), `src/repo.check.ts` (this file's
+  surface rules: every verb in the spec and the SDK, every MCP tool in the spec, every usage line runnable,
+  `hooks/yap.sh` LF), and `tsc`. CI runs the same on every push and PR (`.github/workflows/check.yml`).
+- A new surface rule that a file can show goes in `src/repo.check.ts`, not only in this list.
 - Proof fits the bug: logic, state or storage gets a failing case first. A new verb or field gets a case that goes
   through the `/yap` handler (`local(reg)`), not only `Sessions` directly.
 - Fakes, never real services: `rig()` gives a `Workspace`, an in-memory `SqliteStore`, and you pass `Panes` and
