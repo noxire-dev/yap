@@ -49,6 +49,32 @@ export interface Spawn {
   result?: string
 }
 
+/** One line of a chat. `n` counts up per thread. */
+export interface ChatEvent {
+  n: number
+  at: number
+  kind: 'you' | 'text' | 'tool' | 'done' | 'error'
+  text: string
+}
+
+export interface ChatRead {
+  thread: string
+  project: string
+  /** The thread's worktree branch when it may edit, else null. */
+  branch: string | null
+  busy: boolean
+  events: ChatEvent[]
+}
+
+export interface ChatThread {
+  thread: string
+  project: string
+  branch: string | null
+  busy: boolean
+  at: number
+  title: string
+}
+
 export interface Note {
   id: number
   ts: number
@@ -137,6 +163,34 @@ export class Yap {
   /** Start a background agent session in the project on `task`. It runs on the user's machine. */
   spawn(project: string, task: string) {
     return this.verb<{ id: string }>('spawn', { project, text: task })
+  }
+
+  /**
+   * A message in a chat with Claude Code on the machine; a new thread when none is named. Read-only in the project,
+   * unless the thread starts with `edits`: then it runs in a worktree and `yap/chat-*` branch of its own.
+   */
+  chat(project: string, text: string, o: { thread?: string; edits?: boolean } = {}) {
+    return this.verb<{ thread: string }>('chat', { project, text, ...o })
+  }
+
+  /** The thread's events after `after` (0 for all), and whether it is still answering. Poll it while `busy`. */
+  chatRead(thread: string, after = 0) {
+    return this.verb<ChatRead>('chat.read', { thread, after })
+  }
+
+  /** Stop the turn running in the thread. */
+  chatStop(thread: string) {
+    return this.verb<{}>('chat.stop', { thread })
+  }
+
+  /** Forget the thread; an edits thread's worktree and branch go too, unmerged work with them. */
+  chatDrop(thread: string) {
+    return this.verb<{}>('chat.drop', { thread })
+  }
+
+  /** Chat threads, newest first, each titled by its first message. */
+  chats(project?: string) {
+    return this.verb<ChatThread[]>('chats', project ? { project } : {})
   }
 
   /** Poll until the spawned session ends, and return how it did. Rides out the machine dropping off for a while. */

@@ -10,6 +10,7 @@ import { PROTOCOL, Sessions } from './sessions'
 import { ALL, events, local } from './wire'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
+import { Chats } from './chat'
 import { Dialog } from './dialog'
 import { AnyPanes, Herdr, HerdrCore } from './herdr'
 import { LocalWorkspace } from './workspace'
@@ -47,7 +48,7 @@ const sessions = new Sessions(ws, store, Date.now, new AnyPanes([new HerdrCore()
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.
 const pairingFile = join(home, 'bridge.json')
-const answerRemote = remote(sessions, () => store.projects())
+const answerRemote = remote(sessions, () => store.projects(), new Chats(new ClaudeCli(), ws, home))
 const answerLocal = local(sessions)
 let bridge: Bridge | null = null
 function rebridge() {
