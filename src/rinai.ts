@@ -84,7 +84,7 @@ export class Rinai implements Tracker {
     const pages = Number(first.headers.get('link')?.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/)?.[1] ?? 1)
     for (let page = pages; page >= 1; page--) {
       const events: any[] = await (page === 1 ? first : await this.github(`${path}&page=${page}`)).json()
-      const last = events.filter(e => e.event === 'labeled' && e.label?.name === label).pop()
+      const last = events.filter(e => e.event === 'labeled' && e.label?.name?.toLowerCase() === label.toLowerCase()).pop()
       if (last) return (last.actor?.login as string | undefined) ?? null
     }
     return null

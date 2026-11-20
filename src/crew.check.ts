@@ -21,7 +21,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -214,9 +214,9 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
 // Handed on the board: the crew label from the person this machine works for brings the issue onto the rail as
 // drafts that wait for a human. Anyone else's label is left alone, and an issue already on the rail is not taken
-// twice, nor its labeller read again.
+// twice; who labelled an unchanged issue is not read again.
 {
-  const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false }
+  const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, updated_at: 't1' }
   const { store, crew, told } = rig([true, true], { handed: [{ ...card, by: 'You' }, { ...card, number: 8, by: 'stranger' }, { ...card, number: 9, by: null }] })
   await crew.openProject('.')
   await crew.openProject('/elsewhere')
@@ -227,7 +227,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   told.length = 0
   await crew.watch()
   assert.equal(store.goals().length, 1, 'not taken twice')
-  assert.deepEqual(told.filter(t => t.startsWith('events')), ['events 8', 'events 9'], 'the issue on the rail is not read again')
+  assert.deepEqual(told.filter(t => t.startsWith('events')), [], 'an unchanged issue is not read again')
 }
 // A take in flight holds the issue: a manual `yap take` racing the poll does not put it on the rail twice.
 {
@@ -244,7 +244,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(store.goals().length, 1, 'one goal for one issue')
 }
 // A handed issue whose plan failed is not retaken every minute: `yap take` is the retry. A take that throws is
-// tried again, and logged once.
+// tried again, and logged once; so is a board that can't be read whole.
 {
   const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, by: 'you' }
   const { store, crew } = rig([], { plan: { tickets: [] }, handed: [card] })
@@ -258,11 +258,21 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const q = await down.crew.openProject('.')
   await down.crew.watch()
   await down.crew.watch()
-  const tracked = down.store.events({ project_id: q.id }).filter(e => e.kind === 'tracker').map(e => e.data.did)
-  assert.deepEqual(tracked, ['hand failed'], 'one failure line, no handed line for what was not taken')
+  const tracked = () => down.store.events({ project_id: q.id }).filter(e => e.kind === 'tracker').map(e => e.data.did)
+  assert.deepEqual(tracked(), ['hand failed'], 'one failure line, no handed line for what was not taken')
+
 }
-// Taking the label off is the take back: the handed goal's drafts are dropped. A board that can't be read whole
-// drops nothing, and an issue a human took with `yap take` is theirs, label or none.
+{
+  const o = { handed: [], handedFails: true }
+  const { store, crew } = rig([], o)
+  const p = await crew.openProject('.')
+  await crew.watch()
+  await crew.watch()
+  assert.deepEqual(store.events({ project_id: p.id }).filter(e => e.kind === 'tracker').map(e => e.data.did), ['board unreadable'], 'said once')
+}
+// Taking the label off is the take back: the handed goal's drafts are dropped, and the goal with them, so a
+// label put back brings it in again. A board that can't be read whole drops nothing, and an issue a human took
+// with `yap take` is theirs, label or none.
 {
   const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, by: 'you' }
   const o: { handed: (typeof card)[]; handedFails?: boolean } = { handed: [card] }
@@ -280,6 +290,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const by = (issue: number) => store.tickets().filter(t => store.goals().find(g => g.id === t.goal_id)!.issue === issue).map(t => t.status)
   assert.deepEqual(by(7), ['dropped', 'dropped'], 'the handed drafts go')
   assert.deepEqual(by(5), ['draft', 'draft'], 'the hand-taken ones stay')
+  o.handed = [card]
+  await crew.watch()
+  await until(() => store.goals().filter(g => g.issue === 7).length === 2 && store.goals().every(g => g.status !== 'planning'))
+  assert.deepEqual(store.goals().filter(g => g.issue === 7).map(g => g.status), ['dropped', 'ready'], 'labelled again, it comes back')
 }
 
 // An author that reports BLOCKED goes to a human, not to the reviewer.

@@ -256,7 +256,7 @@ function receipt(t: Ticket, checks: Check[] | null, ref: string) {
   ].join('\n')
 }
 
-/** The label that hands an issue to the crew on a Rinai board (noxire-dev/issues src/crew.ts). */
+/** The label that hands an issue to the crew on a Rinai board: Rinai's "Hand to the crew" puts it there. */
 export const CREW_LABEL = 'crew'
 
 export class Crew {
@@ -377,14 +377,18 @@ export class Crew {
     }
   }
 
-  /** Issues on the rail from this board, in any project that reads it; a failed one only when asked. */
+  /** Issues on the rail from this board, in any project that reads it; a failed one only when asked, a taken-back one never. */
   private onRail(tracker: string, failed = false) {
     const ids = new Set(this.store.projects().filter(p => p.tracker === tracker).map(p => p.id))
-    return new Set(this.store.goals().filter(g => ids.has(g.project_id) && g.issue !== null && (failed || g.status !== 'failed')).map(g => g.issue!))
+    return new Set(
+      this.store.goals().filter(g => ids.has(g.project_id) && g.issue !== null && g.status !== 'dropped' && (failed || g.status !== 'failed')).map(g => g.issue!),
+    )
   }
 
   private watching = false
   private failed = new Set<string>()
+  /** Who labelled an issue, as of its `updated_at`: relabelling changes that, so a stale answer is never used. */
+  private labellers = new Map<string, { at: string; by: string | null }>()
   /**
    * Issues handed to the crew on the board: the `crew` label, put there by the person this machine works for. The
    * board only asks; this machine decides, so a label from anyone else, or an issue that ever came onto the rail
@@ -401,8 +405,16 @@ export class Crew {
         // One project per board: two checkouts of one repo would both read it.
         if (!p.tracker || !p.running || boards.has(p.tracker)) continue
         boards.add(p.tracker)
-        // One board failing to read leaves the others to be read.
-        await this.watchBoard(p, p.tracker).catch(() => {})
+        // One board failing to read leaves the others to be read. Logged once until it reads again: a board too big
+        // to read whole would otherwise do nothing, silently, every minute.
+        const key = `board ${p.tracker}`
+        try {
+          await this.watchBoard(p, p.tracker)
+          this.failed.delete(key)
+        } catch (e: any) {
+          if (!this.failed.has(key)) this.store.log(p.id, null, 'tracker', { did: 'board unreadable', error: String(e?.message ?? e) })
+          this.failed.add(key)
+        }
       }
     } finally {
       this.watching = false
@@ -418,11 +430,17 @@ export class Crew {
     if (!fresh.length) return
     const me = (await this.tracker.me()).toLowerCase()
     for (const c of fresh) {
-      const by = await this.tracker.labeler(tracker, c.number, CREW_LABEL).catch(() => null)
-      if (by?.toLowerCase() !== me) continue
       const key = `${tracker}#${c.number}`
+      // A `yap take` of it is in flight: that one wins, and losing the race is not a failure.
+      if (this.taking.has(key)) continue
+      const known = this.labellers.get(key)
+      const by = known && c.updated_at && known.at === c.updated_at ? known.by : await this.tracker.labeler(tracker, c.number, CREW_LABEL).catch(() => undefined)
+      if (by === undefined) continue // could not read: ask again next minute
+      if (c.updated_at) this.labellers.set(key, { at: c.updated_at, by })
+      if (by?.toLowerCase() !== me) continue
       try {
         const goal = await this.take(p.id, c.number, c.title)
+        this.store.patchGoal(goal.id, { handed: true })
         this.store.log(p.id, null, 'tracker', { did: 'handed', issue: c.number, by, goal: goal.id })
         this.failed.delete(key)
       } catch (e: any) {
@@ -433,22 +451,27 @@ export class Crew {
     }
   }
 
-  /** The label came off a handed issue (or it closed): drop that goal's drafts. Synchronous: nothing can start one meanwhile. */
+  /**
+   * The label came off a handed issue (or it closed): drop that goal's drafts, and the goal with them once nothing
+   * of it is left, so labelling it again brings it back. Synchronous: nothing can start a draft meanwhile.
+   */
   private takeBack(p: Project, tracker: string, labelled: Set<number>) {
     const projects = new Set(this.store.projects().filter(q => q.tracker === tracker).map(q => q.id))
-    const off = new Set(this.store.goals().filter(g => projects.has(g.project_id) && g.issue !== null && !labelled.has(g.issue)).map(g => g.id))
-    const drafts = this.store.tickets().filter(t => t.goal_id !== null && off.has(t.goal_id) && t.status === 'draft')
-    if (!drafts.length) return
     // Only goals the label brought: a `yap take` of an unlabelled issue is the human's own.
-    // ponytail: reads the project's event log, only when an unlabelled issue has drafts. A handed flag on the goal if it grows.
-    const handed = new Set(
-      [...projects].flatMap(id => this.store.events({ project_id: id, limit: 100_000 })).filter(e => e.kind === 'tracker' && e.data.did === 'handed').map(e => e.data.goal),
-    )
-    const dropped = drafts.filter(t => handed.has(t.goal_id))
-    if (!dropped.length) return
-    for (const t of dropped) this.store.patchTicket(t.id, { status: 'dropped' })
-    this.store.log(p.id, null, 'tracker', { did: 'taken back', dropped: dropped.map(t => t.id) })
-    this.changed()
+    const off = this.store.goals().filter(g => g.handed && g.status !== 'dropped' && projects.has(g.project_id) && g.issue !== null && !labelled.has(g.issue))
+    let changed = false
+    for (const g of off) {
+      const mine = this.store.tickets().filter(t => t.goal_id === g.id)
+      const drafts = mine.filter(t => t.status === 'draft')
+      for (const t of drafts) this.store.patchTicket(t.id, { status: 'dropped' })
+      // Still planning: its drafts are not there yet, and the next minute drops them.
+      const gone = g.status !== 'planning' && mine.every(t => t.status === 'draft' || t.status === 'dropped')
+      if (gone) this.store.patchGoal(g.id, { status: 'dropped' })
+      if (!drafts.length && !gone) continue
+      this.store.log(p.id, null, 'tracker', { did: 'taken back', issue: g.issue, dropped: drafts.map(t => t.id) })
+      changed = true
+    }
+    if (changed) this.changed()
   }
 
   /** A goal typed by the human, optionally filed on the tracker first so the board knows about it. */

@@ -19,12 +19,15 @@ export interface Goal {
   id: number
   project_id: number
   text: string
-  status: 'planning' | 'ready' | 'failed'
+  /** `dropped`: handed on the board, then taken back before any of it started. */
+  status: 'planning' | 'ready' | 'failed' | 'dropped'
   note: string
   /** The tracker issue this goal came from or was filed as. */
   issue: number | null
   /** The issue in full, for the planner. */
   brief: string
+  /** Brought in by the board's crew label, not by a human's `yap take`: taking the label off drops it. */
+  handed?: boolean
   /** What the crew did, written for the person who asked, once every ticket has merged. */
   summary: string
 }
@@ -173,6 +176,8 @@ export interface Card {
   column: string
   priority: string
   cycle: boolean
+  /** When the issue last changed, as the tracker says it. */
+  updated_at?: string
 }
 
 /** An issue board the crew can read from, file to, and report back on. */
