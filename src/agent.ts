@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GH_ENV } from './board'
 import { childEnv } from './env'
 import type { Agent, AgentRun, AgentRunner } from './ports'
 
@@ -17,7 +18,9 @@ export class Agents implements AgentRunner {
  * report under the peer's id through YAP_SESSION, the way a Claude peer's do under --session-id.
  */
 export class CodexCli implements AgentRunner {
-  async run({ cwd, prompt, signal, peer }: AgentRun) {
+  async run({ cwd, prompt, signal, peer, only }: AgentRun) {
+    // Codex has no way to drop its own tools for an MCP server's alone: a board run here would not be confined.
+    if (only) throw new Error('a board chat runs on Claude Code only')
     const dir = mkdtempSync(join(tmpdir(), 'yap-codex-'))
     const last = join(dir, 'last.txt')
     try {
@@ -52,14 +55,17 @@ function codexAuth() {
 export class ClaudeCli implements AgentRunner {
   async run(o: AgentRun) {
     const { cwd, prompt, signal, onActivity, onText, peer, chat } = o
-    const args = claudeArgs(o, carried())
+    // Only a board run reads no settings file, so only it needs the user's carried in.
+    const args = claudeArgs(o, o.only ? carried() : {})
     // A board run's folder is yap's own and may not exist yet: it is where the run stands, nothing is read there.
     if (o.only) mkdirSync(cwd, { recursive: true })
 
     // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet. A peer's hooks report,
     // so they need to find this daemon.
     const yap = peer ? Object.fromEntries(['YAP_HOME', 'YAP_PORT'].filter(k => process.env[k]).map(k => [k, process.env[k]!])) : { YAP_AGENT: '1' }
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap } })
+    // A board run's server is gh: a gh signed in by environment needs that environment. The run has no shell to read it.
+    const gh = o.only ? Object.fromEntries(GH_ENV.filter(k => process.env[k]).map(k => [k, process.env[k]!])) : {}
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap, ...gh } })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()

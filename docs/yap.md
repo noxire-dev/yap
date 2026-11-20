@@ -326,7 +326,10 @@ token was given it by the user.
 A **board chat** (`board: true`, set when the thread starts; a daemon that has them says `board-chat` in `hello`, and an older one would start a read chat instead, so a client checks) is the Rinai agent for the project's board. It has
 no built-in tool at all, no Read and no Bash: only `src/board.ts`, an MCP server whose tools (board, search,
 brief, goals, pulse, cycle; move, priority, claim, cycle_add, cycle_remove, cycle_order, file, comment, update,
-goal, ungoal) each run `gh rinai -R <that board> <verb>` as an argument list, never through a shell. It runs
+goal, ungoal) each run `gh rinai -R <that board> <verb>` as an argument list, never through a shell; a comment,
+an update or a body goes on stdin, and a short argument with a double quote and no space (which gh on Windows
+drops) is refused. gh's own sign-in variables (`GH_TOKEN`, `GH_HOST`, `GH_CONFIG_DIR` and the like) and
+`RINAI_URL` reach it. It runs
 outside the checkout, in `~/.yap/chats/<project>/board`, with `--permission-mode dontAsk` and no settings file
 read; the user's settings come in through `--settings` less their permissions, hooks and MCP servers, so a Bedrock or
 helper sign-in and their model still work. Claude Code's Bash rules could not hold it: commands Claude Code judges read-only, `cat`

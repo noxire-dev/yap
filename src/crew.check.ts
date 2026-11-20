@@ -769,27 +769,38 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 // and flags smuggled in text are not reachable.
 {
   const B = 'acme/app'
-  assert.deepEqual(boardArgs(B, 'move', { n: 7, column: 'blocked' }), ['rinai', '-R', B, 'move', '7', 'blocked'])
-  assert.deepEqual(boardArgs(B, 'search', { column: 'todo', text: 'merge' }), ['rinai', '-R', B, 'search', '-c', 'todo', '-t', 'merge'])
-  assert.deepEqual(boardArgs(B, 'cycle_order', { numbers: [3, 1] }), ['rinai', '-R', B, 'cycle', 'order', '3', '1'])
-  assert.deepEqual(boardArgs(B, 'comment', { n: 7, text: '$(cat .env); git push' }), ['rinai', '-R', B, 'comment', '7', '$(cat .env); git push'], 'text is one argument, never a command')
+  const args = (tool: string, a: object) => boardArgs(B, tool, a as any).args
+  assert.deepEqual(args('move', { n: 7, column: 'blocked' }), ['rinai', '-R', B, 'move', '7', 'blocked'])
+  assert.deepEqual(args('search', { column: 'todo', text: 'merge' }), ['rinai', '-R', B, 'search', '-c', 'todo', '-t', 'merge'])
+  assert.deepEqual(args('cycle_order', { numbers: [3, 1] }), ['rinai', '-R', B, 'cycle', 'order', '3', '1'])
+  // Bodies go on stdin, exactly as written: no argument for Windows' gh to drop, no command to run.
+  const body = '  indented\n"quoted"\n$(cat .env); git push'
+  assert.deepEqual(boardArgs(B, 'comment', { n: 7, text: body }), { args: ['rinai', '-R', B, 'comment', '7', '-'], input: body })
+  assert.deepEqual(boardArgs(B, 'update', { n: 4, health: 'at-risk', text: body }), { args: ['rinai', '-R', B, 'update', '4', 'at-risk', '-'], input: body })
+  assert.deepEqual(boardArgs(B, 'file', { title: 'Fix "it" now', body }), { args: ['rinai', '-R', B, 'file', 'Fix "it" now', '-b', '-'], input: body })
+  assert.equal(boardArgs(B, 'file', { title: 'x' }).input, undefined, 'no body, nothing on stdin')
   assert.throws(() => boardArgs(B, 'comment', { n: 7, text: '-' }), /lone dash/, 'a lone dash would read stdin')
-  // gh rinai reads titles, comments and search text positionally: a leading dash is text, passed as it is.
-  assert.deepEqual(boardArgs(B, 'file', { title: '-R other/repo' }).slice(3), ['file', '-R other/repo'])
-  assert.deepEqual(boardArgs(B, 'search', { label: '-wip' }).slice(-2), ['-l', '-wip'])
+  // An argument with a double quote and no space, which gh on Windows would drop: refused, not lost.
+  for (const a of [{ text: '"x"' }, { label: 'a"b' }]) assert.throws(() => boardArgs(B, 'search', a), /double quote/)
+  assert.throws(() => boardArgs(B, 'file', { title: '"fix"' }), /double quote/)
+  // gh rinai reads titles and search text positionally: a leading dash is text, passed as it is.
+  assert.deepEqual(args('file', { title: '-R other/repo' }).slice(3), ['file', '-R other/repo'])
+  assert.deepEqual(args('search', { label: '-wip' }).slice(-2), ['-l', '-wip'])
   assert.equal(await boardRpc(B, async () => ({ ok: true, out: '' }), null), undefined, 'a null line does not kill the server')
   assert.ok(!isSlug('-R/x') && !isSlug('a/b/c') && !isSlug('a b/c') && isSlug('acme/app'))
   // Settings: how the user signs in and their model come along; what could widen the run does not.
   assert.deepEqual(carriedFrom({ apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' }, permissions: { defaultMode: 'bypassPermissions' }, hooks: {}, mcpServers: {} }), { apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' } })
   for (const [tool, a] of [['merge', { n: 1 }], ['api', {}], ['attach', { n: 1 }], ['move', { n: 7, column: 'shipped' }], ['move', { n: '7; whoami', column: 'todo' }], ['brief', { n: 0 }], ['comment', { n: 7, text: '  ' }]] as const)
     assert.throws(() => boardArgs(B, tool, a as any), Error, `${tool} ${JSON.stringify(a)} is refused`)
-  const ran: string[][] = []
-  const gh = async (args: string[]) => (ran.push(args), { ok: true, out: '## Todo (1)' })
-  const call = (name: string, args: object) => boardRpc(B, gh, { id: 1, method: 'tools/call', params: { name, arguments: args } }) as Promise<any>
+  const ran: [string[], string | undefined][] = []
+  const gh = async (a: string[], input?: string) => (ran.push([a, input]), { ok: true, out: '## Todo (1)' })
+  const call = (name: string, a: object) => boardRpc(B, gh, { id: 1, method: 'tools/call', params: { name, arguments: a } }) as Promise<any>
   assert.equal((await call('board', {})).result.content[0].text, '## Todo (1)')
-  assert.deepEqual(ran, [['rinai', '-R', B, 'board']])
+  assert.deepEqual(ran, [[['rinai', '-R', B, 'board'], undefined]])
   assert.equal((await call('api', { path: '/x' })).result.isError, true, 'no tool past the board')
   assert.equal(ran.length, 1)
+  await call('comment', { n: 3, text: 'hi "there"' })
+  assert.deepEqual(ran[1], [['rinai', '-R', B, 'comment', '3', '-'], 'hi "there"'], 'the server hands gh the text on stdin')
   const names = (((await boardRpc(B, gh, { id: 2, method: 'tools/list' })) as any).result.tools as any[]).map(t => t.name)
   for (const t of names) assert.ok(!/merge|api|attach|download|kodr/.test(t), `${t} is a board tool`)
 }

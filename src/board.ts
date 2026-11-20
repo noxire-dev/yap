@@ -9,7 +9,7 @@
 import type { Readable } from 'node:stream'
 
 /** Runs `gh` with these arguments. The concrete one spawns it; a check passes a fake. */
-export type Gh = (args: string[]) => Promise<{ ok: boolean; out: string }>
+export type Gh = (args: string[], input?: string) => Promise<{ ok: boolean; out: string }>
 
 const n = { type: 'integer', minimum: 1, description: 'the task number' }
 const COLUMNS = ['future', 'todo', 'ongoing', 'in-review', 'blocked', 'done']
@@ -65,9 +65,18 @@ const one = (v: unknown, of: string[]) => {
  * only a lone "-" means something else: read stdin.
  */
 const words = (v: unknown, what: string) => {
-  const s = typeof v === 'string' ? v.trim() : ''
-  if (!s) throw new Error(`${what} is empty`)
-  if (s === '-') throw new Error(`${what} cannot be a lone dash`)
+  const s = typeof v === 'string' ? v : ''
+  if (!s.trim()) throw new Error(`${what} is empty`)
+  if (s.trim() === '-') throw new Error(`${what} cannot be a lone dash`)
+  return s
+}
+/**
+ * Short text that has to be an argument (a title, a label, search text). Native gh on Windows drops an argument
+ * with a double quote and no space before the extension sees it, so that one is refused rather than lost.
+ */
+const arg = (v: unknown, what: string) => {
+  const s = words(v, what)
+  if (s.includes('"') && !/\s/.test(s)) throw new Error(`${what} has a double quote and no space, which gh on Windows drops; reword it`)
   return s
 }
 
@@ -78,9 +87,13 @@ const nums = (v: unknown) => {
   return v.map(num)
 }
 
-/** The `gh` arguments for one tool call, pinned to `board`. Throws on anything the tool does not take. */
-export function boardArgs(board: string, tool: string, a: Record<string, unknown>): string[] {
-  const verb = (...rest: string[]) => ['rinai', '-R', board, ...rest]
+/**
+ * The `gh` call for one tool, pinned to `board`: its arguments, and the text it reads on stdin. Bodies go on stdin
+ * (gh rinai's "-"), never as an argument, so no quoting on any platform can lose them. Throws on anything the tool
+ * does not take.
+ */
+export function boardArgs(board: string, tool: string, a: Record<string, unknown>): { args: string[]; input?: string } {
+  const verb = (...rest: string[]) => ({ args: ['rinai', '-R', board, ...rest] })
   switch (tool) {
     case 'board':
     case 'goals':
@@ -90,10 +103,10 @@ export function boardArgs(board: string, tool: string, a: Record<string, unknown
     case 'search': {
       const f: string[] = []
       if (a.column !== undefined) f.push('-c', one(a.column, COLUMNS))
-      if (a.assignee !== undefined) f.push('-a', words(a.assignee, 'the assignee'))
+      if (a.assignee !== undefined) f.push('-a', arg(a.assignee, 'the assignee'))
       if (a.priority !== undefined) f.push('-p', one(a.priority, LEVELS))
-      if (a.label !== undefined) f.push('-l', words(a.label, 'the label'))
-      if (a.text !== undefined) f.push('-t', words(a.text, 'the text'))
+      if (a.label !== undefined) f.push('-l', arg(a.label, 'the label'))
+      if (a.text !== undefined) f.push('-t', arg(a.text, 'the text'))
       if (a.waiting === true) f.push('-w')
       return verb('search', ...f)
     }
@@ -113,17 +126,18 @@ export function boardArgs(board: string, tool: string, a: Record<string, unknown
     case 'cycle_order':
       return verb('cycle', 'order', ...nums(a.numbers))
     case 'file': {
-      const f = [words(a.title, 'the title')]
-      if (a.body !== undefined) f.push('-b', words(a.body, 'the body'))
+      const f = [arg(a.title, 'the title')]
+      const body = a.body === undefined ? undefined : words(a.body, 'the body')
+      if (body !== undefined) f.push('-b', '-')
       if (a.column !== undefined) f.push('-c', one(a.column, COLUMNS))
       if (a.priority !== undefined) f.push('-p', one(a.priority, LEVELS))
       if (a.parent !== undefined) f.push('-P', num(a.parent))
-      return verb('file', ...f)
+      return { ...verb('file', ...f), ...(body !== undefined ? { input: body } : {}) }
     }
     case 'comment':
-      return verb('comment', num(a.n), words(a.text, 'the comment'))
+      return { ...verb('comment', num(a.n), '-'), input: words(a.text, 'the comment') }
     case 'update':
-      return verb('update', num(a.n), one(a.health, HEALTH), words(a.text, 'the update'))
+      return { ...verb('update', num(a.n), one(a.health, HEALTH), '-'), input: words(a.text, 'the update') }
   }
   throw new Error(`no tool ${tool}`)
 }
@@ -138,7 +152,8 @@ export async function boardRpc(board: string, gh: Gh, m: { id?: unknown; method?
   if (m.method === 'tools/list') return ok({ tools: BOARD_TOOLS })
   if (m.method === 'tools/call') {
     try {
-      const r = await gh(boardArgs(board, String(m.params?.name), m.params?.arguments ?? {}))
+      const call = boardArgs(board, String(m.params?.name), m.params?.arguments ?? {})
+      const r = await gh(call.args, call.input)
       return ok({ content: [{ type: 'text', text: r.out || (r.ok ? 'done' : 'gh rinai failed') }], isError: !r.ok })
     } catch (e: any) {
       return ok({ content: [{ type: 'text', text: String(e?.message ?? e) }], isError: true })
@@ -147,9 +162,19 @@ export async function boardRpc(board: string, gh: Gh, m: { id?: unknown; method?
   return { jsonrpc: '2.0', id: m.id, error: { code: -32601, message: `no method ${m.method}` } }
 }
 
-/** The real `gh`: an argument list, never a shell; stdin closed so nothing can be read from it. */
-export const spawnGh: Gh = async args => {
-  const p = Bun.spawn(['gh', ...args], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true })
+/** gh's own sign-in and Rinai's address, which yap's scrubbed environment for agents leaves out. */
+export const GH_ENV = ['GH_TOKEN', 'GITHUB_TOKEN', 'GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN', 'GH_HOST', 'GH_CONFIG_DIR', 'RINAI_URL']
+
+/**
+ * The real `gh`: an argument list, never a shell. stdin carries the call's text and nothing else, and a call that
+ * hangs is killed after a minute.
+ */
+export const spawnGh: Gh = async (args, input) => {
+  const p = Bun.spawn(['gh', ...args], { stdin: input === undefined ? 'ignore' : 'pipe', stdout: 'pipe', stderr: 'pipe', windowsHide: true, signal: AbortSignal.timeout(60_000) })
+  if (input !== undefined && p.stdin) {
+    p.stdin.write(input)
+    p.stdin.end()
+  }
   const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()])
   await p.exited
   return { ok: p.exitCode === 0, out: (p.exitCode === 0 ? out : err || out).trim().slice(0, 60_000) }

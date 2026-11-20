@@ -21,7 +21,7 @@ export interface Project {
   name: string
   base: string
   /** The project's Rinai board, `owner/repo`, when it has a GitHub remote. */
-  board: string | null
+  board?: string | null
 }
 
 export interface Session {
@@ -91,7 +91,7 @@ export interface ChatRead {
   /** The thread's worktree branch when it may edit, else null. */
   branch: string | null
   /** A board chat's board: the Rinai agent for it. */
-  board: string | null
+  board?: string | null
   busy: boolean
   events: ChatEvent[]
 }
@@ -101,7 +101,7 @@ export interface ChatThread {
   project: string
   branch: string | null
   /** A board chat's board: the Rinai agent for it. */
-  board: string | null
+  board?: string | null
   busy: boolean
   at: number
   title: string
