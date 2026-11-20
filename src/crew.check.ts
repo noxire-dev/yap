@@ -9,7 +9,7 @@ import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
 import type { AgentRunner, Tracker, Workspace } from './ports'
-import { Sessions, gitRisk, norm, patchFiles } from './sessions'
+import { Sessions, gitRisk, gitWhere, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
@@ -860,6 +860,25 @@ for (const c of ['git -C . checkout main', 'git -c x=1 switch main', 'git reset 
 for (const c of ['git add -A && git commit -m x', 'git commit -am x', 'git add .']) assert.equal(gitRisk(c), 'sweeps', c)
 for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', 'git restore --staged a.ts', 'git checkout-index -a', 'echo "git merge"', 'git add src/a.ts', 'git status'])
   assert.equal(gitRisk(c), null, c)
+
+// Where the risky git runs: a `cd` before it and `-C`, so another worktree is judged by who works there.
+assert.equal(gitWhere('git merge main'), undefined)
+assert.equal(gitWhere('cd ../wt && git merge main'), '../wt')
+assert.equal(gitWhere('git -C "../wt" merge origin/main'), '../wt')
+assert.equal(gitWhere('cd /x && git -C wt merge main'), '/x/wt')
+assert.equal(gitWhere('cd /x && git -C /y merge main'), '/y')
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const run = (command: string) => reg.hook('pre', { session_id: 'mover', cwd: '/repo', tool_name: 'Bash', tool_input: { command } }) as Promise<any>
+  await reg.hook('post', { session_id: 'editor', cwd: '/repo', tool_input: { file_path: 'src/a.ts' } })
+  await reg.hook('start', { session_id: 'mover', cwd: '/repo' })
+  assert.equal((await run('git merge main')).hookSpecificOutput?.permissionDecision, 'deny', 'this tree is busy')
+  assert.equal((await run('cd /wt && git merge main')).hookSpecificOutput?.permissionDecision, undefined, 'another worktree is not')
+  assert.equal((await run('git -C /wt merge main')).hookSpecificOutput?.permissionDecision, undefined)
+  await reg.hook('post', { session_id: 'wt-editor', cwd: '/wt', tool_input: { file_path: 'b.ts' } })
+  assert.equal((await run('git -C /wt merge main')).hookSpecificOutput?.permissionDecision, 'deny', 'unless someone works there')
+}
 
 // A Kodr thread's chips: a file another session edited in the same tree warns, another worktree's doesn't, and a
 // message shows on its recipient until it goes stale.

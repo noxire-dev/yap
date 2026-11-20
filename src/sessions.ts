@@ -187,6 +187,25 @@ export function gitRisk(command: string): 'moves' | 'sweeps' | null {
   return risk
 }
 
+/**
+ * Where a command's git runs, relative to its cwd: the last `cd <dir>` before it and any `git -C <dir>`. Undefined
+ * when it runs where the session is. The guard judges that folder's tree, not the session's.
+ */
+export function gitWhere(command: string): string | undefined {
+  let where: string | undefined
+  for (const part of command.split(/&&|\|\||[;|\n]/)) {
+    const w = (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(x => x.replace(/^(["'])(.*)\1$/, '$2'))
+    if (w[0] === 'cd' && w[1]) where = where && !isAbsolute(w[1]) && !/^\/[a-z]\//i.test(w[1]) ? `${where}/${w[1]}` : w[1]
+    const i = w.findIndex(x => /^(?:.*[\\/])?git(?:\.exe)?$/i.test(x))
+    if (i < 0 || !gitRisk(part)) continue
+    const c = w.slice(i + 1).findIndex((x, j, a) => x === '-C' && a[j + 1])
+    if (c < 0) return where
+    const dir = w[i + 2 + c]
+    return where && !isAbsolute(dir) && !/^\/[a-z]\//i.test(dir) ? `${where}/${dir}` : dir
+  }
+  return where
+}
+
 /** One YAP call (docs/yap.md): who, where, and the verb's one argument. */
 export interface Call {
   session?: string
@@ -799,7 +818,11 @@ export class Sessions {
       const mail = drain()
       const risk = gitRisk(String(call.command ?? ''))
       const recent = (o: Session) => [...o.files].filter(([, at]) => this.now() - at < RECENT).map(([f]) => f)
-      const busy = risk ? this.others(s).filter(o => o.top === s.top && recent(o).length) : []
+      // The tree the command's git runs in: another worktree's (`cd ../wt && git merge`, `git -C ../wt merge`) is judged
+      // by who works there, not by who works where the session sits.
+      const there = gitWhere(String(call.command ?? ''))
+      const tree = there ? (await this.root(isAbsolute(native(there)) ? there : resolve(native(call.cwd ?? s.cwd), there))).top : s.top
+      const busy = risk ? this.others(s).filter(o => o.top === tree && recent(o).length) : []
       if (!busy.length) return arrived(mail)
       const who = busy.map(o => `${this.label(o)}, editing ${recent(o).slice(-3).map(f => relative(s.top, f).replace(/\\/g, '/')).join(', ')}`)
       const why =
