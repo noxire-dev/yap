@@ -60,11 +60,14 @@ const PLAN = {
 }
 
 const tail = (s: string, n = 2000) => (s.length > n ? '…' + s.slice(-n) : s)
-/** Text that is JSON, however it is spaced or ordered: a structured answer echoing itself, not words. */
+/**
+ * Text that is a JSON object, however it is spaced or ordered, fenced or not: a structured answer echoing itself.
+ * A bare JSON string ("already done") is words.
+ */
 const isJson = (s: string) => {
   try {
-    JSON.parse(s)
-    return true
+    const v = JSON.parse(s.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
+    return typeof v === 'object' && v !== null
   } catch {
     return false
   }
@@ -584,7 +587,8 @@ export class Crew {
         if (!Array.isArray(drafts)) throw new Error(tail(r.text, 500) || 'the planner answered without a plan')
         // An empty plan is the planner's judgment, not a crash. Its text is the plan's own JSON unless it said why.
         if (!drafts.length) {
-          const said = r.text.trim() && !isJson(r.text) ? ` It said: ${tail(r.text, 500)}` : ''
+          const why = tail(r.text.trim(), 500)
+          const said = why && !isJson(why) ? ` It said: ${/[.!?]$/.test(why) ? why : `${why}.`}` : ''
           throw new Error(`the planner found nothing to do.${said} Add detail to the goal and plan it again.`)
         }
         const ids: number[] = []

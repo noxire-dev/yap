@@ -259,7 +259,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
   // The planner's own reason comes through: with an empty plan, and when it answered without a plan at all.
   for (const [o, want] of [
-    [{ plan: { tickets: [] }, planText: 'src/foo.ts already does this' }, /nothing to do\. It said: src\/foo\.ts already does this/],
+    [{ plan: { tickets: [] }, planText: 'src/foo.ts already does this' }, /nothing to do\. It said: src\/foo\.ts already does this\. Add detail/],
+    // A bare JSON string is words, and a fenced echo of the plan is still the plan.
+    [{ plan: { tickets: [] }, planText: '"already done"' }, /It said: "already done"\. Add detail/],
+    [{ plan: { tickets: [] }, planText: '```json\n{"tickets":[]}\n```' }, /^the planner found nothing to do\. Add detail/],
     [{ noPlan: true, planText: 'I could not read the repo' }, /^I could not read the repo$/],
     // The plan's own JSON echoed back, spaced and ordered however: not a reason.
     [{ plan: { tickets: [] }, planText: '{\n  "tickets": [ ]\n}' }, /^the planner found nothing to do\. Add detail/],
