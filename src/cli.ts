@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { SETTINGS, type Settings, build, dir, home, settings, url, version } from './env'
@@ -17,7 +17,7 @@ yap init            make this directory a git repo so the crew can work in it
 yap gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
 yap forget [name]   take this repo's project (or the named one) off the board
 yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
-yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor
+yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor, the panel in the Herdr app
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [--question|--blocker] [--re <id>] [@id] <text>
@@ -286,6 +286,13 @@ function setup() {
       out.push(`Cursor: added yap to ${file}.`)
     }
   }
+  // The Herdr app redraws itself from ~/.config/herdr-app; the panel is copied over on every setup, so it follows yap.
+  const app = join(homedir(), '.config', 'herdr-app')
+  if (!existsSync(app)) out.push('Herdr app: not installed.')
+  else {
+    cpSync(join(import.meta.dir, '..', 'herdr-app', 'yap'), join(app, 'mods', 'yap'), { recursive: true })
+    out.push(`Herdr app: the yap panel is in ${join(app, 'mods', 'yap')}. Open it beside a terminal: herdr-app do pane.split '{"direction":"right","mod":"yap"}'`)
+  }
   out.push('', "Each agent runs on your own plan: sign in inside it if you haven't (`claude`, `codex login`). yap never sees the sign-in.")
   return out.join('\n')
 }
@@ -306,7 +313,7 @@ async function hook(event: string, codex: boolean) {
     try {
       ack = readFileSync(cursor, 'utf8').trim()
     } catch {}
-    const q = new URLSearchParams({ ...(ack ? { ack } : {}), ...(me ? { session: me } : {}), ...(codex ? { for: 'codex' } : {}) })
+    const q = new URLSearchParams({ ...(ack ? { ack } : {}), ...(me ? { session: me } : {}), ...(codex ? { for: 'codex' } : {}), ...(process.env.HC_TERMINAL_ID ? { terminal: process.env.HC_TERMINAL_ID } : {}) })
     const res = await fetch(`${url}/api/hook/${event}?${q}`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth() }, body: input, signal: AbortSignal.timeout(2000) })
     const body = await res.text()
     if (!res.ok) return

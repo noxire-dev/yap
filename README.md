@@ -237,6 +237,14 @@ type = "plugin_action"
 command = "yap.board"
 ```
 
+## Herdr app
+
+`yap setup` copies a panel into the Herdr app (`~/.config/herdr-app/mods/yap`): the agents working in the repo
+you're in (status from Herdr, what each edited, conflicts, unanswered questions; click one to go to it), the rest
+under "elsewhere", and the repo's Rinai board. Open it beside a terminal:
+`herdr-app do pane.split '{"direction":"right","mod":"yap"}'`. An idle agent in a Herdr app terminal is woken by
+`yap say` the same way as in a Herdr pane.
+
 ## Rinai
 
 A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).

@@ -30,7 +30,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 
 | Verb | When the agent sends it | What the daemon does |
 |---|---|---|
-| `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. `pid`, optional: a process that lives as long as the session; when it is gone the session leaves, `leave` or not. |
+| `join` | A conversation starts (`name`, optional) | Registers it. Answers with its peers, the crew's running tickets, the board and its own name. A harness that names its sessions passes `name`; the session goes by it (made unique) instead of a name from its first file. `pid`, optional: a process that lives as long as the session; when it is gone the session leaves, `leave` or not. `terminal`, optional, on any verb: the herdr-core terminal it runs in (`HC_TERMINAL_ID`); `sessions` lists it, and a session idle in it is woken with `hc send --if idle`. |
 | `turn` | The user sends a prompt | Answers with what peers did since it last heard, and nothing at all when nothing moved. Prompts that are harness markup (`<agent-message …>`) don't count as news. |
 | `will-edit` | Before a file write (`path`) | If the file is inside a peer's live claim, in any worktree, answers with the holder and reason, once per claim. If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. Neither denies. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
@@ -219,6 +219,7 @@ format back. The daemon turns each into a YAP verb and the answer into the hook'
 Claude's `session_id`, unless `YAP_SESSION` is set in Claude Code's environment: then the hooks pass it as
 `?session=` and the session goes by that. A harness that runs Claude Code (through the Agent SDK, say) sets it
 to its own id for the conversation and needs no adapter of its own for Claude: the hooks speak YAP for it.
+In a Herdr app terminal the hooks also pass `HC_TERMINAL_ID` as `?terminal=`.
 
 | YAP | Claude Code hook | Payload | Answer |
 |---|---|---|---|

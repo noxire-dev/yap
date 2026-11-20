@@ -268,7 +268,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   let finish = (_: string) => {}
   const runner: AgentRunner = { run: o => (runs.push(o), new Promise(r => (finish = text => r({ ok: true, text })))) }
   const woken: string[] = []
-  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async id => (woken.push(id), true) }, runner)
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async s => (woken.push(s.id), true) }, runner)
   await reg.yap('join', { session: 'aaaa1111', cwd: '/repo' })
   const { id } = await reg.spawn({ from: 'aaaa1111', cwd: '/repo', text: 'add a retry to fetchUser' })
   assert.equal(runs[0].peer.slice(0, 8), id)
@@ -690,7 +690,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 {
   const { store, ws } = rig([])
   const prompts: string[] = []
-  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (id, text) => (prompts.push(text), id === 'aaaa1111') })
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (s, text) => (prompts.push(text), s.id === 'aaaa1111') })
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })

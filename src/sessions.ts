@@ -120,6 +120,8 @@ interface Session {
   clash?: Record<string, string[]>
   /** The process that speaks for it (`yap mcp`), when it said: once that process is gone, so is the session. */
   pid?: number
+  /** Its herdr-core terminal, when it runs in one. */
+  terminal?: string
   /** Questions and blockers it sent that nobody has answered with `re` yet. */
   unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
   /** Files and directories it said it is about to work under, relative to its working tree. */
@@ -201,6 +203,8 @@ export interface Call {
   name?: string
   /** join: the process speaking for the session, so it leaves when that process dies without saying so. */
   pid?: number
+  /** The herdr-core terminal it runs in (`HC_TERMINAL_ID`), so the Herdr app can show it and yap can wake it. */
+  terminal?: string
   /** The highest `seq` this session showed its model. A session that sends it gets unacked messages again. */
   ack?: number
 }
@@ -230,6 +234,8 @@ export interface HookInput {
   stop_hook_active?: boolean
   /** Set by the route for Codex's hooks, whose answers differ from Claude Code's in places. */
   codex?: boolean
+  /** Set by the route from the hook's `HC_TERMINAL_ID`. */
+  terminal?: string
 }
 
 /** The files a Codex patch touches: `*** Add File: a`, `*** Update File: b`, `*** Delete File: c`, `*** Move to: d`. */
@@ -387,7 +393,7 @@ export class Sessions {
     for (const [id, s] of this.all) if (now - s.at > LIVE || (s.pid && !this.alive(s.pid))) this.forget(id)
   }
 
-  private async touch(input: { session?: string; cwd?: string; name?: string; pid?: number }) {
+  private async touch(input: { session?: string; cwd?: string; name?: string; pid?: number; terminal?: string }) {
     const now = this.now()
     this.prune()
     const id = String(input.session ?? '')
@@ -403,6 +409,7 @@ export class Sessions {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
     if (input.pid) s.pid = input.pid
+    if (input.terminal) s.terminal = input.terminal
     s.at = now
     return s
   }
@@ -601,7 +608,7 @@ export class Sessions {
     for (const o of them) this.post(o, { id, kind, origin: origin(s, m.user), from, sender: s?.id ?? '', text, ...(re ? { re } : {}) }, line)
     if (s && kind !== 'say') (s.unanswered ??= []).push({ id, to: them.map(o => o.id), kind, text })
     this.save(s, ...them)
-    const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + from)))
+    const woke = await Promise.all(them.map(o => this.panes.wake(o, WAKE + from)))
     return { id, to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
   }
 
@@ -642,7 +649,7 @@ export class Sessions {
     const from = `session @${sp.name || sp.id.slice(0, 8)}`
     this.post(s, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok }, `${from[0].toUpperCase()}${from.slice(1)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
     this.save(s)
-    await this.panes.wake(s.id, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
+    await this.panes.wake(s, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
   }
 
   /** Background sessions yap started, newest first, for `yap spawns`. */
@@ -669,7 +676,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })), unanswered: (s.unanswered ?? []).map(q => ({ ...q, to: q.to.map(id => this.all.get(id)).map(o => (o ? `@${this.tag(o)}` : 'a session that left')) })) }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, terminal: s.terminal, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })), unanswered: (s.unanswered ?? []).map(q => ({ ...q, to: q.to.map(id => this.all.get(id)).map(o => (o ? `@${this.tag(o)}` : 'a session that left')) })) }))
   }
 
   /** The main checkout of the repo `cwd` sits in, as events and `list` name it. */
@@ -706,6 +713,7 @@ export class Sessions {
       command: input.tool_input?.command,
       path: input.tool_input?.file_path ?? input.tool_input?.notebook_path,
       continuing: input.stop_hook_active === true,
+      terminal: input.terminal,
       ack,
     }
     // Codex edits through apply_patch: the files are named inside the patch, one verb each.

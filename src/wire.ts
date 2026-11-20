@@ -28,6 +28,7 @@ export function local(sessions: Sessions) {
       prompt: str('prompt'),
       name: str('name'),
       pid: typeof b.pid === 'number' ? b.pid : undefined,
+      terminal: str('terminal'),
       continuing: b.continuing === true,
       ack: typeof b.ack === 'number' ? b.ack : undefined,
     })

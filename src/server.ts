@@ -11,7 +11,7 @@ import { ALL, events, local } from './wire'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
-import { Herdr } from './herdr'
+import { AnyPanes, Herdr, HerdrCore } from './herdr'
 import { LocalWorkspace } from './workspace'
 
 mkdirSync(home, { recursive: true })
@@ -42,7 +42,7 @@ setInterval(ping, 30_000)
 
 const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store, Date.now, new Herdr(), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
+const sessions = new Sessions(ws, store, Date.now, new AnyPanes([new HerdrCore(), new Herdr()]), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.
@@ -166,7 +166,7 @@ Bun.serve({
           const as = q.get('session')
           const ack = q.get('ack')
           const got: { seq?: number } = {}
-          const out = await sessions.hook(req.params.event, { ...input, ...(as ? { session_id: as } : {}), codex: q.get('for') === 'codex' }, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
+          const out = await sessions.hook(req.params.event, { ...input, ...(as ? { session_id: as } : {}), codex: q.get('for') === 'codex', terminal: q.get('terminal') || undefined }, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
           return Response.json(out, got.seq ? { headers: { 'x-yap-seq': String(got.seq) } } : undefined)
         } catch {
           return Response.json({})
