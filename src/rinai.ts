@@ -2,6 +2,7 @@ import type { Card, Tracker } from './ports'
 
 // A constant, as in gh-rinai: nothing an issue says can send the token anywhere else.
 const HOST = process.env.RINAI_URL ?? 'https://rinai.dev'
+const GITHUB = 'https://api.github.com'
 const ORDER = ['ongoing', 'todo', 'in-review', 'blocked', 'future']
 
 /** Rinai (rinai.dev), a board over GitHub issues. Acts as the user, through gh's own token. */
@@ -60,5 +61,40 @@ export class Rinai implements Tracker {
 
   async comment(repo: string, n: number, text: string) {
     await this.call('POST', `/api/${repo}/issues/${n}/comments`, text)
+  }
+
+  /** GitHub itself, for what Rinai does not answer: who applied a label, and who we are. */
+  private async github(path: string, token?: string) {
+    const res = await fetch(GITHUB + path, { headers: { authorization: `Bearer ${token ?? (await this.auth())}`, 'user-agent': 'yap', accept: 'application/vnd.github+json' } })
+    if (!res.ok) throw new Error(`github answered ${res.status}`)
+    return res
+  }
+
+  async handed(repo: string, label: string) {
+    const body = JSON.parse(await this.call('GET', `/api/${repo}/issues?label=${encodeURIComponent(label)}`))
+    // A capped board would make a label look like it came off.
+    if (body.truncated) throw new Error(`${repo} has more tasks than the board reads at once`)
+    return (body.issues as Card[]).filter(c => c.column !== 'done')
+  }
+
+  async labeler(repo: string, n: number, label: string) {
+    // Events come oldest first and the latest `labeled` counts: walk back from the last page to the first that has one.
+    const path = `/repos/${repo}/issues/${n}/events?per_page=100`
+    const first = await this.github(path)
+    const pages = Number(first.headers.get('link')?.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/)?.[1] ?? 1)
+    for (let page = pages; page >= 1; page--) {
+      const events: any[] = await (page === 1 ? first : await this.github(`${path}&page=${page}`)).json()
+      const last = events.filter(e => e.event === 'labeled' && e.label?.name?.toLowerCase() === label.toLowerCase()).pop()
+      if (last) return (last.actor?.login as string | undefined) ?? null
+    }
+    return null
+  }
+
+  /** Cached with the token it was read with: `gh auth switch` is a different person. */
+  private login?: { token: string; login: string }
+  async me() {
+    const token = await this.auth()
+    if (this.login?.token !== token) this.login = { token, login: (await (await this.github('/user', token)).json()).login }
+    return this.login.login
   }
 }
