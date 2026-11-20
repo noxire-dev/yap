@@ -31,8 +31,8 @@ export const hcBin = () =>
   process.env.HC_BIN || Bun.which('hc') || (process.platform === 'win32' ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData/Local'), 'Programs/herdr-core/hc.exe') : 'hc')
 
 /**
- * The Herdr app's herdr-core (`hc`), for a session whose hooks reported its terminal. `hc send --if idle` types only
- * into an idle agent, and holds the text while the person has an unfinished draft there (up to a minute).
+ * The Herdr app's herdr-core (`hc`), for a session whose hooks reported its terminal. `hc send` types only
+ * into an agent waiting for input, and holds the text while the person has an unfinished draft there (up to a minute).
  */
 export class HerdrCore implements Panes {
   constructor(private bin = hcBin()) {}
@@ -40,7 +40,13 @@ export class HerdrCore implements Panes {
   async wake({ terminal }: { terminal?: string }, text: string) {
     if (!terminal) return false
     try {
-      const p = Bun.spawn([this.bin, 'send', '--if', 'idle', terminal, text], { stdout: 'ignore', stderr: 'ignore', stdin: 'ignore', windowsHide: true, timeout: 70_000 })
+      // Waiting for input is `idle`, or `done` until someone looks at it; `send --if` only knows `idle`, so read the
+      // status first. Busy, blocked on a question, or gone: not woken.
+      const get = Bun.spawn([this.bin, 'get', terminal, '--json'], { stdout: 'pipe', stderr: 'ignore', stdin: 'ignore', windowsHide: true, timeout: 5000 })
+      const g = JSON.parse((await new Response(get.stdout).text()) || '{}')
+      const status = typeof g.status === 'string' ? g.status : g.status?.state
+      if (g.state !== 'live' || !['idle', 'done'].includes(status)) return false
+      const p = Bun.spawn([this.bin, 'send', terminal, text], { stdout: 'ignore', stderr: 'ignore', stdin: 'ignore', windowsHide: true, timeout: 70_000 })
       // Still running after a few seconds: it is idle and waiting out a draft, so the text will land.
       const code = await Promise.race([p.exited, Bun.sleep(3000).then(() => 0)])
       return code === 0
