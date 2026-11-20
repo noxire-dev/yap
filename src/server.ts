@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { Agents, ClaudeCli, CodexCli } from './agent'
+import { Agents, ClaudeCli, CodexCli, LiveClaude } from './agent'
 import { Crew } from './crew'
 import { build, dir, home, port, settings, url, version } from './env'
 import { Rinai } from './rinai'
@@ -11,7 +11,7 @@ import { ALL, events, local } from './wire'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
 import { Dialog } from './dialog'
-import { AnyPanes, Herdr, HerdrCore } from './herdr'
+import { AnyPanes, Herdr, HerdrCore, hcBin } from './herdr'
 import { LocalWorkspace } from './workspace'
 
 mkdirSync(home, { recursive: true })
@@ -40,9 +40,11 @@ const changed = () => {
 // Keeps idle streams from being timed out by the client's fetch.
 setInterval(ping, 30_000)
 
-const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
+// With the Herdr app's herdr-core here, Claude runs in live terminals the person can watch and take over; else headless.
+const claude = existsSync(hcBin()) || Bun.which(hcBin()) ? new LiveClaude(hcBin()) : new ClaudeCli()
+const crew = new Crew(store, ws, claude, new Rinai(), home, changed)
 await crew.recover()
-const sessions = new Sessions(ws, store, Date.now, new AnyPanes([new HerdrCore(), new Herdr()]), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
+const sessions = new Sessions(ws, store, Date.now, new AnyPanes([new HerdrCore(), new Herdr()]), new Agents({ claude, codex: new CodexCli() }), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.

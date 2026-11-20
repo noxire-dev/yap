@@ -292,6 +292,7 @@ function setup() {
   else {
     cpSync(join(import.meta.dir, '..', 'herdr-app', 'yap'), join(app, 'mods', 'yap'), { recursive: true })
     out.push(`Herdr app: the yap panel is in ${join(app, 'mods', 'yap')}. Open it beside a terminal: herdr-app do pane.split '{"direction":"right","mod":"yap"}'`)
+    out.push(`  Crew agents run in live Herdr terminals. Trust their worktrees once: open \`claude\` in ${join(home, 'wt')} and answer yes.`)
   }
   out.push('', "Each agent runs on your own plan: sign in inside it if you haven't (`claude`, `codex login`). yap never sees the sign-in.")
   return out.join('\n')
