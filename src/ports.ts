@@ -179,15 +179,17 @@ export interface Card {
 export interface Tracker {
   /** Open cards, what the board is doing now first. */
   cards(repo: string): Promise<Card[]>
-  /** One issue in full, as markdown. */
-  brief(repo: string, n: number): Promise<string>
+  /** One issue in full, as markdown. With `by`: the body and only `by`'s own comments. */
+  brief(repo: string, n: number, by?: string): Promise<string>
   file(repo: string, title: string, body: string): Promise<Card>
   /** Take the issue: in progress, assigned to the user. */
   claim(repo: string, n: number): Promise<void>
   move(repo: string, n: number, column: 'in-review' | 'blocked'): Promise<void>
   comment(repo: string, n: number, text: string): Promise<void>
-  /** Open cards carrying `label`, each with who last put it there (null when that can't be read). */
-  handed(repo: string, label: string): Promise<(Card & { by: string | null })[]>
+  /** Open cards carrying `label`. Throws when the board can't be read: an empty answer means none. */
+  handed(repo: string, label: string): Promise<Card[]>
+  /** Who last put `label` on the issue, or null when that can't be read. */
+  labeler(repo: string, n: number, label: string): Promise<string | null>
   /** The login the tracker acts as: the person this machine works for. */
   me(): Promise<string>
 }

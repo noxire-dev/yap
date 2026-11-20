@@ -247,6 +247,11 @@ login is the one `gh` is signed in as, and only once: an issue that has ever bee
 included, waits for `yap take`. The label is the go for that issue, so its tickets start as soon as they are
 planned. Progress goes back as it already does: claimed, commented, In review or Blocked.
 
+Because nobody reads those drafts first, the planner's brief for a handed issue is the issue body and the comments
+of the person who handed it, nothing else: on a public repo anyone can comment. A running project reads a board
+once, however many checkouts of that repo are registered. Taking the label off (or closing the issue) is the take
+back: the handed goal's tickets that have not started are dropped, and a running one is left for a human to stop.
+
 ## Remote
 
 A web client (Rinai first) reaches a machine through a **relay**: the machine's daemon dials out and holds one

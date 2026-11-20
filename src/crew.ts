@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
-import type { AgentRunner, Goal, Project, Store, Ticket, Tracker, Workspace } from './ports'
+import type { AgentRunner, Card, Goal, Project, Store, Ticket, Tracker, Workspace } from './ports'
 
 /** Review rounds a ticket gets before it lands in front of a human. */
 export const ROUNDS = 4
@@ -360,39 +360,97 @@ export class Crew {
     return (await this.tracker.cards(p.tracker)).map(c => ({ ...c, onRail: taken.has(c.number) }))
   }
 
-  /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. `go` starts them once planned. */
-  async take(project_id: number, issue: number, title: string, go = false) {
+  /** Issues being taken right now, `tracker#n`: claimed before the first await, so two takes can't both pass the check. */
+  private taking = new Set<string>()
+
+  /**
+   * Bring a tracker issue onto the rail: the planner turns its brief into draft tickets. `go` starts them once
+   * planned, and then the brief is the body and `by`'s own comments only: on a public repo anyone can comment,
+   * and nothing a stranger wrote runs without a human reading the drafts first.
+   */
+  async take(project_id: number, issue: number, title: string, go = false, by?: string) {
     const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no board')
-    if (this.store.goals().some(g => g.project_id === p.id && g.issue === issue && g.status !== 'failed'))
-      throw new Error(`#${issue} is already on the rail`)
-    return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue), go)
+    const key = `${p.tracker}#${issue}`
+    if (this.taking.has(key) || this.onRail(p.tracker).has(issue)) throw new Error(`#${issue} is already on the rail`)
+    this.taking.add(key)
+    try {
+      const brief = await this.tracker.brief(p.tracker, issue, go ? by : undefined)
+      return this.plan(p.id, `#${issue} ${title}`, issue, brief, go)
+    } finally {
+      this.taking.delete(key)
+    }
+  }
+
+  /** Issues on the rail from this board, in any project that reads it; a failed one is not. */
+  private onRail(tracker: string, failed = false) {
+    const ids = new Set(this.store.projects().filter(p => p.tracker === tracker).map(p => p.id))
+    return new Set(this.store.goals().filter(g => ids.has(g.project_id) && g.issue !== null && (failed || g.status !== 'failed')).map(g => g.issue!))
   }
 
   private watching = false
+  private failed = new Set<string>()
   /**
    * Issues handed to the crew on the board: the `crew` label, put there by the person this machine works for. The
    * board only asks; this machine decides, so a label from anyone else, or an issue that ever came onto the rail
-   * (a failed one included: `yap take` again is the retry), is left alone. The label is the go for that issue.
+   * (a failed one included: `yap take` again is the retry), is left alone. The label is the go for that issue, and
+   * taking it off is the take back: tickets of a handed goal that have not started are dropped.
    */
   async watch() {
     if (this.watching) return
     this.watching = true
     try {
+      const boards = new Set<string>()
       for (const p of this.store.projects()) {
-        if (!p.tracker) continue
-        const handed = await this.tracker.handed(p.tracker, CREW_LABEL).catch(() => [])
-        if (!handed.length) continue
-        const me = (await this.tracker.me().catch(() => '')).toLowerCase()
-        const seen = new Set(this.store.goals().filter(g => g.project_id === p.id).map(g => g.issue))
-        for (const c of handed) {
-          if (!me || seen.has(c.number) || c.by?.toLowerCase() !== me) continue
-          this.store.log(p.id, null, 'tracker', { did: 'handed', issue: c.number, by: c.by })
-          await this.take(p.id, c.number, c.title, true).catch(() => {})
+        // One project per board: two checkouts of one repo would both take it.
+        if (!p.tracker || !p.running || boards.has(p.tracker)) continue
+        boards.add(p.tracker)
+        let labelled: Card[]
+        try {
+          labelled = await this.tracker.handed(p.tracker, CREW_LABEL)
+        } catch {
+          continue // not an empty answer: a failed read must not look like every label came off
+        }
+        await this.takeBack(p, new Set(labelled.map(c => c.number)))
+        const seen = this.onRail(p.tracker, true)
+        const fresh = labelled.filter(c => !seen.has(c.number))
+        if (!fresh.length) continue
+        const me = await this.tracker.me().catch(() => '')
+        if (!me) continue
+        for (const c of fresh) {
+          const by = await this.tracker.labeler(p.tracker, c.number, CREW_LABEL).catch(() => null)
+          if (by?.toLowerCase() !== me.toLowerCase()) continue
+          const key = `${p.tracker}#${c.number}`
+          try {
+            const goal = await this.take(p.id, c.number, c.title, true, by)
+            this.store.log(p.id, null, 'tracker', { did: 'handed', issue: c.number, by, goal: goal.id })
+            this.failed.delete(key)
+          } catch (e: any) {
+            // Tried again next minute, logged once.
+            if (!this.failed.has(key)) this.store.log(p.id, null, 'tracker', { did: 'hand failed', issue: c.number, error: String(e?.message ?? e) })
+            this.failed.add(key)
+          }
         }
       }
     } finally {
       this.watching = false
+    }
+  }
+
+  /** The label came off a handed issue (or it closed): drop the goal's tickets that have not started. */
+  private async takeBack(p: Project, labelled: Set<number>) {
+    const handed = this.store.events({ project_id: p.id, limit: 100_000 }).filter(e => e.kind === 'tracker' && e.data.did === 'handed')
+    for (const e of handed) {
+      if (labelled.has(e.data.issue as number)) continue
+      const idle = this.store.tickets().filter(t => t.goal_id === e.data.goal && (t.status === 'draft' || t.status === 'todo'))
+      if (!idle.length) continue
+      for (const t of idle) {
+        this.store.patchTicket(t.id, { status: 'dropped' })
+        // A retried ticket is back in todo with its worktree from the earlier rounds.
+        await this.ws.cleanup(p.path, this.dir(p, t.id), this.branchOf(t.id))
+      }
+      this.store.log(p.id, null, 'tracker', { did: 'taken back', issue: e.data.issue, dropped: idle.map(t => t.id) })
+      this.changed()
     }
   }
 
