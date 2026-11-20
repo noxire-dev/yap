@@ -50,14 +50,17 @@ function codexAuth() {
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity, onText, peer, chat }: AgentRun) {
+  async run({ cwd, prompt, readOnly, allow, deny, schema, signal, onActivity, onText, peer, chat }: AgentRun) {
     const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
     // No human is there to answer a prompt: anything that would ask is denied.
     args.push('--permission-prompts', 'none', '--strict-mcp-config')
     // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
     if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
     else args.push('--no-session-persistence')
-    if (readOnly) args.push('--tools', 'Read,Grep,Glob')
+    // dontAsk runs only what `allow` names, and no settings file is read: a user's defaultMode bypassPermissions (or
+    // an allow rule of theirs) otherwise wins over these flags, and `git push` ran in a board chat that way.
+    if (allow) args.push('--permission-mode', 'dontAsk', '--setting-sources', '', '--tools', 'Read,Grep,Glob,Bash', '--allowedTools', ...allow, '--disallowedTools', ...(deny ?? []))
+    else if (readOnly) args.push('--tools', 'Read,Grep,Glob')
     else args.push('--permission-mode', 'auto')
     if (schema) args.push('--json-schema', JSON.stringify(schema))
     if (peer) args.push('--session-id', peer)

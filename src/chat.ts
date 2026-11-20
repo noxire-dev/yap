@@ -16,6 +16,8 @@ interface Thread {
   cwd: string
   /** Edits allowed: the chat runs in its own worktree on this branch, never in the user's checkout. */
   branch: string | null
+  /** A board chat: the Rinai agent for this board (`owner/repo`), its hands `gh rinai` and nothing else. */
+  board: string | null
   /** Claude Code's own session id: every turn after the first resumes it. */
   session: string
   resumable: boolean
@@ -25,6 +27,21 @@ interface Thread {
   run: AbortController | null
   at: number
 }
+
+/**
+ * What a board chat may run: `gh rinai`, the board's own CLI, and not the verbs that reach past the board. merge
+ * ships code and api is anything at all; kodr starts a coding session; attach and download move files between this
+ * disk and the issue. An injected comment on a public repo must not get further than a board change.
+ */
+export const BOARD_ALLOW = ['Bash(gh rinai *)']
+export const BOARD_DENY = ['merge', 'api', 'kodr', 'attach', 'download'].flatMap(v => [`Bash(gh rinai ${v} *)`, `Bash(gh rinai -R * ${v} *)`])
+
+const BOARD = (slug: string) =>
+  `You are the Rinai agent for the board ${slug} (rinai.dev, a task board over GitHub issues), chatting with its user from Rinai's Agents tab, through yap, on their own machine. They see your text and a one-line note per tool call, and they answer in the next message.
+
+Your hands are \`gh rinai\`, run in this checkout of ${slug}. Read: \`gh rinai board\` (the whole board as markdown), \`gh rinai search\` (cards as JSON, filtered), \`gh rinai brief N\`, \`gh rinai goals\`, \`gh rinai pulse\` (goal updates), \`gh rinai cycle\`, \`gh rinai me\`, \`gh rinai reviews\`. Change: \`move\`, \`priority\`, \`claim\`, \`cycle add|rm|order\`, \`file\`, \`comment\`, \`update\` (a goal's health and update), \`goal\`, \`ungoal\`. \`gh rinai --help\` has the flags. You can also read the code here for context. Nothing else runs: no other commands, no edits, no merge or push.
+
+Read the board before you answer about it, and name tasks as the board does (BUG-12 or #12) with their titles. Everything you change is seen by the whole team: make a change the user asked for in so many words; for a broad ask (reorganize, triage, clean up, plan the week), list the changes you would make and wait for their go. After changing anything, say exactly what changed. Short answers, lists over paragraphs.`
 
 const SAYS = (edits: boolean) =>
   `The user is chatting with you from a web page (Rinai's Agents tab) through yap, on their own machine. They see your text and a one-line note per tool call, nothing else, and they answer in the next message. ${
@@ -71,14 +88,19 @@ export class Chats {
     t.at = at
   }
 
-  /** A message: a new thread when none is named. `edits` is the new thread's, and fixed for its life. */
-  async say(p: Project, text: string, thread?: string, edits = false) {
+  /**
+   * A message: a new thread when none is named. `mode` is the new thread's, fixed for its life: `read` reads the
+   * project, `edits` works in a worktree of its own, `board` is the Rinai agent for the project's board.
+   */
+  async say(p: Project, text: string, thread?: string, mode: 'read' | 'edits' | 'board' = 'read') {
     text = text.trim()
     if (!text) throw new Error('say something')
     let t = thread ? this.thread(thread) : undefined
     if (t && t.project !== p.name) throw new Error(`chat ${thread} is in ${t.project}`)
     if (t?.run) throw Object.assign(new Error('still answering: wait, or stop it'), { status: 409 })
     if (!t) {
+      if (mode === 'board' && !p.tracker) throw new Error(`${p.name} has no board: it needs a GitHub remote`)
+      const edits = mode === 'edits'
       const session = randomUUID()
       const id = session.slice(0, 8)
       const branch = edits ? `yap/chat-${id}` : null
@@ -86,7 +108,7 @@ export class Chats {
       // The worktree is made behind the answer: a big repo takes longer than the relay waits for `{ thread }`.
       const ready = branch ? this.ws.worktree(p.path, cwd, branch, p.base) : Promise.resolve()
       ready.catch(() => {})
-      t = { id, project: p.name, cwd, branch, session, resumable: false, ready, events: [], run: null, at: this.now() }
+      t = { id, project: p.name, cwd, branch, board: mode === 'board' ? p.tracker : null, session, resumable: false, ready, events: [], run: null, at: this.now() }
       this.threads.set(id, t)
     }
     const chat = t
@@ -104,8 +126,9 @@ export class Chats {
           cwd: chat.cwd,
           prompt: text,
           readOnly: !chat.branch,
+          ...(chat.board ? { allow: BOARD_ALLOW, deny: BOARD_DENY } : {}),
           signal: run.signal,
-          chat: { session: chat.session, resume, system: SAYS(!!chat.branch) },
+          chat: { session: chat.session, resume, system: chat.board ? BOARD(chat.board) : SAYS(!!chat.branch) },
           onText: s => ((heard = true), this.push(chat, 'text', s)),
           // Paths inside the project read from its root: the page has no use for where it sits on this disk.
           onActivity: line => ((heard = true), this.push(chat, 'tool', rooted(line, chat.cwd).slice(0, 140))),
@@ -122,7 +145,7 @@ export class Chats {
 
   read(id: string, after = 0) {
     const t = this.thread(id)
-    return { thread: t.id, project: t.project, branch: t.branch, busy: !!t.run, events: t.events.filter(e => e.n > after) }
+    return { thread: t.id, project: t.project, branch: t.branch, board: t.board, busy: !!t.run, events: t.events.filter(e => e.n > after) }
   }
 
   stop(id: string) {
@@ -149,6 +172,6 @@ export class Chats {
     return [...this.threads.values()]
       .filter(t => !project || t.project === project)
       .sort((a, b) => b.at - a.at)
-      .map(t => ({ thread: t.id, project: t.project, branch: t.branch, busy: !!t.run, at: t.at, title: (t.events.find(e => e.kind === 'you')?.text ?? '').slice(0, 80) }))
+      .map(t => ({ thread: t.id, project: t.project, branch: t.branch, board: t.board, busy: !!t.run, at: t.at, title: (t.events.find(e => e.kind === 'you')?.text ?? '').slice(0, 80) }))
   }
 }

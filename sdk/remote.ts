@@ -20,6 +20,8 @@ export interface Hello {
 export interface Project {
   name: string
   base: string
+  /** The project's Rinai board, `owner/repo`, when it has a GitHub remote. */
+  board: string | null
 }
 
 export interface Session {
@@ -88,6 +90,8 @@ export interface ChatRead {
   project: string
   /** The thread's worktree branch when it may edit, else null. */
   branch: string | null
+  /** A board chat's board: the Rinai agent for it. */
+  board: string | null
   busy: boolean
   events: ChatEvent[]
 }
@@ -96,6 +100,8 @@ export interface ChatThread {
   thread: string
   project: string
   branch: string | null
+  /** A board chat's board: the Rinai agent for it. */
+  board: string | null
   busy: boolean
   at: number
   title: string
@@ -203,7 +209,7 @@ export class Yap {
    * A message in a chat with Claude Code on the machine; a new thread when none is named. Read-only in the project,
    * unless the thread starts with `edits`: then it runs in a worktree and `yap/chat-*` branch of its own.
    */
-  chat(project: string, text: string, o: { thread?: string; edits?: boolean } = {}) {
+  chat(project: string, text: string, o: { thread?: string; edits?: boolean; board?: boolean } = {}) {
     return this.verb<{ thread: string }>('chat', { project, text, ...o })
   }
 

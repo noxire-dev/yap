@@ -309,7 +309,7 @@ token was given it by the user.
 | Verb | Body | Answer |
 |---|---|---|
 | `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox` and `chat` |
-| `projects` | | `[{ name, base }]` |
+| `projects` | | `[{ name, base, board }]`; `board` is the project's Rinai board, `owner/repo`, or null |
 | `sessions` | | live sessions in projects: `[{ project, id, name, at, files, doing?, unanswered }]`; `unanswered` is `[{ id, kind, text }]`, its questions and blockers to the user nobody has answered |
 | `spawns` | `id`?, `since`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result?, steps }]`; `id` picks one and adds its `log` after line `since`, as locally |
 | `notes` | `project` | the project's board |
@@ -317,11 +317,18 @@ token was given it by the user.
 | `say` | `project`, `text`, `to`?, `kind`?, `re`? | messages a session there, or all of them: `{ id, to, woke }`. With `re`, the id (or 8 characters of it) of a session's question or blocker, it answers it: with no `to` it goes to the asker and leaves its `unanswered` |
 | `inbox` | `since`?, `project`? | what sessions said to the user and how background sessions ended, oldest first, after `since`: `[{ project, id, seq, kind, origin, from, sender, text, at, re?, ok? }]`, every project or one. Poll it with the highest `seq` you have |
 | `spawn` | `project`, `text` | starts a background session on the task: `{ id }` |
-| `chat` | `project`, `text`, `thread`?, `edits`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
-| `chat.read` | `thread`, `after`? | `{ thread, project, branch, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
+| `chat` | `project`, `text`, `thread`?, `edits`?, `board`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
+| `chat.read` | `thread`, `after`? | `{ thread, project, branch, board, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
 | `chat.stop` | `thread` | stops the turn running |
 | `chat.drop` | `thread` | forgets the thread; an edits thread's worktree and branch are removed, unmerged work with them |
 | `chats` | `project`? | threads, newest first: `[{ thread, project, branch, busy, at, title }]` |
+
+A **board chat** (`board: true`, set when the thread starts) is the Rinai agent for the project's board: it runs in
+the project's checkout with Read, Grep and Glob, and Bash for `gh rinai` only. `gh rinai merge`, `api`, `kodr`,
+`attach` and `download` are denied, with or without `-R`, and so is every other command: a comment injected on a
+public repo gets no further than a board change. It is told to read the board before answering, to make a change
+the user asked for in so many words, and to list the changes for a broad ask (reorganize, triage) and wait for a go.
+A project without a GitHub remote has no board, and the call says so.
 
 A chat is one Claude Code session per thread: the first turn names it, every later one resumes it. Without
 `edits` it reads and searches the project's own checkout and changes nothing. With `edits` (set when the thread

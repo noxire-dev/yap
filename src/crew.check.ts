@@ -724,6 +724,21 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(cleaned, [['/repo', dir, `yap/chat-${edit.thread}`]])
   await assert.rejects(answer('chat.read', { thread: edit.thread }), /no chat/)
 
+  // A board chat is the Rinai agent for the project's board: `gh rinai` and nothing past the board, in the checkout.
+  await assert.rejects(answer('chat', { project: 'app', text: 'how is the board?', board: true }), /app has no board/)
+  store.patchProject(store.projects()[0].id, { tracker: 'acme/app' })
+  assert.deepEqual(((await answer('projects', {})) as any[])[0].board, 'acme/app', 'the page can match a project to the board it came from')
+  const board: any = await answer('chat', { project: 'app', text: 'how is the board?', board: true })
+  await started(6)
+  assert.equal(runs[5].cwd, '/repo')
+  assert.deepEqual(runs[5].allow, ['Bash(gh rinai *)'])
+  for (const v of ['merge', 'api', 'kodr', 'attach', 'download']) {
+    assert.ok(runs[5].deny.includes(`Bash(gh rinai ${v} *)`) && runs[5].deny.includes(`Bash(gh rinai -R * ${v} *)`), `${v} stays out of reach`)
+  }
+  assert.match(runs[5].chat.system, /Rinai agent for the board acme\/app/)
+  assert.equal(((await answer('chat.read', { thread: board.thread })) as any).board, 'acme/app')
+  finish({ ok: true, text: '' })
+
   // A removed project's threads are gone from the web.
   store.removeProject(store.projects()[0].id)
   await assert.rejects(answer('chat.read', { thread }), /no project app/)
@@ -763,7 +778,7 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   lines[0].onopen()
   await lines[0].onmessage({ data: JSON.stringify({ id: 'c1', verb: 'projects' }) })
   await lines[0].onmessage({ data: JSON.stringify({ id: 'c2', verb: 'notes', body: { project: 'nope' } }) })
-  assert.deepEqual(sent.map(t => JSON.parse(t)), [{ id: 'c1', answer: [{ name: 'app', base: 'main' }] }, { id: 'c2', error: sent[1] && JSON.parse(sent[1]).error }])
+  assert.deepEqual(sent.map(t => JSON.parse(t)), [{ id: 'c1', answer: [{ name: 'app', base: 'main', board: null }] }, { id: 'c2', error: sent[1] && JSON.parse(sent[1]).error }])
   assert.match(JSON.parse(sent[1]).error, /no project nope/)
   lines[0].onclose()
   assert.equal(bridge.connected, false)
