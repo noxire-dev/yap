@@ -459,7 +459,7 @@ export class Crew {
     const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief, summary: '' })
     this.changed()
     void this.agent
-      .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
+      .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN, label: `g${goal.id}` })
       .then(r => {
         const drafts: any[] = r.data?.tickets ?? []
         if (!r.ok || !drafts.length) throw new Error(tail(r.text, 500) || 'planner returned no tickets')
@@ -595,7 +595,7 @@ export class Crew {
         t = this.ticket(id)
 
         const clean = await this.ws.mergeBase(dir, p.base)
-        const work = await this.agent.run({ cwd: dir, prompt: workPrompt(t, round, !clean), signal, onActivity })
+        const work = await this.agent.run({ cwd: dir, prompt: workPrompt(t, round, !clean), signal, onActivity, label: `t${id}` })
         if (signal.aborted) return
         if (!work.ok) throw new Error(`author run failed: ${tail(work.text, 500)}`)
 
@@ -628,6 +628,7 @@ export class Crew {
           schema: VERDICT,
           signal,
           onActivity,
+          label: `t${id}`,
         })
         if (signal.aborted) return
         // Back to exactly what was reviewed: the reviewer's edits and any commit it made are gone.

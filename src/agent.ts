@@ -82,16 +82,22 @@ export class LiveClaude implements AgentRunner {
     return ''
   }
 
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity, peer }: AgentRun) {
+  async run({ cwd, prompt, readOnly, schema, signal, onActivity, peer, label }: AgentRun) {
     const id = peer ?? randomUUID()
-    const name = `crew-${id.slice(0, 8)}`
+    const name = `${label ?? 'crew'}-${id.slice(0, 8)}`
     const dir = mkdtempSync(join(tmpdir(), 'yap-live-'))
     const task = join(dir, 'task.md')
     writeFileSync(task, schema ? `${prompt}\n\nEnd your turn with only a JSON object matching this schema, nothing before or after it:\n${JSON.stringify(schema)}\n` : prompt)
     // The prompt first: --tools and --add-dir take every value after them.
     const claude = ['claude', `Your task is in ${task}. Read it and do it.`, '--session-id', id, '--add-dir', dir, ...(readOnly ? ['--tools', 'Read,Grep,Glob'] : ['--permission-mode', 'auto'])]
-    const t = await this.call(['run', '--bg', '--json', '--no-parent', '--name', name, '--cwd', cwd, '--label', 'yap.crew=1', '--', ...claude])
+    const t = await this.call(['run', '--bg', '--json', '--no-parent', '--name', name, '--cwd', cwd, '--label', `yap.crew=${label ?? 'spawn'}`, '--', ...claude])
     const kill = () => this.call(['kill', t.address]).catch(() => {})
+    // /exit, so Claude Code's SessionEnd hook tells yap it left; a kill would leave it listed for two hours.
+    const end = async () => {
+      await this.call(['send', '--force', t.address, '/exit']).catch(() => {})
+      await this.call(['wait', t.address, '--json', '--timeout', '15']).catch(() => {})
+      await kill()
+    }
     signal?.addEventListener('abort', kill, { once: true })
     try {
       // Until it is done, or idle with something said: right after launch an agent is idle with nothing yet.
@@ -115,7 +121,7 @@ export class LiveClaude implements AgentRunner {
         try {
           data = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
         } catch {}
-      await kill()
+      await end()
       return { ok: true, text, data }
     } finally {
       signal?.removeEventListener('abort', kill)
