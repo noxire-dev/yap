@@ -252,6 +252,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await crew.openProject('.')
   await crew.watch()
   await until(() => store.goals()[0]?.status === 'failed')
+  assert.match(store.goals()[0]!.note, /found nothing to do/, 'an empty plan says so in words')
   await crew.watch()
   assert.equal(store.goals().length, 1, 'a failed plan waits for a human')
 

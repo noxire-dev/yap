@@ -570,7 +570,9 @@ export class Crew {
       .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
       .then(r => {
         const drafts: any[] = r.data?.tickets ?? []
-        if (!r.ok || !drafts.length) throw new Error(tail(r.text, 500) || 'planner returned no tickets')
+        if (!r.ok) throw new Error(tail(r.text, 500) || 'the planner failed')
+        // No tickets is the planner's judgment, not a crash; its text is then the empty JSON, so say it in words.
+        if (!drafts.length) throw new Error('the planner found nothing to do; add detail to the goal and take it again')
         const ids: number[] = []
         for (const d of drafts) {
           const deps = (d.deps ?? []).filter((i: number) => i >= 0 && i < ids.length).map((i: number) => ids[i])
