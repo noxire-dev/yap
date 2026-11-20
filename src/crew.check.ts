@@ -261,6 +261,8 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   for (const [o, want] of [
     [{ plan: { tickets: [] }, planText: 'src/foo.ts already does this' }, /nothing to do\. It said: src\/foo\.ts already does this/],
     [{ noPlan: true, planText: 'I could not read the repo' }, /^I could not read the repo$/],
+    // The plan's own JSON echoed back, spaced and ordered however: not a reason.
+    [{ plan: { tickets: [] }, planText: '{\n  "tickets": [ ]\n}' }, /^the planner found nothing to do\. Add detail/],
   ] as const) {
     const r = rig([], o)
     const pr = await r.crew.openProject('.')

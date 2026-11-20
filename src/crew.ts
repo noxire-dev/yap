@@ -60,6 +60,15 @@ const PLAN = {
 }
 
 const tail = (s: string, n = 2000) => (s.length > n ? '…' + s.slice(-n) : s)
+/** Text that is JSON, however it is spaced or ordered: a structured answer echoing itself, not words. */
+const isJson = (s: string) => {
+  try {
+    JSON.parse(s)
+    return true
+  } catch {
+    return false
+  }
+}
 const first = (s: string) => s.trim().split(/\r?\n/)[0].slice(0, 200)
 const list = (items: string[]) => items.map((c, i) => `${i + 1}. ${c}`).join('\n')
 const fence = (diff: string, cap: number, note: string) =>
@@ -575,7 +584,7 @@ export class Crew {
         if (!Array.isArray(drafts)) throw new Error(tail(r.text, 500) || 'the planner answered without a plan')
         // An empty plan is the planner's judgment, not a crash. Its text is the plan's own JSON unless it said why.
         if (!drafts.length) {
-          const said = r.text.trim() && r.text.trim() !== JSON.stringify(r.data) ? ` It said: ${tail(r.text, 500)}` : ''
+          const said = r.text.trim() && !isJson(r.text) ? ` It said: ${tail(r.text, 500)}` : ''
           throw new Error(`the planner found nothing to do.${said} Add detail to the goal and plan it again.`)
         }
         const ids: number[] = []
