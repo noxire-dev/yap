@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
+import { Chats } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
@@ -553,6 +554,47 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   dead.add(41)
   assert.deepEqual((await reg.peers('/repo')).map(s => s.id), ['hook-y'])
   assert.deepEqual(left, ['mcp-x'])
+}
+
+// Chat from the web: a Claude session per thread, resumed every turn. Read-only in the project's own checkout;
+// with edits, a worktree and branch of its own. One turn at a time, and Stop ends the one running.
+{
+  const { store, ws } = rig([])
+  const worktrees: string[][] = []
+  ws.worktree = async (repo, dir, branch) => void worktrees.push([repo, dir, branch])
+  const runs: any[] = []
+  let finish: (r: { ok: boolean; text: string }) => void = () => {}
+  let tick = 0
+  const chats = new Chats({ run: o => (runs.push(o), o.onActivity?.('Read src/a.ts'), o.onText?.('it reads a'), new Promise(r => {
+    finish = r
+    o.signal?.addEventListener('abort', () => r({ ok: false, text: 'killed' }))
+  })) }, ws, '/home/.yap', () => ++tick)
+  store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
+  const answer = remote(new Sessions(ws, store, () => 1), () => store.projects(), chats)
+  assert.ok(((await answer('hello', {})) as any).extensions.includes('chat'))
+
+  const { thread } = (await answer('chat', { project: 'app', text: 'what does a do?' })) as any
+  assert.equal(runs[0].cwd, '/repo')
+  assert.equal(runs[0].readOnly, true, 'no edits unless asked')
+  assert.equal(runs[0].chat.resume, false)
+  await assert.rejects(answer('chat', { project: 'app', text: 'and b?', thread }), /still answering/)
+  finish({ ok: true, text: 'it reads a' })
+  await until(async () => !((await answer('chat.read', { thread })) as any).busy)
+  const read: any = await answer('chat.read', { thread, after: 1 })
+  assert.deepEqual(read.events.map((e: any) => [e.kind, e.text]), [['tool', 'Read src/a.ts'], ['text', 'it reads a'], ['done', '']], 'what came after the question')
+
+  await answer('chat', { project: 'app', text: 'and b?', thread })
+  assert.equal(runs[1].chat.session, runs[0].chat.session)
+  assert.equal(runs[1].chat.resume, true, 'the second turn resumes the same session')
+  await answer('chat.stop', { thread })
+  await until(async () => ((await answer('chat.read', { thread })) as any).events.at(-1)?.text === 'stopped')
+
+  const edit: any = await answer('chat', { project: 'app', text: 'fix b', edits: true })
+  assert.deepEqual(worktrees, [['/repo', join('/home/.yap', 'chats', 'app', edit.thread), `yap/chat-${edit.thread}`]])
+  assert.equal(runs[2].cwd, worktrees[0][1], 'edits run in the worktree, never the checkout')
+  assert.equal(runs[2].readOnly, false)
+  assert.deepEqual(((await answer('chats', { project: 'app' })) as any[]).map(c => c.title), ['fix b', 'what does a do?'])
+  await assert.rejects(answer('chat', { project: 'nope', text: 'x' }), /no project nope/)
 }
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The

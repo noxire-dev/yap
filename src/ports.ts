@@ -159,6 +159,10 @@ export interface AgentRun {
   peer?: string
   /** Which agent runs it, on the user's own plan for it. Claude Code when not said. */
   agent?: Agent
+  /** A chat turn: Claude Code keeps the session, the first turn names it and every later one resumes it. */
+  chat?: { session: string; resume: boolean; system: string }
+  /** Each piece of text the agent says, as it says it. */
+  onText?: (text: string) => void
 }
 
 export type Agent = 'claude' | 'codex'

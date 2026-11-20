@@ -1,3 +1,4 @@
+import type { Chats } from './chat'
 import type { Project } from './ports'
 import { PROTOCOL, type Sessions, norm } from './sessions'
 
@@ -25,7 +26,7 @@ export const dial: Dial = (url, secret) => new WebSocket(url, { headers: { autho
  * a path; sessions and spawns outside registered projects are not shown. The user is the sender: whoever holds a
  * token for this machine was given it by the user.
  */
-export function remote(sessions: Sessions, projects: () => Project[]) {
+export function remote(sessions: Sessions, projects: () => Project[], chats?: Chats) {
   const project = (name: unknown) => {
     const p = projects().find(p => p.name === name)
     if (!p) throw new Error(`no project ${name}; yap's projects here are ${projects().map(p => p.name).join(', ') || 'none'}`)
@@ -34,7 +35,7 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
   const whose = (path: string) => projects().find(p => norm(path) === norm(p.path))?.name
   const text = (b: any) => String(b.text ?? '')
   const verbs: Record<string, (b: any) => unknown> = {
-    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn'] }),
+    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn', ...(chats ? ['chat'] : [])] }),
     projects: () => projects().map(p => ({ name: p.name, base: p.base })),
     sessions: () =>
       sessions
@@ -45,6 +46,13 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
     note: b => sessions.note({ cwd: project(b.project).path, text: text(b), user: true }),
     say: b => sessions.say({ cwd: project(b.project).path, text: text(b), to: typeof b.to === 'string' ? b.to : undefined, user: true }),
     spawn: b => sessions.spawn({ cwd: project(b.project).path, text: text(b), user: true }),
+  }
+  // Chat: a Claude Code session the web talks to, read-only in the project, or with edits in a worktree of its own.
+  if (chats) {
+    verbs.chat = b => chats.say(project(b.project), text(b), typeof b.thread === 'string' ? b.thread : undefined, b.edits === true)
+    verbs['chat.read'] = b => chats.read(String(b.thread), Number(b.after) || 0)
+    verbs['chat.stop'] = b => chats.stop(String(b.thread))
+    verbs.chats = b => chats.list(b.project === undefined ? undefined : project(b.project).name)
   }
   return async (verb: string, body: unknown) => {
     const fn = verbs[verb]
