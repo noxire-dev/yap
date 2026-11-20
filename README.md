@@ -167,12 +167,6 @@ Criterion: [pass] slugify strips leading and trailing dashes
 A new project's gate is the test command yap guesses from the repo (`c` on the board changes it). With no
 gate, the reviewer is the only check and merged tickets are never run together.
 
-With the Herdr app installed, every crew agent (planner, author, reviewer, and `yap spawn`'s Claude) runs in a
-live herdr-core terminal named `crew-<id>` instead of headless: watch it, type into it, take it over. Whatever it
-asks (a permission, a folder it doesn't trust) waits for you there. A finished run's terminal closes; a failed
-one stays open. Ticket worktrees live under `~/.yap/wt`: open `claude` there once and trust the folder, or each
-ticket's agent stops on that question. Without the Herdr app the crew runs `claude -p` as before.
-
 ## The crew's board
 
 The base branch runs down the screen like `git log --graph`. Above the first merge is everything on its way in,
@@ -245,11 +239,9 @@ command = "yap.board"
 
 ## Herdr app
 
-`yap setup` copies a panel into the Herdr app (`~/.config/herdr-app/mods/yap`): the agents working in the repo
-you're in (status from Herdr, what each edited, conflicts, unanswered questions; click one to go to it), the rest
-under "elsewhere", and the repo's Rinai board. Open it beside a terminal:
-`herdr-app do pane.split '{"direction":"right","mod":"yap"}'`. An idle agent in a Herdr app terminal is woken by
-`yap say` the same way as in a Herdr pane.
+In a Herdr app terminal the hooks report its herdr-core terminal (`HC_TERMINAL_ID`), and an idle agent there is
+woken by `yap say` with `hc send --if idle`, the same way as in a Herdr pane. yap has no panel of its own in the
+app; mission-control layouts like Shepherdr sit on top, and their Claude agents show up as yap peers.
 
 ## Rinai
 
@@ -294,7 +286,7 @@ A repo with a GitHub remote is a board on [rinai.dev](https://rinai.dev).
 ## Layout
 
 `src/crew.ts` is the loop and talks only to the interfaces in `src/ports.ts`: `Store` (SQLite), `Workspace`
-(git and the gate shell), `AgentRunner` (a live herdr-core terminal, else `claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
+(git and the gate shell), `AgentRunner` (`claude -p`), `Tracker` (Rinai). `src/server.ts` wires them into the
 daemon; `src/tui.ts` is a client of its HTTP API. `src/sessions.ts` is YAP and `src/wire.ts` its HTTP verbs; `src/bridge.ts` is the line to
 the relay and what the web may do; `relay/` is the relay. `sdk/` holds the two clients, one file each with no
 dependencies: `local.ts` for a harness on this machine, `remote.ts` for the web. `bun run check` runs it all against fakes.

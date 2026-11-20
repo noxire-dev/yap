@@ -1,7 +1,6 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { childEnv } from './env'
 import type { Agent, AgentRun, AgentRunner } from './ports'
 
@@ -39,92 +38,6 @@ export class CodexCli implements AgentRunner {
       if (!text) text = [...new Set(lines.filter(l => l.startsWith('ERROR: ')))].join('\n') || lines.slice(-3).join('\n') || `codex exited ${p.exitCode}`
       return { ok, text }
     } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-}
-
-/**
- * Claude Code in a live herdr-core terminal (the Herdr app's `hc`), not `-p`: the person can watch it, type into it,
- * take it over, and answer whatever it asks (a folder it isn't trusted in, a permission). Its task goes in through a
- * file, its answer comes back as its last message in the session's transcript. A finished run's terminal is closed;
- * a failed one stays for the person to look at.
- */
-export class LiveClaude implements AgentRunner {
-  constructor(
-    private hc: string,
-    private transcripts = join(homedir(), '.claude', 'projects'),
-  ) {}
-
-  private async call(args: string[], signal?: AbortSignal) {
-    const p = Bun.spawn([this.hc, ...args], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore', windowsHide: true, signal })
-    const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()])
-    if ((await p.exited) !== 0) throw new Error(`hc ${args[0]}: ${err.trim() || out.trim()}`)
-    return out.trim() ? JSON.parse(out) : {}
-  }
-
-  /** The session's last words: its final assistant message, from Claude Code's transcript. */
-  private answer(id: string) {
-    for (const d of readdirSync(this.transcripts)) {
-      let lines: string[]
-      try {
-        lines = readFileSync(join(this.transcripts, d, `${id}.jsonl`), 'utf8').trim().split('\n')
-      } catch {
-        continue
-      }
-      for (const l of lines.reverse()) {
-        const m = JSON.parse(l)
-        if (m.type !== 'assistant') continue
-        const text = (m.message?.content ?? []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
-        if (text) return text
-      }
-    }
-    return ''
-  }
-
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity, peer, label }: AgentRun) {
-    const id = peer ?? randomUUID()
-    const name = `${label ?? 'crew'}-${id.slice(0, 8)}`
-    const dir = mkdtempSync(join(tmpdir(), 'yap-live-'))
-    const task = join(dir, 'task.md')
-    writeFileSync(task, schema ? `${prompt}\n\nEnd your turn with only a JSON object matching this schema, nothing before or after it:\n${JSON.stringify(schema)}\n` : prompt)
-    // The prompt first: --tools and --add-dir take every value after them.
-    const claude = ['claude', `Your task is in ${task}. Read it and do it.`, '--session-id', id, '--add-dir', dir, ...(readOnly ? ['--tools', 'Read,Grep,Glob'] : ['--permission-mode', 'auto'])]
-    const t = await this.call(['run', '--bg', '--json', '--no-parent', '--name', name, '--cwd', cwd, '--label', `yap.crew=${label ?? 'spawn'}`, '--', ...claude])
-    const kill = () => this.call(['kill', t.address]).catch(() => {})
-    // /exit, so Claude Code's SessionEnd hook tells yap it left; a kill would leave it listed for two hours.
-    const end = async () => {
-      await this.call(['send', '--force', t.address, '/exit']).catch(() => {})
-      await this.call(['wait', t.address, '--json', '--timeout', '15']).catch(() => {})
-      await kill()
-    }
-    signal?.addEventListener('abort', kill, { once: true })
-    try {
-      // Until it is done, or idle with something said: right after launch an agent is idle with nothing yet.
-      const started = Date.now()
-      for (let asked = ''; ; ) {
-        if (signal?.aborted) return { ok: false, text: 'stopped' }
-        await this.call(['wait', t.address, '--json', '--timeout', '60'], signal).catch(() => {})
-        const g = await this.call(['get', t.address, '--json'])
-        if (g.state !== 'live') break
-        const s = typeof g.status === 'string' ? g.status : g.status?.state
-        if (s === 'done' || (s === 'idle' && this.answer(id))) break
-        // Idle and silent this long: the task never reached it.
-        if (s === 'idle' && Date.now() - started > 120_000) return { ok: false, text: `${name} sat idle without starting; its terminal ${t.address} is left open` }
-        if (s === 'blocked' && g.status?.msg !== asked) onActivity?.(`${name} waits on you: ${(asked = g.status?.msg ?? 'a question')}`)
-        if (s === 'blocked' || s === 'idle') await Bun.sleep(3000)
-      }
-      const text = this.answer(id)
-      if (!text) return { ok: false, text: `${name} ended without an answer; its terminal ${t.address} is left open` }
-      let data: unknown
-      if (schema)
-        try {
-          data = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1))
-        } catch {}
-      await end()
-      return { ok: true, text, data }
-    } finally {
-      signal?.removeEventListener('abort', kill)
       rmSync(dir, { recursive: true, force: true })
     }
   }

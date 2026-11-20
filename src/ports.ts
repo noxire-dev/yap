@@ -159,8 +159,6 @@ export interface AgentRun {
   peer?: string
   /** Which agent runs it, on the user's own plan for it. Claude Code when not said. */
   agent?: Agent
-  /** What the run is for, `t12` (a ticket) or `g3` (a goal's planner), so a live terminal can be found by it. */
-  label?: string
 }
 
 export type Agent = 'claude' | 'codex'

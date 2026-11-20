@@ -44,7 +44,7 @@ Windows build.
 ## Operating Context
 
 - Runs on localhost. Code, board and journal stay on the machine; prompts go to the owner's existing Claude account.
-- Agents are Claude Code in live herdr-core terminals when the Herdr app is installed (watchable, steerable), else headless `claude -p`; one process per run.
+- Agents are headless Claude Code processes (`claude -p`), one process per run.
 - Several projects at once; each is a git repo with a base branch, an optional gate command and a worker count.
 - The owner is rarely watching. The usual visit is short: read what merged, clear what escalated, add a goal.
 
