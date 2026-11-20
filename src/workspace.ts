@@ -1,7 +1,15 @@
-import { copyFileSync, existsSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+/** The path as the file system spells it: long names, real case. */
+const real = (p: string) => {
+  try {
+    return realpathSync.native(p)
+  } catch {
+    return resolve(p)
+  }
+}
 import { childEnv } from './env'
 import type { Ran, Workspace } from './ports'
 
@@ -27,7 +35,9 @@ export class LocalWorkspace implements Workspace {
     if (!existsSync(dir)) return null
     const r = await git(dir, 'rev-parse', '--show-toplevel', '--git-common-dir')
     const [top, common] = r.log.split(/\r?\n/)
-    return r.ok && top && common ? { top: resolve(top), common: resolve(dir, common) } : null
+    // Through realpath: Windows can hand out one folder as C:\Users\RUNNER~1\... and C:\Users\runneradmin\..., and git
+    // answers the main worktree's common dir relative to `dir` but another worktree's absolute.
+    return r.ok && top && common ? { top: real(top), common: real(resolve(dir, common)) } : null
   }
 
   async changed(top: string) {
