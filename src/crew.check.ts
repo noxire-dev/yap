@@ -22,7 +22,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean; planText?: string; noPlan?: boolean } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -65,7 +65,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
   const agent: AgentRunner = {
     async run({ prompt, schema, signal }) {
       prompts.push(prompt)
-      if (prompt.startsWith('Break this goal')) return { ok: true, text: '', data: o.plan ?? TWO }
+      if (prompt.startsWith('Break this goal')) return { ok: true, text: o.planText ?? '', data: o.noPlan ? undefined : (o.plan ?? TWO) }
       if (prompt.startsWith('You are reporting')) return { ok: true, text: 'The crew did the thing in x.' }
       if (!schema && o.hang) {
         // The first author run never answers until it is killed.
@@ -252,8 +252,27 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await crew.openProject('.')
   await crew.watch()
   await until(() => store.goals()[0]?.status === 'failed')
+  assert.match(store.goals()[0]!.note, /found nothing to do/, 'an empty plan says so in words')
+  assert.doesNotMatch(store.goals()[0]!.note, /It said/, 'and does not echo nothing back')
   await crew.watch()
   assert.equal(store.goals().length, 1, 'a failed plan waits for a human')
+
+  // The planner's own reason comes through: with an empty plan, and when it answered without a plan at all.
+  for (const [o, want] of [
+    [{ plan: { tickets: [] }, planText: 'src/foo.ts already does this' }, /nothing to do\. It said: src\/foo\.ts already does this\. Add detail/],
+    // A bare JSON string is words, and a fenced echo of the plan is still the plan.
+    [{ plan: { tickets: [] }, planText: '"already done"' }, /It said: "already done"\. Add detail/],
+    [{ plan: { tickets: [] }, planText: '```json\n{"tickets":[]}\n```' }, /^the planner found nothing to do\. Add detail/],
+    [{ noPlan: true, planText: 'I could not read the repo' }, /^I could not read the repo$/],
+    // The plan's own JSON echoed back, spaced and ordered however: not a reason.
+    [{ plan: { tickets: [] }, planText: '{\n  "tickets": [ ]\n}' }, /^the planner found nothing to do\. Add detail/],
+  ] as const) {
+    const r = rig([], o)
+    const pr = await r.crew.openProject('.')
+    r.crew.plan(pr.id, 'x')
+    await until(() => r.store.goals()[0]?.status === 'failed')
+    assert.match(r.store.goals()[0]!.note, want)
+  }
 
   const down = rig([], { handed: [card], briefFails: true })
   const q = await down.crew.openProject('.')

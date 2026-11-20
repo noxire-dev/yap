@@ -60,6 +60,18 @@ const PLAN = {
 }
 
 const tail = (s: string, n = 2000) => (s.length > n ? '…' + s.slice(-n) : s)
+/**
+ * Text that is a JSON object, however it is spaced or ordered, fenced or not: a structured answer echoing itself.
+ * A bare JSON string ("already done") is words.
+ */
+const isJson = (s: string) => {
+  try {
+    const v = JSON.parse(s.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))
+    return typeof v === 'object' && v !== null
+  } catch {
+    return false
+  }
+}
 const first = (s: string) => s.trim().split(/\r?\n/)[0].slice(0, 200)
 const list = (items: string[]) => items.map((c, i) => `${i + 1}. ${c}`).join('\n')
 const fence = (diff: string, cap: number, note: string) =>
@@ -569,8 +581,16 @@ export class Crew {
     void this.agent
       .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
       .then(r => {
-        const drafts: any[] = r.data?.tickets ?? []
-        if (!r.ok || !drafts.length) throw new Error(tail(r.text, 500) || 'planner returned no tickets')
+        const drafts: unknown = r.data?.tickets
+        if (!r.ok) throw new Error(tail(r.text, 500) || 'the planner failed')
+        // No plan at all: its text is the only reason there is.
+        if (!Array.isArray(drafts)) throw new Error(tail(r.text, 500) || 'the planner answered without a plan')
+        // An empty plan is the planner's judgment, not a crash. Its text is the plan's own JSON unless it said why.
+        if (!drafts.length) {
+          const why = tail(r.text.trim(), 500)
+          const said = why && !isJson(why) ? ` It said: ${/[.!?]$/.test(why) ? why : `${why}.`}` : ''
+          throw new Error(`the planner found nothing to do.${said} Add detail to the goal and plan it again.`)
+        }
         const ids: number[] = []
         for (const d of drafts) {
           const deps = (d.deps ?? []).filter((i: number) => i >= 0 && i < ids.length).map((i: number) => ids[i])
