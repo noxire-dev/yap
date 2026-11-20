@@ -1,5 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { childEnv } from './env'
 import type { Agent, AgentRun, AgentRunner } from './ports'
@@ -50,20 +50,9 @@ function codexAuth() {
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {
-  async run({ cwd, prompt, readOnly, allow, deny, schema, signal, onActivity, onText, peer, chat }: AgentRun) {
-    const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
-    // No human is there to answer a prompt: anything that would ask is denied.
-    args.push('--permission-prompts', 'none', '--strict-mcp-config')
-    // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
-    if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
-    else args.push('--no-session-persistence')
-    // dontAsk runs only what `allow` names, and no settings file is read: a user's defaultMode bypassPermissions (or
-    // an allow rule of theirs) otherwise wins over these flags, and `git push` ran in a board chat that way.
-    if (allow) args.push('--permission-mode', 'dontAsk', '--setting-sources', '', '--tools', 'Read,Grep,Glob,Bash', '--allowedTools', ...allow, '--disallowedTools', ...(deny ?? []))
-    else if (readOnly) args.push('--tools', 'Read,Grep,Glob')
-    else args.push('--permission-mode', 'auto')
-    if (schema) args.push('--json-schema', JSON.stringify(schema))
-    if (peer) args.push('--session-id', peer)
+  async run(o: AgentRun) {
+    const { cwd, prompt, signal, onActivity, onText, peer, chat } = o
+    const args = claudeArgs(o, carried())
 
     // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet. A peer's hooks report,
     // so they need to find this daemon.
@@ -106,6 +95,41 @@ export class ClaudeCli implements AgentRunner {
     await p.exited
     if (!ok && !text) text = (await stderr).trim() || `claude exited ${p.exitCode}`
     return { ok, text, data }
+  }
+}
+
+/** The `claude` command line for a run. Pure, so the check can read it. */
+export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, settings: Record<string, unknown> = {}) {
+  const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
+  // No human is there to answer a prompt: anything that would ask is denied.
+  args.push('--permission-prompts', 'none', '--strict-mcp-config')
+  // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
+  if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
+  else args.push('--no-session-persistence')
+  if (only) {
+    // No built-in tool, only the server's. dontAsk refuses whatever is not allowed, and no settings file is read: a
+    // user's defaultMode bypassPermissions or allow rules would otherwise win. Their sign-in settings come back in.
+    args.push('--tools', '', '--mcp-config', JSON.stringify({ mcpServers: { [only.name]: { command: only.command, args: only.args } } }))
+    args.push('--allowedTools', `mcp__${only.name}`, '--permission-mode', 'dontAsk', '--setting-sources', '')
+    if (Object.keys(settings).length) args.push('--settings', JSON.stringify(settings))
+  } else if (readOnly) args.push('--tools', 'Read,Grep,Glob')
+  else args.push('--permission-mode', 'auto')
+  if (schema) args.push('--json-schema', JSON.stringify(schema))
+  if (peer) args.push('--session-id', peer)
+  return args
+}
+
+/**
+ * What of the user's Claude Code settings a run that reads none must keep: how they sign in (apiKeyHelper, a
+ * gateway's env). Permissions stay out.
+ */
+function carried() {
+  try {
+    const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+    const s = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
+    return Object.fromEntries(Object.entries({ apiKeyHelper: s.apiKeyHelper, env: s.env }).filter(([, v]) => v !== undefined))
+  } catch {
+    return {}
   }
 }
 

@@ -36,7 +36,7 @@ export function remote(sessions: Sessions, projects: () => Project[], chats?: Ch
   const text = (b: any) => String(b.text ?? '')
   const verbs: Record<string, (b: any) => unknown> = {
     hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn', 'doing', 'inbox', ...(chats ? ['chat'] : [])] }),
-    projects: () => projects().map(p => ({ name: p.name, base: p.base, board: p.tracker })),
+    projects: () => projects().map(p => ({ name: p.name, base: p.base, board: p.tracker ?? null })),
     sessions: () =>
       sessions
         .list()

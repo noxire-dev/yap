@@ -172,11 +172,10 @@ export interface AgentRun {
   /** A chat turn: Claude Code keeps the session, the first turn names it and every later one resumes it. */
   chat?: { session: string; resume: boolean; system: string }
   /**
-   * Tools past `readOnly`'s, by Claude Code permission rule: Bash is added, and only what `allow` names runs, less
-   * what `deny` names. Nothing asks; anything else is refused.
+   * The run's only tools: this MCP server's, and no built-in one (no Read, no Bash). Nothing asks, nothing else
+   * runs, and no settings file widens it.
    */
-  allow?: string[]
-  deny?: string[]
+  only?: { name: string; command: string; args: string[] }
   /** Each piece of text the agent says, as it says it. */
   onText?: (text: string) => void
 }

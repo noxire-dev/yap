@@ -321,14 +321,19 @@ token was given it by the user.
 | `chat.read` | `thread`, `after`? | `{ thread, project, branch, board, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
 | `chat.stop` | `thread` | stops the turn running |
 | `chat.drop` | `thread` | forgets the thread; an edits thread's worktree and branch are removed, unmerged work with them |
-| `chats` | `project`? | threads, newest first: `[{ thread, project, branch, busy, at, title }]` |
+| `chats` | `project`? | threads, newest first: `[{ thread, project, branch, board, busy, at, title }]` |
 
-A **board chat** (`board: true`, set when the thread starts) is the Rinai agent for the project's board: it runs in
-the project's checkout with Read, Grep and Glob, and Bash for `gh rinai` only. `gh rinai merge`, `api`, `kodr`,
-`attach` and `download` are denied, with or without `-R`, and so is every other command: a comment injected on a
-public repo gets no further than a board change. It is told to read the board before answering, to make a change
-the user asked for in so many words, and to list the changes for a broad ask (reorganize, triage) and wait for a go.
-A project without a GitHub remote has no board, and the call says so.
+A **board chat** (`board: true`, set when the thread starts) is the Rinai agent for the project's board. It has
+no built-in tool at all, no Read and no Bash: only `src/board.ts`, an MCP server whose tools (board, search,
+brief, goals, pulse, cycle; move, priority, claim, cycle_add, cycle_remove, cycle_order, file, comment, update,
+goal, ungoal) each run `gh rinai -R <that board> <verb>` as an argument list, never through a shell. It runs
+outside the checkout, with `--permission-mode dontAsk` and no settings file read (only the user's `apiKeyHelper`
+and `env` carried in). Claude Code's Bash rules could not hold it: commands Claude Code judges read-only, `cat`
+and a `; whoami` after an allowed command among them, ran past the allow list, so a chat with Bash or Read could
+post a file in a comment. A comment injected on a public repo can reach this board's own cards and no further.
+It is told to read the board before answering, to make a change the user asked for in so many words, and to list
+the changes for a broad ask (reorganize, triage) and wait for a go. A project with no GitHub remote has no board,
+and the call says so.
 
 A chat is one Claude Code session per thread: the first turn names it, every later one resumes it. Without
 `edits` it reads and searches the project's own checkout and changes nothing. With `edits` (set when the thread
