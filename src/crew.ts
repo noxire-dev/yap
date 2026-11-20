@@ -569,10 +569,15 @@ export class Crew {
     void this.agent
       .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })
       .then(r => {
-        const drafts: any[] = r.data?.tickets ?? []
+        const drafts: unknown = r.data?.tickets
         if (!r.ok) throw new Error(tail(r.text, 500) || 'the planner failed')
-        // No tickets is the planner's judgment, not a crash; its text is then the empty JSON, so say it in words.
-        if (!drafts.length) throw new Error('the planner found nothing to do; add detail to the goal and take it again')
+        // No plan at all: its text is the only reason there is.
+        if (!Array.isArray(drafts)) throw new Error(tail(r.text, 500) || 'the planner answered without a plan')
+        // An empty plan is the planner's judgment, not a crash. Its text is the plan's own JSON unless it said why.
+        if (!drafts.length) {
+          const said = r.text.trim() && r.text.trim() !== JSON.stringify(r.data) ? ` It said: ${tail(r.text, 500)}` : ''
+          throw new Error(`the planner found nothing to do.${said} Add detail to the goal and plan it again.`)
+        }
         const ids: number[] = []
         for (const d of drafts) {
           const deps = (d.deps ?? []).filter((i: number) => i >= 0 && i < ids.length).map((i: number) => ids[i])
