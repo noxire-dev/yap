@@ -50,10 +50,13 @@ function codexAuth() {
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity, peer }: AgentRun) {
+  async run({ cwd, prompt, readOnly, schema, signal, onActivity, onText, peer, chat }: AgentRun) {
     const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
     // No human is there to answer a prompt: anything that would ask is denied.
-    args.push('--permission-prompts', 'none', '--strict-mcp-config', '--no-session-persistence')
+    args.push('--permission-prompts', 'none', '--strict-mcp-config')
+    // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
+    if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
+    else args.push('--no-session-persistence')
     if (readOnly) args.push('--tools', 'Read,Grep,Glob')
     else args.push('--permission-mode', 'auto')
     if (schema) args.push('--json-schema', JSON.stringify(schema))
@@ -85,10 +88,10 @@ export class ClaudeCli implements AgentRunner {
         }
         if (msg.type === 'assistant') {
           for (const block of msg.message?.content ?? []) {
-            if (block.type === 'text') text = block.text
+            if (block.type === 'text') (text = block.text), onText?.(block.text)
             if (block.type !== 'tool_use') continue
             if (block.name === 'StructuredOutput') data = block.input
-            else onActivity?.(activity(block.name, block.input ?? {}))
+            else onActivity?.(activity(block.name, block.input ?? {}, chat ? Infinity : 140)) // a chat roots paths first, then cuts
           }
         } else if (msg.type === 'result') {
           ok = !msg.is_error
@@ -111,7 +114,7 @@ function auth() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(anthropic_\w+|claude_code_oauth_token)$/i.test(k)))
 }
 
-function activity(tool: string, input: Record<string, unknown>) {
+function activity(tool: string, input: Record<string, unknown>, max = 140) {
   const detail = input.command ?? input.file_path ?? input.pattern ?? input.description ?? ''
-  return `${tool} ${String(detail).replace(/\s+/g, ' ')}`.trim().slice(0, 140)
+  return `${tool} ${String(detail).replace(/\s+/g, ' ')}`.trim().slice(0, max)
 }

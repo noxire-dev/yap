@@ -22,8 +22,13 @@ const TOOLS = [
   {
     name: 'yap_say',
     description:
-      'Message another agent session in this repo (`to`: its name or id, without @) or all of them. An idle one wakes to read it. `kind` "question" or "blocker" keeps it on your list until someone replies with `re` set to its id; answer one sent to you the same way.',
+      'Message another agent session in this repo (`to`: its name or id, without @) or all of them, or the person with `to` "user" (it waits in their inbox, on the web too). An idle session wakes to read it. `kind` "question" or "blocker" keeps it on your list until someone replies with `re` set to its id; answer one sent to you the same way.',
     inputSchema: { type: 'object', properties: { text: s, to: s, kind: { type: 'string', enum: ['question', 'blocker'] }, re: s }, required: ['text'] },
+  },
+  {
+    name: 'yap_doing',
+    description: 'Say what you are working on, one line in your own words, when you start a task and when it changes. Other sessions see it next to your name, and the user sees it too. Empty text clears it.',
+    inputSchema: { type: 'object', properties: { text: s }, required: ['text'] },
   },
   {
     name: 'yap_board',
@@ -55,6 +60,8 @@ const tools = (text: string) =>
     .replace(/`yap say @<session> <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
     .replace(/`yap say @[^`]*`/g, 'yap_say')
     .replace(/`yap note <text>`/g, 'yap_note')
+    .replace(/`yap say --question @user <text>`/g, 'yap_say to "user" with kind "question"')
+    .replace(/`yap doing <text>`/g, 'yap_doing')
     .replace(/`yap claim <path> <why>`/g, 'yap_claim')
     .replace(/`yap release <id>`/g, 'yap_claim with release')
     .replace(/, and take a note down with `yap note -d <id>` once it no longer holds/g, '')
@@ -99,6 +106,7 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
     const ns = await yap.notes(me.cwd)
     return ns.length ? ns.map(n => `#${n.id} ${n.author}: ${n.text}`).join('\n') : 'the board is empty'
   }
+  if (name === 'yap_doing') return (await me.doing(String(a.text ?? '')), a.text ? 'the others see it next to your name' : 'cleared')
   if (name === 'yap_note') return `pinned #${(await me.note(String(a.text ?? ''))).id}`
   if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''), a.agent === 'codex' ? 'codex' : undefined)).id}; its last word comes back to you through yap_check`
   throw new Error(`no tool ${name}`)

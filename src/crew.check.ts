@@ -4,11 +4,12 @@ import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
+import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
 import type { AgentRunner, Card, Tracker, Workspace } from './ports'
-import { Sessions, gitRisk, norm, patchFiles } from './sessions'
+import { Sessions, gitRisk, gitWhere, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
@@ -363,7 +364,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   let finish = (_: string) => {}
   const runner: AgentRunner = { run: o => (runs.push(o), new Promise(r => (finish = text => r({ ok: true, text })))) }
   const woken: string[] = []
-  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async id => (woken.push(id), true) }, runner)
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async s => (woken.push(s.id), true) }, runner)
   await reg.yap('join', { session: 'aaaa1111', cwd: '/repo' })
   const { id } = await reg.spawn({ from: 'aaaa1111', cwd: '/repo', text: 'add a retry to fetchUser' })
   assert.equal(runs[0].peer.slice(0, 8), id)
@@ -516,7 +517,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const { store, ws } = rig([])
   const reg = new Sessions(ws, store, () => 1_000_000)
   const answer = local(reg)
-  assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn'], 'v1: extensions by short name')
+  assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn', 'doing', 'inbox'], 'v1: extensions by short name')
   const fetcher = async (url: string, init: RequestInit) => {
     if (url.includes('/yap/events'))
       return new Response((await events(reg, new URL(url).searchParams.get('cwd'))).pipeThrough(new TextEncoderStream()))
@@ -650,6 +651,90 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(left, ['mcp-x'])
 }
 
+// Chat from the web: a Claude session per thread, resumed every turn. Read-only in the project's own checkout;
+// with edits, a worktree and branch of its own. One turn at a time, and Stop ends the one running.
+{
+  const { store, ws } = rig([])
+  const worktrees: string[][] = []
+  const cleaned: string[][] = []
+  let made: () => void = () => {}
+  // The worktree takes as long as the test says: a big repo's checkout outlasts the relay's wait.
+  ws.worktree = (repo, dir, branch) => (worktrees.push([repo, dir, branch]), new Promise<void>(r => (made = r)))
+  ws.cleanup = async (repo, dir, branch) => void cleaned.push([repo, dir, branch ?? ''])
+  const runs: any[] = []
+  let finish: (r: { ok: boolean; text: string }) => void = () => {}
+  let tick = 0
+  // A 'quiet' turn says nothing before it ends.
+  const chats = new Chats({ run: o => (runs.push(o), o.prompt !== 'quiet' && (o.onActivity?.(`Read ${o.cwd}\\src\\a.ts`), o.onText?.('it reads a')), new Promise(r => {
+    finish = r
+    o.signal?.addEventListener('abort', () => r({ ok: false, text: 'killed' }))
+  })) }, ws, '/home/.yap', () => ++tick)
+  store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
+  const answer = remote(new Sessions(ws, store, () => 1), () => store.projects(), chats)
+  const last = async (thread: string) => ((await answer('chat.read', { thread })) as any).events.at(-1)
+  const started = (n: number) => until(async () => runs.length === n)
+  assert.ok(((await answer('hello', {})) as any).extensions.includes('chat'))
+
+  const { thread } = (await answer('chat', { project: 'app', text: 'what does a do?' })) as any
+  await started(1)
+  assert.equal(runs[0].cwd, '/repo')
+  assert.equal(runs[0].readOnly, true, 'no edits unless asked')
+  assert.equal(runs[0].chat.resume, false)
+  await assert.rejects(answer('chat', { project: 'app', text: 'and b?', thread }), /still answering/)
+  finish({ ok: true, text: 'it reads a' })
+  await until(async () => !((await answer('chat.read', { thread })) as any).busy)
+  const read: any = await answer('chat.read', { thread, after: 1 })
+  assert.deepEqual(read.events.map((e: any) => [e.kind, e.text]), [['tool', 'Read src\\a.ts'], ['text', 'it reads a'], ['done', '']], 'what came after the question; paths read from the project root')
+  assert.equal(read.events[0].at, ((await answer('chats', {})) as any[])[0].at - 2, 'one clock read per event')
+
+  await answer('chat', { project: 'app', text: 'and b?', thread })
+  await started(2)
+  assert.equal(runs[1].chat.session, runs[0].chat.session)
+  assert.equal(runs[1].chat.resume, true, 'the second turn resumes the same session')
+  // A turn that spoke and then failed says it failed, not its last words again.
+  finish({ ok: false, text: 'it reads a' })
+  await until(async () => (await last(thread))?.kind === 'error')
+  assert.equal((await last(thread)).text, 'the turn ended with an error')
+
+  // Stopped before it said a word: the session exists all the same, so the next turn resumes it.
+  const quiet: any = await answer('chat', { project: 'app', text: 'quiet' })
+  await started(3)
+  await answer('chat.stop', { thread: quiet.thread })
+  await until(async () => (await last(quiet.thread))?.text === 'stopped')
+  await answer('chat', { project: 'app', text: 'again', thread: quiet.thread })
+  await started(4)
+  assert.equal(runs[3].chat.resume, true, 'a silent first turn still made the session')
+  finish({ ok: true, text: '' })
+
+  // An edits thread answers before its worktree exists, and runs once it does.
+  const edit: any = await answer('chat', { project: 'app', text: 'fix b', edits: true })
+  const dir = join('/home/.yap', 'chats', 'app', edit.thread)
+  assert.deepEqual(worktrees, [['/repo', dir, `yap/chat-${edit.thread}`]])
+  await Bun.sleep(5)
+  assert.equal(runs.length, 4, 'no run before the worktree is there')
+  made()
+  await started(5)
+  assert.equal(runs[4].cwd, dir, 'edits run in the worktree, never the checkout')
+  assert.equal(runs[4].readOnly, false)
+  assert.deepEqual(((await answer('chats', { project: 'app' })) as any[]).map(c => c.title), ['fix b', 'quiet', 'what does a do?'])
+  await assert.rejects(answer('chat', { project: 'nope', text: 'x' }), /no project nope/)
+
+  // Dropping an edits thread stops it and takes its worktree and branch.
+  await answer('chat.drop', { thread: edit.thread })
+  assert.deepEqual(cleaned, [['/repo', dir, `yap/chat-${edit.thread}`]])
+  await assert.rejects(answer('chat.read', { thread: edit.thread }), /no chat/)
+
+  // A removed project's threads are gone from the web.
+  store.removeProject(store.projects()[0].id)
+  await assert.rejects(answer('chat.read', { thread }), /no project app/)
+  assert.deepEqual(await answer('chats', {}), [])
+}
+
+// rooted: the project's root off a tool line, however Windows spells it; elsewhere case counts.
+assert.equal(rooted('Read c:\\users\\x\\app\\src\\a.ts', 'C:/Users/X/app', true), 'Read src\\a.ts')
+assert.equal(rooted('Read /repo/src/a.ts and /repo2/b', '/repo', false), 'Read src/a.ts and /repo2/b')
+assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts')
+
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
 // line answers what comes down it and comes back after a drop.
 {
@@ -687,6 +772,56 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   bridge.stop()
 }
 
+// doing and the user's inbox: a session says what it is on, and peers and the web see it. Its question to the user
+// waits in the inbox and on its own row, the web answers it with re, and the asker hears; a spawn the web started
+// ends in the inbox. The inbox outlives a restart.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const reg = new Sessions(ws, store, () => now, undefined, { run: async o => (o.onActivity?.('Read README.md'), o.onActivity?.('Edit README.md'), { ok: true, text: 'tidied' }) })
+  store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
+  const as = (session: string) => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd: '/repo', ...b }) as Promise<any>
+  const [A, B] = [as('aaaa1111'), as('bbbb2222')]
+  await A('join', { name: 'auth' })
+  await B('join', { name: 'api' })
+  now += 1000
+  assert.deepEqual(await A('doing', { text: 'rewriting token refresh\nand more' }), {})
+  assert.match((await B('turn', { prompt: 'go on' })).context, /- @auth \(aaaa1111\), active just now, doing "rewriting token refresh": no edits yet/)
+  assert.equal((await reg.peers('/repo')).find(s => s.name === 'auth')!.doing, 'rewriting token refresh')
+  await assert.rejects(local(reg)('doing', { cwd: '/repo', text: 'x' }), /only a session/)
+
+  const q = await A('say', { to: '@user', kind: 'question', text: 'drop the v0 hooks?' })
+  assert.deepEqual([q.to, q.woke], [['@user'], []])
+  assert.equal((await B('will-edit', { path: 'x.ts' })).messages, undefined, 'not for a peer')
+  assert.deepEqual((await reg.peers('/repo')).find(s => s.name === 'auth')!.unanswered!.map(u => u.to), [['the user']])
+  const web = remote(reg, () => store.projects())
+  const [m, ...none] = (await web('inbox', {})) as any[]
+  assert.deepEqual([m.project, m.kind, m.from, m.sender, m.text, none], ['app', 'question', 'session @auth', 'aaaa1111', 'drop the v0 hooks?', []])
+  assert.deepEqual(await local(reg)('inbox', { cwd: '/repo', since: 0 }).then((l: any) => l.map((x: any) => x.id)), [q.id])
+  assert.deepEqual(await web('inbox', { since: m.seq }), [])
+  const auth = ((await web('sessions', {})) as any[]).find(s => s.name === 'auth')
+  assert.deepEqual([auth.doing, auth.unanswered], ['rewriting token refresh', [{ id: q.id.slice(0, 8), kind: 'question', text: 'drop the v0 hooks?' }]])
+
+  await web('say', { project: 'app', text: 'yes, drop them', re: q.id.slice(0, 8) })
+  assert.match((await A('will-edit', { path: 'y.ts' })).context, new RegExp(`From the user, answering ${q.id.slice(0, 8)}: yes, drop them`))
+  assert.equal((await B('will-edit', { path: 'y.ts' })).messages, undefined, 'the answer goes to the asker only')
+  assert.deepEqual((await reg.peers('/repo')).find(s => s.name === 'auth')!.unanswered, [])
+  await assert.rejects(web('say', { project: 'app', to: 'user', text: 'x' }), /you are the user/)
+  assert.match((await as('cccc3333')('join', { name: 'user' })).context, /You are session @user-2\./, '`user` is taken')
+
+  const { id: sp } = (await web('spawn', { project: 'app', text: 'tidy the README' })) as any
+  await new Promise(r => setImmediate(r))
+  const end = ((await web('inbox', { since: m.seq })) as any[])[0]
+  assert.deepEqual([end.kind, end.ok, end.text], ['spawn', true, 'tidied'])
+  // Its log: each tool call a line, numbered; the list counts them, one spawn brings the ones after `since`.
+  const [listed] = (await web('spawns', {})) as any[]
+  assert.deepEqual([listed.steps, 'log' in listed], [2, false])
+  const [one] = (await web('spawns', { id: sp, since: 1 })) as any[]
+  assert.deepEqual(one.log.map((l: any) => [l.n, l.line]), [[2, 'Edit README.md']])
+  assert.deepEqual(((await local(reg)('spawns', { cwd: '/repo', id: sp })) as any[])[0].log.length, 2)
+  assert.deepEqual(new Sessions(ws, store, () => now).inbox().map(x => x.kind), ['question', 'spawn'], 'kept across a restart')
+}
+
 // The web client: claims once, keeps what it needs as JSON, waits for a spawn, and turns refusals into YapError.
 {
   const calls: [string, any, string][] = []
@@ -697,8 +832,11 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
     const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 })
     if (url.endsWith('/claim')) return ok({ token: 't0k' })
     if (url.endsWith('/spawn')) return ok({ id: 'ab12cd34' })
+    if (url.endsWith('/chat')) return ok({ thread: 'th1' })
     if (url.endsWith('/spawns'))
-      return ++polls === 1 ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 }) : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it' }])
+      return ++polls === 1
+        ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 })
+        : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it', log: [{ n: 1, line: 'Read a.ts' }, { n: polls, line: `step ${polls}` }].filter(l => l.n > body.since) }])
     return new Response(JSON.stringify({ error: 'no project nope' }), { status: 400 })
   }) as any
   const yap = await Yap.claim('https://relay.test/', 'dev1.c0de', relay)
@@ -706,9 +844,13 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const again = Yap.from(JSON.parse(JSON.stringify(yap)), relay)
   const { id } = await again.spawn('app', 'tidy')
   assert.deepEqual(calls[1], ['https://relay.test/d/dev1/spawn', { project: 'app', text: 'tidy' }, 'Bearer t0k'])
-  assert.equal((await again.wait(id, { every: 0 })).result, 'did it')
+  const lines: string[] = []
+  assert.equal((await again.wait(id, { every: 0, onLine: l => lines.push(l) })).result, 'did it')
+  assert.deepEqual(lines, ['Read a.ts', 'step 2', 'step 3'], 'each line once, in order')
   assert.equal(polls, 3, 'rode out a 503')
   await assert.rejects(again.notes('nope'), (e: any) => e instanceof YapError && e.status === 400 && /no project nope/.test(e.message))
+  assert.deepEqual(await again.chat('app', 'why?', { edits: true }), { thread: 'th1' })
+  assert.deepEqual(calls.at(-1)!.slice(0, 2), ['https://relay.test/d/dev1/chat', { project: 'app', text: 'why?', edits: true }], 'chat goes out as the chat verb')
 }
 
 // YAP without the hooks: plain verbs, plain answers.
@@ -785,7 +927,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 {
   const { store, ws } = rig([])
   const prompts: string[] = []
-  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (id, text) => (prompts.push(text), id === 'aaaa1111') })
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async (s, text) => (prompts.push(text), s.id === 'aaaa1111') })
   const ctx = (r: any) => r.hookSpecificOutput?.additionalContext ?? ''
   await reg.hook('post', { session_id: 'aaaa1111', cwd: '/repo', tool_input: { file_path: 'src/auth.ts' } })
   await reg.hook('start', { session_id: 'bbbb2222', cwd: '/repo' })
@@ -867,6 +1009,25 @@ for (const c of ['git -C . checkout main', 'git -c x=1 switch main', 'git reset 
 for (const c of ['git add -A && git commit -m x', 'git commit -am x', 'git add .']) assert.equal(gitRisk(c), 'sweeps', c)
 for (const c of ['git stash list', 'git merge-base a b', 'git rebase --abort', 'git restore --staged a.ts', 'git checkout-index -a', 'echo "git merge"', 'git add src/a.ts', 'git status'])
   assert.equal(gitRisk(c), null, c)
+
+// Where the risky git runs: a `cd` before it and `-C`, so another worktree is judged by who works there.
+assert.equal(gitWhere('git merge main'), undefined)
+assert.equal(gitWhere('cd ../wt && git merge main'), '../wt')
+assert.equal(gitWhere('git -C "../wt" merge origin/main'), '../wt')
+assert.equal(gitWhere('cd /x && git -C wt merge main'), '/x/wt')
+assert.equal(gitWhere('cd /x && git -C /y merge main'), '/y')
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const run = (command: string) => reg.hook('pre', { session_id: 'mover', cwd: '/repo', tool_name: 'Bash', tool_input: { command } }) as Promise<any>
+  await reg.hook('post', { session_id: 'editor', cwd: '/repo', tool_input: { file_path: 'src/a.ts' } })
+  await reg.hook('start', { session_id: 'mover', cwd: '/repo' })
+  assert.equal((await run('git merge main')).hookSpecificOutput?.permissionDecision, 'deny', 'this tree is busy')
+  assert.equal((await run('cd /wt && git merge main')).hookSpecificOutput?.permissionDecision, undefined, 'another worktree is not')
+  assert.equal((await run('git -C /wt merge main')).hookSpecificOutput?.permissionDecision, undefined)
+  await reg.hook('post', { session_id: 'wt-editor', cwd: '/wt', tool_input: { file_path: 'b.ts' } })
+  assert.equal((await run('git -C /wt merge main')).hookSpecificOutput?.permissionDecision, 'deny', 'unless someone works there')
+}
 
 // A Kodr thread's chips: a file another session edited in the same tree warns, another worktree's doesn't, and a
 // message shows on its recipient until it goes stale.

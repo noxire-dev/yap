@@ -6,7 +6,12 @@ import type { Agent, AgentRunner, Panes, Store, Workspace } from './ports'
  * What `hello` answers. The version marks the spec a daemon follows and gates nothing: a client ignores what it
  * doesn't know. Extensions are the parts past the core, by short name, detected and never negotiated.
  */
-export const PROTOCOL = { protocol: 'yap', version: 1, extensions: ['board', 'claims', 'conflicts', 'spawn'] }
+export const PROTOCOL = { protocol: 'yap', version: 1, extensions: ['board', 'claims', 'conflicts', 'spawn', 'doing', 'inbox'] }
+
+/** What `say` takes as `to` for the person rather than a peer: it goes to the user's inbox. */
+export const USER = 'user'
+/** Messages kept in the user's inbox, newest last. */
+const INBOX = 200
 
 /** A session silent this long has gone away without saying so. */
 const LIVE = 2 * 60 * 60_000
@@ -45,6 +50,11 @@ export type YapEvent =
   | { type: 'edited'; repo: string; session: string; name: string; path: string }
   | ({ type: 'message'; repo: string; session: string; name: string } & Message)
   | { type: 'note'; repo: string; id: number; author: string; text: string }
+  | { type: 'doing'; repo: string; session: string; name: string; text: string }
+  | { type: 'activity'; repo: string; spawn: string; line: string }
+
+/** A message for the person, in `inbox`: from a session, or a background session they started ending. `repo` is the main checkout. */
+export type UserMessage = Message & { repo: string }
 
 /**
  * Something left for a session: a `say` from a peer or the user, a new `note`, the end of a `spawn` it started, or a
@@ -120,10 +130,14 @@ interface Session {
   clash?: Record<string, string[]>
   /** The process that speaks for it (`yap mcp`), when it said: once that process is gone, so is the session. */
   pid?: number
+  /** Its herdr-core terminal, when it runs in one. */
+  terminal?: string
   /** Questions and blockers it sent that nobody has answered with `re` yet. */
   unanswered?: { id: string; to: string[]; kind: 'question' | 'blocker'; text: string }[]
   /** Files and directories it said it is about to work under, relative to its working tree. */
   claims?: Claim[]
+  /** What it said it is working on, in its own words (`doing`): one line peers and the user see. */
+  doing?: string
 }
 
 /** `at`: made, or last renewed by the holder's edit under `path`. */
@@ -152,7 +166,12 @@ interface Spawn {
   done?: number
   ok?: boolean
   result?: string
+  /** What it did as it went, one line a tool call (`Edit src/a.ts`), the newest `LOG`; `n` counts from 1. Claude Code only. */
+  log?: { n: number; at: number; line: string }[]
 }
+
+/** Lines of a spawn's log kept. */
+const LOG = 200
 
 const slug = (p: string) => p.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
@@ -185,6 +204,25 @@ export function gitRisk(command: string): 'moves' | 'sweeps' | null {
   return risk
 }
 
+/**
+ * Where a command's git runs, relative to its cwd: the last `cd <dir>` before it and any `git -C <dir>`. Undefined
+ * when it runs where the session is. The guard judges that folder's tree, not the session's.
+ */
+export function gitWhere(command: string): string | undefined {
+  let where: string | undefined
+  for (const part of command.split(/&&|\|\||[;|\n]/)) {
+    const w = (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(x => x.replace(/^(["'])(.*)\1$/, '$2'))
+    if (w[0] === 'cd' && w[1]) where = where && !isAbsolute(w[1]) && !/^\/[a-z]\//i.test(w[1]) ? `${where}/${w[1]}` : w[1]
+    const i = w.findIndex(x => /^(?:.*[\\/])?git(?:\.exe)?$/i.test(x))
+    if (i < 0 || !gitRisk(part)) continue
+    const c = w.slice(i + 1).findIndex((x, j, a) => x === '-C' && a[j + 1])
+    if (c < 0) return where
+    const dir = w[i + 2 + c]
+    return where && !isAbsolute(dir) && !/^\/[a-z]\//i.test(dir) ? `${where}/${dir}` : dir
+  }
+  return where
+}
+
 /** One YAP call (docs/yap.md): who, where, and the verb's one argument. */
 export interface Call {
   session?: string
@@ -201,6 +239,8 @@ export interface Call {
   name?: string
   /** join: the process speaking for the session, so it leaves when that process dies without saying so. */
   pid?: number
+  /** The herdr-core terminal it runs in (`HC_TERMINAL_ID`), so the Herdr app can show it and yap can wake it. */
+  terminal?: string
   /** The highest `seq` this session showed its model. A session that sends it gets unacked messages again. */
   ack?: number
 }
@@ -230,6 +270,8 @@ export interface HookInput {
   stop_hook_active?: boolean
   /** Set by the route for Codex's hooks, whose answers differ from Claude Code's in places. */
   codex?: boolean
+  /** Set by the route from the hook's `HC_TERMINAL_ID`. */
+  terminal?: string
 }
 
 /** The files a Codex patch touches: `*** Add File: a`, `*** Update File: b`, `*** Delete File: c`, `*** Move to: d`. */
@@ -252,6 +294,8 @@ export class Sessions {
   private spawned = new Map<string, Spawn>()
   private listeners = new Set<(e: YapEvent) => void>()
   private seq = 0
+  /** What sessions said to the user, oldest first; `inbox` reads it. */
+  private toUser: UserMessage[] = []
 
   constructor(
     private ws: Workspace,
@@ -278,6 +322,8 @@ export class Sessions {
       for (const m of inbox) if (!m.id) Object.assign(m, { id: randomUUID(), seq: this.next() })
       this.all.set(s.id, { name: '', ...s, files: new Map(s.files), warned: new Map(s.warned), inbox })
     }
+    this.toUser = store.userMessages().map(r => JSON.parse(r))
+    for (const m of this.toUser) this.seq = Math.max(this.seq, m.seq)
     // What was running when the daemon stopped is no longer ours to hear from.
     for (const row of store.spawns()) {
       const sp: Spawn = JSON.parse(row)
@@ -307,6 +353,41 @@ export class Sessions {
     const msg = { id: randomUUID(), ...m, seq: this.next(), at: this.now() }
     o.inbox.push({ ...msg, line })
     this.emit({ type: 'message', repo: checkout(o.repo), session: o.id, name: o.name, ...msg })
+  }
+
+  /** Leave `m` in the user's inbox for the repo, kept across restarts; the oldest go past `INBOX`. */
+  private tell(repo: string, m: Omit<Message, 'at' | 'id' | 'seq'> & { id?: string }) {
+    const msg: UserMessage = { id: randomUUID(), ...m, seq: this.next(), at: this.now(), repo: checkout(repo) }
+    this.toUser.push(msg)
+    this.store.saveUserMessage(msg.id, JSON.stringify(msg), INBOX)
+    this.toUser = this.toUser.slice(-INBOX)
+    this.emit({ type: 'message', session: USER, name: USER, ...msg })
+    return msg
+  }
+
+  /** What sessions left for the user, oldest first: after `since` (a `seq`), and in `repos` (main checkouts) when given. */
+  inbox(since = 0, repos?: string[]) {
+    return this.toUser.filter(m => m.seq > since && (!repos || repos.includes(m.repo)))
+  }
+
+  /** `inbox` for the repo `cwd` sits in. */
+  async inboxIn(cwd: string, since = 0) {
+    return this.inbox(since, [await this.repoOf(cwd)])
+  }
+
+  /**
+   * Say what the session is working on, one line, in its own words: peers see it next to its name and the user in
+   * `sessions`. Empty text clears it. Peers hear on their next prompt, as for an edit.
+   */
+  async doing(m: { from?: string; cwd: string; text: string }) {
+    const s = await this.touch({ session: m.from, cwd: m.cwd })
+    if (!s) throw new Error('only a session is doing something: run it from inside one')
+    const text = m.text.trim().split(/\r?\n/)[0].slice(0, 200)
+    s.doing = text || undefined
+    s.news = this.now()
+    this.save(s)
+    this.emit({ type: 'doing', repo: checkout(s.repo), session: s.id, name: s.name, text })
+    return {}
   }
 
   private keep(sp: Spawn) {
@@ -387,7 +468,7 @@ export class Sessions {
     for (const [id, s] of this.all) if (now - s.at > LIVE || (s.pid && !this.alive(s.pid))) this.forget(id)
   }
 
-  private async touch(input: { session?: string; cwd?: string; name?: string; pid?: number }) {
+  private async touch(input: { session?: string; cwd?: string; name?: string; pid?: number; terminal?: string }) {
     const now = this.now()
     this.prune()
     const id = String(input.session ?? '')
@@ -403,6 +484,7 @@ export class Sessions {
       Object.assign(s, await this.root(input.cwd), { cwd: input.cwd })
     }
     if (input.pid) s.pid = input.pid
+    if (input.terminal) s.terminal = input.terminal
     s.at = now
     return s
   }
@@ -429,7 +511,8 @@ export class Sessions {
   private unique(s: Session, base: string) {
     base = base.slice(0, 24)
     if (!base) return ''
-    const taken = new Set(this.others(s).map(o => o.name))
+    // `user` is how a session addresses the person.
+    const taken = new Set([USER, ...this.others(s).map(o => o.name)])
     let name = base
     for (let i = 2; taken.has(name); i++) name = `${base}-${i}`
     return name
@@ -455,7 +538,8 @@ export class Sessions {
     // What it edited, not what it was asked: a prompt is the user's words, and says less than the files do.
     const edited = files.length ? `edited ${files.slice(-6).join(', ')}${files.length > 6 ? ` and ${files.length - 6} more` : ''}` : 'no edits yet'
     const where = o.top === from.top ? '' : ' · in another worktree'
-    return `- @${this.tag(o)}${o.name ? ` (${o.id.slice(0, 8)})` : ''}, active ${ago(o.at, now)}: ${edited}${where}`
+    const doing = o.doing ? `, doing "${o.doing}"` : ''
+    return `- @${this.tag(o)}${o.name ? ` (${o.id.slice(0, 8)})` : ''}, active ${ago(o.at, now)}${doing}: ${edited}${where}`
   }
 
   /** yap's own crew on the same repo: running tickets, each in its own worktree. */
@@ -484,7 +568,7 @@ export class Sessions {
         : []),
       ...(claims.length ? [`Claimed by another session: leave these to their holder, or ask them first:`, ...claims] : []),
       ...(board.length ? [`This repository's yap board, what sessions and the user left for whoever works here next:`, ...board] : []),
-      `You are session @${this.tag(s)}. Message the others with \`yap say @<session> <text>\` or \`yap say <text>\` for all of them. Before a task that touches more than two files in one directory, claim it with \`yap claim <path> <why>\`, so the others are warned before they edit there, and \`yap release <id>\` when you are done. Leave something on the board for later sessions (a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds.`,
+      `You are session @${this.tag(s)}. Message the others with \`yap say @<session> <text>\` or \`yap say <text>\` for all of them. Before a task that touches more than two files in one directory, claim it with \`yap claim <path> <why>\`, so the others are warned before they edit there, and \`yap release <id>\` when you are done. Leave something on the board for later sessions (a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds. Say what you are working on with \`yap doing <text>\` when you start a task, and again when it changes. When you produce something another session could use (an analysis, a decision, a research file), pin it on the board with where it is, not only in your reply.`,
     ].join('\n')
   }
 
@@ -579,6 +663,14 @@ export class Sessions {
       break
     }
     const to = m.to?.replace(/^@/, '').toLowerCase() || (asker && asker.id !== s?.id ? asker.id : undefined)
+    if (to === USER) {
+      if (!s && m.user) throw new Error('you are the user: say it to a session')
+      const kind = m.kind === 'question' || m.kind === 'blocker' ? m.kind : 'say'
+      const msg = this.tell(repo, { kind, origin: origin(s, m.user), from: this.label(s), sender: s?.id ?? '', text, ...(re ? { re } : {}) })
+      if (s && kind !== 'say') (s.unanswered ??= []).push({ id: msg.id, to: [USER], kind, text })
+      this.save(s)
+      return { id: msg.id, to: [`@${USER}`], woke: [] }
+    }
     // An exact name wins over a prefix, so @auth reaches `auth` even with `auth-tests` around.
     const pick = (pool: Session[]) => {
       const exact = pool.filter(o => o.name === to)
@@ -601,7 +693,7 @@ export class Sessions {
     for (const o of them) this.post(o, { id, kind, origin: origin(s, m.user), from, sender: s?.id ?? '', text, ...(re ? { re } : {}) }, line)
     if (s && kind !== 'say') (s.unanswered ??= []).push({ id, to: them.map(o => o.id), kind, text })
     this.save(s, ...them)
-    const woke = await Promise.all(them.map(o => this.panes.wake(o.id, WAKE + from)))
+    const woke = await Promise.all(them.map(o => this.panes.wake(o, WAKE + from)))
     return { id, to: them.map(o => `@${this.tag(o)}`), woke: them.filter((_, i) => woke[i]).map(o => `@${this.tag(o)}`) }
   }
 
@@ -623,8 +715,14 @@ export class Sessions {
     this.spawned.set(id, sp)
     this.keep(sp)
     const who = s ? `session @${this.tag(s)}, which asked for it` : `${this.label(s, m.user)}, who asked for it, through \`yap spawns\``
-    const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session and nobody can answer a question: make the calls yourself and say what you decided. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
-    void this.runner.run({ cwd: native(m.cwd), prompt, peer: id, agent: m.agent }).then(
+    const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session: make the calls yourself and say what you decided. If one is truly the user's to make, ask it with \`yap say --question @user <text>\` and carry on with the rest; an answer reaches you while you still run. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
+    const onActivity = (line: string) => {
+      if (!line || sp.done) return
+      sp.log = [...(sp.log ?? []), { n: (sp.log?.at(-1)?.n ?? 0) + 1, at: this.now(), line }].slice(-LOG)
+      this.keep(sp)
+      this.emit({ type: 'activity', repo: checkout(s?.repo ?? norm(m.cwd)), spawn: id.slice(0, 8), line })
+    }
+    void this.runner.run({ cwd: native(m.cwd), prompt, peer: id, agent: m.agent, onActivity }).then(
       r => this.finished(sp, r.ok, r.text),
       e => this.finished(sp, false, String(e?.message ?? e)),
     )
@@ -637,17 +735,34 @@ export class Sessions {
     // Its process is gone: a session whose end hook didn't come (or never had one) goes with it.
     this.forget(sp.id)
     const s = this.all.get(sp.from)
-    if (!s) return
     const said = sp.result!.slice(0, 2000)
+    if (!s) {
+      // Started by the user (or a session since gone): its end waits in the user's inbox.
+      const from = `session @${sp.name || sp.id.slice(0, 8)}`
+      this.tell((await this.root(sp.cwd)).repo, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok })
+      return
+    }
     const from = `session @${sp.name || sp.id.slice(0, 8)}`
     this.post(s, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok }, `${from[0].toUpperCase()}${from.slice(1)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
     this.save(s)
-    await this.panes.wake(s.id, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
+    await this.panes.wake(s, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
   }
 
-  /** Background sessions yap started, newest first, for `yap spawns`. */
-  spawns() {
-    return [...this.spawned.values()].reverse().map(sp => ({ ...sp, id: sp.id.slice(0, 8), name: sp.name || this.all.get(sp.id)?.name || '' }))
+  /**
+   * Background sessions yap started, newest first, for `yap spawns`. `id` (a prefix) picks one and brings its
+   * `log`, the lines after `since` (an `n`); the list leaves the logs out and counts them in `steps`.
+   */
+  spawns(id?: string, since = 0) {
+    return [...this.spawned.values()]
+      .reverse()
+      .filter(sp => !id || sp.id.startsWith(id))
+      .map(({ log, ...sp }) => ({
+        ...sp,
+        id: sp.id.slice(0, 8),
+        name: sp.name || this.all.get(sp.id)?.name || '',
+        steps: log?.at(-1)?.n ?? 0,
+        ...(id ? { log: (log ?? []).filter(l => l.n > since) } : {}),
+      }))
   }
 
   /**
@@ -669,7 +784,7 @@ export class Sessions {
     const now = this.now()
     return [...this.all.values()]
       .filter(s => now - s.at <= LIVE)
-      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })), unanswered: (s.unanswered ?? []).map(q => ({ ...q, to: q.to.map(id => this.all.get(id)).map(o => (o ? `@${this.tag(o)}` : 'a session that left')) })) }))
+      .map(s => ({ id: s.id, name: s.name, top: s.top, repo: checkout(s.repo), started: s.started, at: s.at, terminal: s.terminal, doing: s.doing, files: [...s.files.keys()].map(f => relative(s.top, f).replace(/\\/g, '/')), conflicts: Object.entries(s.clash ?? {}).map(([id, files]) => ({ with: id, files })), undelivered: s.inbox.filter(m => (m.tries ?? 0) >= TRIES).map(({ id, from, text }) => ({ id, from, text })), unanswered: (s.unanswered ?? []).map(q => ({ ...q, to: q.to.map(id => (id === USER ? 'the user' : this.all.get(id))).map(o => (typeof o === 'string' ? o : o ? `@${this.tag(o)}` : 'a session that left')) })) }))
   }
 
   /** The main checkout of the repo `cwd` sits in, as events and `list` name it. */
@@ -684,9 +799,9 @@ export class Sessions {
   }
 
   /** What `spawns` lists, for the repo `cwd` sits in. */
-  async spawnsIn(cwd: string) {
+  async spawnsIn(cwd: string, id?: string, since?: number) {
     const { repo } = await this.root(cwd)
-    const all = this.spawns()
+    const all = this.spawns(id, since)
     const mine = await Promise.all(all.map(async sp => (await this.root(sp.cwd)).repo === repo))
     return all.filter((_, i) => mine[i])
   }
@@ -706,6 +821,7 @@ export class Sessions {
       command: input.tool_input?.command,
       path: input.tool_input?.file_path ?? input.tool_input?.notebook_path,
       continuing: input.stop_hook_active === true,
+      terminal: input.terminal,
       ack,
     }
     // Codex edits through apply_patch: the files are named inside the patch, one verb each.
@@ -791,7 +907,11 @@ export class Sessions {
       const mail = drain()
       const risk = gitRisk(String(call.command ?? ''))
       const recent = (o: Session) => [...o.files].filter(([, at]) => this.now() - at < RECENT).map(([f]) => f)
-      const busy = risk ? this.others(s).filter(o => o.top === s.top && recent(o).length) : []
+      // The tree the command's git runs in: another worktree's (`cd ../wt && git merge`, `git -C ../wt merge`) is judged
+      // by who works there, not by who works where the session sits.
+      const there = gitWhere(String(call.command ?? ''))
+      const tree = there ? (await this.root(isAbsolute(native(there)) ? there : resolve(native(call.cwd ?? s.cwd), there))).top : s.top
+      const busy = risk ? this.others(s).filter(o => o.top === tree && recent(o).length) : []
       if (!busy.length) return arrived(mail)
       const who = busy.map(o => `${this.label(o)}, editing ${recent(o).slice(-3).map(f => relative(s.top, f).replace(/\\/g, '/')).join(', ')}`)
       const why =

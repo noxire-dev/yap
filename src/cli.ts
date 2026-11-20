@@ -21,10 +21,12 @@ yap setup           connect this machine's agents: the plugin in Claude Code, ya
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
 yap say [--question|--blocker] [--re <id>] [@id] <text>
-                    message the other sessions in this repo, or one of them; a question or blocker
-                    stays on your list until a reply with --re <its id>
+                    message the other sessions in this repo, or one of them, or @user for the person;
+                    a question or blocker stays on your list until a reply with --re <its id>
+yap doing <text>    say what this session is working on, one line its peers and the user see; '' clears it
+yap inbox           what sessions in this repo said to the user, and how background sessions ended
 yap spawn [--codex] <text>  start a background Claude Code (or Codex) session here on that task; its last word comes back to you
-yap spawns           the background sessions yap started, and how each ended
+yap spawns [<id>]    the background sessions yap started, and how each ended; with an id, what it does as it goes, live
 yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
 yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
 yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
@@ -306,7 +308,7 @@ async function hook(event: string, codex: boolean) {
     try {
       ack = readFileSync(cursor, 'utf8').trim()
     } catch {}
-    const q = new URLSearchParams({ ...(ack ? { ack } : {}), ...(me ? { session: me } : {}), ...(codex ? { for: 'codex' } : {}) })
+    const q = new URLSearchParams({ ...(ack ? { ack } : {}), ...(me ? { session: me } : {}), ...(codex ? { for: 'codex' } : {}), ...(process.env.HC_TERMINAL_ID ? { terminal: process.env.HC_TERMINAL_ID } : {}) })
     const res = await fetch(`${url}/api/hook/${event}?${q}`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth() }, body: input, signal: AbortSignal.timeout(2000) })
     const body = await res.text()
     if (!res.ok) return
@@ -405,10 +407,11 @@ try {
     console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
   } else if (cmd === 'sessions') {
     if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
-    const list = await api.get<{ id: string; name: string; top: string; at: number; files: string[]; undelivered?: { from: string; text: string }[]; unanswered?: { id: string; kind: string; to: string[]; text: string }[] }[]>('/api/sessions')
+    const list = await api.get<{ id: string; name: string; top: string; at: number; doing?: string; files: string[]; undelivered?: { from: string; text: string }[]; unanswered?: { id: string; kind: string; to: string[]; text: string }[] }[]>('/api/sessions')
     const show = (s: (typeof list)[number]) =>
       [
         `${s.id.slice(0, 8)}  ${ago(s.at).padStart(8)}  ${s.name ? `@${s.name}  ` : ''}${s.top}`,
+        ...(s.doing ? [`          doing: ${s.doing}`] : []),
         ...(s.files.length ? [`          edited ${s.files.length}: ${s.files.slice(-3).join(', ')}`] : []),
         ...(s.undelivered ?? []).map(m => `          undelivered, from ${m.from}: ${m.text.split('\n')[0].slice(0, 80)}`),
         ...(s.unanswered ?? []).map(q => `          unanswered ${q.kind} ${q.id.slice(0, 8)} to ${q.to.join(', ')}: ${q.text.split('\n')[0].slice(0, 80)}`),
@@ -427,7 +430,20 @@ try {
     const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' '), kind, re })
     if (kind) console.log(`${kind} ${r.id.slice(0, 8)}: a reply with \`--re ${r.id.slice(0, 8)}\` takes it off your list`)
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
-    console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
+    if (r.to[0] === '@user') console.log("left in the user's inbox: `yap inbox` here, and the web through the relay")
+    else console.log([r.woke.length && `${r.woke.join(', ')} was idle and is reading it now`, asleep.length && `left for ${asleep.join(', ')}: they read it on their next tool call or prompt`].filter(Boolean).join('; '))
+  } else if (cmd === 'doing') {
+    if (!me) throw new Error('yap doing is for an agent session: run it from inside one')
+    await daemon()
+    await api.send('POST', '/yap/doing', { session: me, cwd: target(), text: rest.join(' ') })
+    console.log(rest.join(' ').trim() ? 'the others see it next to your name' : 'cleared')
+  } else if (cmd === 'inbox') {
+    await daemon()
+    const list: { id: string; kind: string; from: string; text: string; at: number; ok?: boolean; re?: string }[] = await api.send('POST', '/yap/inbox', { cwd: target() })
+    const head = (m: (typeof list)[number]) =>
+      m.kind === 'spawn' ? `${m.from} ${m.ok ? 'finished' : 'failed'}` : m.kind === 'say' ? `${m.from}${m.re ? `, answering ${m.re.slice(0, 8)}` : ''}` : `${m.kind} ${m.id.slice(0, 8)} from ${m.from}`
+    const show = (m: (typeof list)[number]) => [`${ago(m.at).padStart(8)}  ${head(m)}`, ...m.text.split(/\r?\n/).map(l => `          ${l}`)].join('\n')
+    console.log(list.length ? list.slice(-20).map(show).join('\n') + (list.some(m => m.kind === 'question' || m.kind === 'blocker') ? '\n\nanswer one with `yap say --re <id> <text>`' : '') : 'nothing for you here')
   } else if (cmd === 'claim' || cmd === 'release' || cmd === 'claims') {
     await daemon()
     const cwd = target()
@@ -472,6 +488,22 @@ try {
     if (!(await running())) throw new Error('the daemon is not running')
     const b = await api.get<{ relay?: string; device?: string; connected?: boolean }>('/api/bridge')
     console.log(b.relay ? `paired with ${b.relay} as ${b.device}, ${b.connected ? 'connected' : 'not connected right now'}` : 'not paired. `yap pair <relay>` pairs it')
+  } else if (cmd === 'spawns' && rest[0]) {
+    if (!(await running())) throw new Error('the daemon is not running, so nothing it started is running')
+    type One = { id: string; task: string; done?: number; ok?: boolean; result?: string; log: { n: number; line: string }[] }
+    let since = 0
+    for (let first = true; ; first = false) {
+      const [s] = await api.get<One[]>(`/api/spawns?id=${encodeURIComponent(rest[0])}&since=${since}`)
+      if (!s) throw new Error(`no spawn ${rest[0]}`)
+      if (first) console.log(`${s.id}  ${s.task.slice(0, 100)}`)
+      for (const l of s.log) (console.log(`  ${l.line}`), (since = l.n))
+      if (s.done) {
+        console.log(`${s.ok ? 'finished' : 'failed'}:`)
+        for (const l of (s.result ?? '').split(/\r?\n/)) console.log(`  ${l}`)
+        break
+      }
+      await Bun.sleep(2000)
+    }
   } else if (cmd === 'spawns') {
     if (!(await running())) throw new Error('the daemon is not running, so nothing it started is running')
     const list = await api.get<{ id: string; name: string; task: string; started: number; done?: number; ok?: boolean; result?: string }[]>('/api/spawns')

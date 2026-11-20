@@ -101,6 +101,10 @@ export interface Store {
   /** Background sessions yap started, each an opaque JSON blob, oldest first. */
   spawns(): string[]
   saveSpawn(id: string, data: string): void
+  /** Messages sessions left for the user, each an opaque JSON blob, oldest first. */
+  userMessages(): string[]
+  /** Adds one and drops all but the newest `keep`. */
+  saveUserMessage(id: string, data: string, keep: number): void
 }
 
 export interface Ran {
@@ -162,6 +166,10 @@ export interface AgentRun {
   peer?: string
   /** Which agent runs it, on the user's own plan for it. Claude Code when not said. */
   agent?: Agent
+  /** A chat turn: Claude Code keeps the session, the first turn names it and every later one resumes it. */
+  chat?: { session: string; resume: boolean; system: string }
+  /** Each piece of text the agent says, as it says it. */
+  onText?: (text: string) => void
 }
 
 export type Agent = 'claude' | 'codex'
@@ -199,10 +207,13 @@ export interface Tracker {
   me(): Promise<string>
 }
 
-/** The terminal multiplexer the Claude Code sessions run in, when there is one. */
+/** The terminal multiplexer the sessions run in, when there is one: Herdr, or the Herdr app's herdr-core. */
 export interface Panes {
-  /** Submit `text` as a prompt to session `id` if it sits idle in a pane nobody is looking at. False if it can't. */
-  wake(id: string, text: string): Promise<boolean>
+  /**
+   * Submit `text` as a prompt to the session if it sits idle where nobody is typing. `terminal`: its herdr-core
+   * terminal, when the hooks reported one. False if it can't.
+   */
+  wake(s: { id: string; terminal?: string }, text: string): Promise<boolean>
 }
 
 /** The person at the screen, asked somewhere a crew agent holding the API token can't answer for them. */

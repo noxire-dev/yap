@@ -15,6 +15,7 @@ export class SqliteStore implements Store {
       ts INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`)
     db.run('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS spawn (n INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, data TEXT NOT NULL)')
+    db.run('CREATE TABLE IF NOT EXISTS to_user (n INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, ts INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL)')
   }
 
@@ -83,6 +84,13 @@ export class SqliteStore implements Store {
   dropSession = (id: string) => void this.db.query('DELETE FROM session WHERE id = ?').run(id)
 
   spawns = () => (this.db.query('SELECT data FROM spawn ORDER BY n').all() as { data: string }[]).map(r => r.data)
+  userMessages = () => (this.db.query('SELECT data FROM to_user ORDER BY n').all() as { data: string }[]).map(r => r.data)
+  saveUserMessage = (id: string, data: string, keep: number) =>
+    this.db.transaction(() => {
+      this.db.query('INSERT INTO to_user (id, data) VALUES (?, ?)').run(id, data)
+      this.db.query('DELETE FROM to_user WHERE n <= (SELECT MAX(n) FROM to_user) - ?').run(keep)
+    })()
+
   saveSpawn = (id: string, data: string) =>
     void this.db.query('INSERT INTO spawn (id, data) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data').run(id, data)
 }

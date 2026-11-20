@@ -12,7 +12,7 @@ ack=0
 [ -n "$id" ] && [ -f "$c" ] && ack=$(cat "$c")
 out=$(printf '%s' "$in" | curl -sf -m 2 -w '\n%header{x-yap-seq}' -H content-type:application/json \
   -H "x-yap-token: $(cat "$h/token" 2>/dev/null)" --data-binary @- \
-  "http://127.0.0.1:${YAP_PORT:-4170}/api/hook/$1?ack=$ack${YAP_SESSION:+&session=$YAP_SESSION}" 2>/dev/null) || exit 0
+  "http://127.0.0.1:${YAP_PORT:-4170}/api/hook/$1?ack=$ack${YAP_SESSION:+&session=$YAP_SESSION}${HC_TERMINAL_ID:+&terminal=$HC_TERMINAL_ID}" 2>/dev/null) || exit 0
 seq=${out##*
 }
 printf '%s' "${out%

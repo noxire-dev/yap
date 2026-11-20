@@ -1,3 +1,4 @@
+import type { Chats } from './chat'
 import type { Project } from './ports'
 import { PROTOCOL, type Sessions, norm } from './sessions'
 
@@ -25,7 +26,7 @@ export const dial: Dial = (url, secret) => new WebSocket(url, { headers: { autho
  * a path; sessions and spawns outside registered projects are not shown. The user is the sender: whoever holds a
  * token for this machine was given it by the user.
  */
-export function remote(sessions: Sessions, projects: () => Project[]) {
+export function remote(sessions: Sessions, projects: () => Project[], chats?: Chats) {
   const project = (name: unknown) => {
     const p = projects().find(p => p.name === name)
     if (!p) throw new Error(`no project ${name}; yap's projects here are ${projects().map(p => p.name).join(', ') || 'none'}`)
@@ -34,17 +35,50 @@ export function remote(sessions: Sessions, projects: () => Project[]) {
   const whose = (path: string) => projects().find(p => norm(path) === norm(p.path))?.name
   const text = (b: any) => String(b.text ?? '')
   const verbs: Record<string, (b: any) => unknown> = {
-    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn'] }),
+    hello: () => ({ ...PROTOCOL, verbs: Object.keys(verbs), extensions: ['board', 'spawn', 'doing', 'inbox', ...(chats ? ['chat'] : [])] }),
     projects: () => projects().map(p => ({ name: p.name, base: p.base })),
     sessions: () =>
       sessions
         .list()
-        .flatMap(s => (whose(s.repo) ? [{ project: whose(s.repo), id: s.id.slice(0, 8), name: s.name, at: s.at, files: s.files }] : [])),
-    spawns: b => sessions.spawns().flatMap(s => (whose(s.cwd) && (!b.id || s.id === b.id) ? [{ ...s, cwd: undefined, project: whose(s.cwd) }] : [])),
+        .flatMap(s =>
+          whose(s.repo)
+            ? [{ project: whose(s.repo), id: s.id.slice(0, 8), name: s.name, at: s.at, files: s.files, ...(s.doing ? { doing: s.doing } : {}), unanswered: s.unanswered.filter(q => q.to.includes('the user')).map(({ id, kind, text }) => ({ id: id.slice(0, 8), kind, text })) }]
+            : [],
+        ),
+    inbox: b => {
+      const mine = projects().filter(p => !b.project || p.name === b.project)
+      if (b.project && !mine.length) project(b.project)
+      return sessions.inbox(Number(b.since) || 0, mine.map(p => norm(p.path))).map(({ repo, ...m }) => ({ ...m, project: whose(repo) }))
+    },
+    spawns: b =>
+      sessions
+        .spawns(typeof b.id === 'string' && b.id ? b.id : undefined, Number(b.since) || 0)
+        .flatMap(s => (whose(s.cwd) ? [{ ...s, cwd: undefined, project: whose(s.cwd) }] : [])),
     notes: async b => (await sessions.notes(project(b.project).path)).map(({ repo, ...n }) => n),
     note: b => sessions.note({ cwd: project(b.project).path, text: text(b), user: true }),
-    say: b => sessions.say({ cwd: project(b.project).path, text: text(b), to: typeof b.to === 'string' ? b.to : undefined, user: true }),
+    say: b =>
+      sessions.say({
+        cwd: project(b.project).path,
+        text: text(b),
+        to: typeof b.to === 'string' ? b.to : undefined,
+        kind: typeof b.kind === 'string' ? b.kind : undefined,
+        re: typeof b.re === 'string' ? b.re : undefined,
+        user: true,
+      }),
     spawn: b => sessions.spawn({ cwd: project(b.project).path, text: text(b), user: true }),
+  }
+  // Chat: a Claude Code session the web talks to, read-only in the project, or with edits in a worktree of its own.
+  if (chats) {
+    verbs.chat = b => chats.say(project(b.project), text(b), typeof b.thread === 'string' ? b.thread : undefined, b.edits === true)
+    // A thread is reached through its project: once the user removes the project, its threads are gone from the web.
+    const mine = (b: any) => (project(chats.projectOf(String(b.thread))), String(b.thread))
+    verbs['chat.read'] = b => chats.read(mine(b), Number(b.after) || 0)
+    verbs['chat.stop'] = b => chats.stop(mine(b))
+    verbs['chat.drop'] = b => chats.drop(mine(b), project(chats.projectOf(String(b.thread))).path)
+    verbs.chats = b => {
+      const names = new Set(projects().map(p => p.name))
+      return chats.list(b.project === undefined ? undefined : project(b.project).name).filter(t => names.has(t.project))
+    }
   }
   return async (verb: string, body: unknown) => {
     const fn = verbs[verb]

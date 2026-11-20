@@ -10,8 +10,9 @@ import { PROTOCOL, Sessions } from './sessions'
 import { ALL, events, local } from './wire'
 import { SqliteStore } from './store'
 import { Bridge, remote, type Pairing } from './bridge'
+import { Chats } from './chat'
 import { Dialog } from './dialog'
-import { Herdr } from './herdr'
+import { AnyPanes, Herdr, HerdrCore } from './herdr'
 import { LocalWorkspace } from './workspace'
 
 mkdirSync(home, { recursive: true })
@@ -46,12 +47,12 @@ await crew.recover()
 const watch = () => void crew.watch().catch(() => {})
 watch()
 setInterval(watch, 60_000)
-const sessions = new Sessions(ws, store, Date.now, new Herdr(), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
+const sessions = new Sessions(ws, store, Date.now, new AnyPanes([new HerdrCore(), new Herdr()]), new Agents({ claude: new ClaudeCli(), codex: new CodexCli() }), () => settings().spawns)
 
 // The remote bridge, when `yap pair` left a pairing: one line out to the relay, answering what may be done from
 // the web. Reloaded by `yap pair` and `yap unpair`.
 const pairingFile = join(home, 'bridge.json')
-const answerRemote = remote(sessions, () => store.projects())
+const answerRemote = remote(sessions, () => store.projects(), new Chats(new ClaudeCli(), ws, home))
 const answerLocal = local(sessions)
 let bridge: Bridge | null = null
 function rebridge() {
@@ -170,7 +171,7 @@ Bun.serve({
           const as = q.get('session')
           const ack = q.get('ack')
           const got: { seq?: number } = {}
-          const out = await sessions.hook(req.params.event, { ...input, ...(as ? { session_id: as } : {}), codex: q.get('for') === 'codex' }, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
+          const out = await sessions.hook(req.params.event, { ...input, ...(as ? { session_id: as } : {}), codex: q.get('for') === 'codex', terminal: q.get('terminal') || undefined }, ack && /^\d+$/.test(ack) ? Number(ack) : undefined, got)
           return Response.json(out, got.seq ? { headers: { 'x-yap-seq': String(got.seq) } } : undefined)
         } catch {
           return Response.json({})
@@ -189,7 +190,10 @@ Bun.serve({
     },
     '/yap/:verb': { POST: api((req, b) => answerLocal(req.params.verb, b), true) },
     '/api/sessions': api(() => sessions.list()),
-    '/api/spawns': api(() => sessions.spawns()),
+    '/api/spawns': api(req => {
+      const q = new URL(req.url).searchParams
+      return sessions.spawns(q.get('id') || undefined, Number(q.get('since')) || 0)
+    }),
     '/api/bridge': {
       GET: api(() => (bridge ? { relay: bridge.pairing.relay, device: bridge.pairing.device, connected: bridge.connected } : {})),
       POST: api(() => rebridge()),
