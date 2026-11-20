@@ -3,7 +3,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, spaces, focused, run, theme, home, readTextFile, checking } from "herdr";
+import { agents, panes, spaces, focused, run, theme, home, readTextFile, checking } from "herdr";
 
 const URL = "http://127.0.0.1:4170";
 const key = (p) => (p ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -54,9 +54,12 @@ export default class Yap extends View {
     cx.notify();
   }
 
-  // Where you are: the focused terminal's folder, else the active space's.
+  // Where you are: the focused terminal's folder, else (this panel has the focus) a terminal's in the same tab,
+  // else the active space's.
   here() {
-    return key(focused()?.cwd ?? spaces().find((s) => s.active)?.folder);
+    const f = focused();
+    const tab = panes().find((p) => p.tab === f?.tab && p.cwd)?.cwd;
+    return key(f?.cwd ?? tab ?? spaces().find((s) => s.active)?.folder);
   }
 
   project() {
@@ -72,9 +75,12 @@ export default class Yap extends View {
 
     const here = this.here();
     const status = new Map(agents().map((a) => [a.address, a.status]));
-    // Yours: the sessions whose working tree you are in. A space at ~ has none; everything is "elsewhere".
-    const mine = this.sessions.filter((s) => under(here, key(s.top)));
-    const others = this.sessions.filter((s) => !mine.includes(s));
+    // Yours: the sessions in the repo you are in, found by the deepest working tree around you, so a session
+    // rooted at ~ doesn't make everything "here".
+    const around = this.sessions.filter((s) => under(here, key(s.top))).sort((a, b) => b.top.length - a.top.length)[0];
+    const mine = around ? this.sessions.filter((s) => s.repo === around.repo) : [];
+    // Elsewhere: only what moved in the last half hour; the rest is still in `yap sessions`.
+    const others = this.sessions.filter((s) => !mine.includes(s) && Date.now() - s.at < 30 * 60000);
     const row = (s) => {
       const st = s.terminal ? status.get(s.terminal) : null;
       return v_flex()
@@ -100,7 +106,6 @@ export default class Yap extends View {
     return v_flex().size_full().bg(t.chrome).px(10).pb(10).overflow_y_scrollbar()
       .child(head(mine.length ? "AGENTS HERE" : "NO AGENTS IN THIS REPO"))
       .children(mine.map(row))
-      .when(others.length > 0, (x) => x.child(head("ELSEWHERE")).children(others.map(row)))
       .when(!!p, (x) =>
         x.child(head(`BOARD · ${p.name}`))
           .when(!!board?.error, (y) => y.child(line(board.error, t.dim)))
@@ -110,6 +115,7 @@ export default class Yap extends View {
               .children(board.filter((c) => c.column === col).slice(0, 8).map((c) =>
                 h_flex().gap(6)
                   .child(div().text_size(12).text_color(t.dim).flex_none().child(`#${c.number}`))
-                  .child(div().text_size(12).text_color(c.onRail ? t.accent : t.foreground).truncate().child(c.title)))))));
+                  .child(div().text_size(12).text_color(c.onRail ? t.accent : t.foreground).truncate().child(c.title)))))))
+      .when(others.length > 0, (x) => x.child(head("ELSEWHERE")).children(others.map(row)));
   }
 }
