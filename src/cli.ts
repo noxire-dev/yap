@@ -20,7 +20,7 @@ yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
-yap say [--question|--blocker] [--re <id>] [@id] <text>
+yap say [--question|--blocker] [--re <id>] ['@id'] <text>
                     message the other sessions in this repo, or one of them, or @user for the person;
                     a question or blocker stays on your list until a reply with --re <its id>
 yap doing <text>    say what this session is working on, one line its peers and the user see; '' clears it
@@ -457,14 +457,14 @@ try {
       console.log(`released ${rest[0]}`)
     } else {
       const r = await api.send('POST', '/yap/claim', { session: me, cwd, path: rest.shift() ?? '', why: rest.join(' ') })
-      console.log(r.held ? `already claimed: ${r.held.path} by @${r.held.name}, ${r.held.why}. Ask them first: yap say @${r.held.name} <text>` : `claimed as ${r.id}: the others are warned before they edit there, for 20 minutes past your last edit under it. \`yap release ${r.id}\` ends it.`)
+      console.log(r.held ? `already claimed: ${r.held.path} by @${r.held.name}, ${r.held.why}. Ask them first: yap say '@${r.held.name}' <text>` : `claimed as ${r.id}: the others are warned before they edit there, for 20 minutes past your last edit under it. \`yap release ${r.id}\` ends it.`)
     }
   } else if (cmd === 'spawn') {
     await daemon()
     // Codex when asked, or when it is the only agent here: the session runs on whichever plan the user has.
     const codex = rest[0] === '--codex' ? !!rest.shift() : !Bun.which('claude') && !!Bun.which('codex')
     const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' '), agent: codex ? 'codex' : undefined })
-    console.log(`started @${r.id} in the background. It is a peer: \`yap say @${r.id}\` reaches it. Its last word comes ${me ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
+    console.log(`started @${r.id} in the background. It is a peer: \`yap say '@${r.id}'\` reaches it. Its last word comes ${me ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
   } else if (cmd === 'pair') {
     const relay = String(rest[0] ?? '').replace(/\/$/, '')
     if (!/^https?:\/\//.test(relay)) throw new Error('yap pair <relay url>, like https://relay.example.com')

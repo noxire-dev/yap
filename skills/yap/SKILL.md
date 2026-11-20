@@ -24,10 +24,10 @@ Run every command from inside the repo. The daemon starts on demand.
 | A directory with no git yet | `yap init` |
 | Which other Claude sessions are in this repo, and what they are doing | `yap sessions` |
 | Tell another session something, or all of them in this repo | `yap say [@<name>] <text>` |
-| Ask something you need answered, or say you're blocked on another session | `yap say --question [@<name>] <text>` or `--blocker`; it stays on your row in `yap sessions` until a reply |
+| Ask something you need answered, or say you're blocked on another session | `yap say --question ['@<name>'] <text>` or `--blocker`; it stays on your row in `yap sessions` until a reply |
 | Answer a question or blocker | `yap say --re <its id> <text>`: it goes to the asker |
 | Say what this session is working on, when you start a task and when it changes | `yap doing <text>` |
-| Ask the user something that waits for them (they read it in `yap inbox` and on the web) | `yap say --question @user <text>` |
+| Ask the user something that waits for them (they read it in `yap inbox` and on the web) | `yap say --question '@user' <text>` |
 | Read what sessions left for the user | `yap inbox` |
 | Before a task that touches more than two files in one directory, claim it | `yap claim <path> <why>` · `yap claims` · `yap release <id>` |
 | Leave a note for every session in this repo, now and later | `yap note <text>` · `yap notes` · `yap note -d <id>` |

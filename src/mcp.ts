@@ -57,10 +57,10 @@ const TOOLS = [
 const tools = (text: string) =>
   text
     .replace(/`yap say --re (\S+) <text>`/g, 'yap_say with re "$1"')
-    .replace(/`yap say @<session> <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
-    .replace(/`yap say @[^`]*`/g, 'yap_say')
+    .replace(/`yap say '?@<session>'? <text>`( or `yap say <text>` for all of them)?/g, 'yap_say')
+    .replace(/`yap say '?@[^`]*`/g, 'yap_say')
     .replace(/`yap note <text>`/g, 'yap_note')
-    .replace(/`yap say --question @user <text>`/g, 'yap_say to "user" with kind "question"')
+    .replace(/`yap say --question '?@user'? <text>`/g, 'yap_say to "user" with kind "question"')
     .replace(/`yap doing <text>`/g, 'yap_doing')
     .replace(/`yap claim <path> <why>`/g, 'yap_claim')
     .replace(/`yap release <id>`/g, 'yap_claim with release')

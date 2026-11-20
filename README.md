@@ -4,7 +4,7 @@ Claude Code sessions on one machine that see each other, message each other and 
 
 Open two sessions on one repo and each knows who else is there and which files they edited. Each is warned
 before it edits a file the other just changed, can't `git checkout` or `git stash` the tree out from under the
-other, and can ask it something: `yap say @auth are you done with the session refactor?`. A session idle in a
+other, and can ask it something: `yap say '@auth' are you done with the session refactor?`. A session idle in a
 Herdr pane is woken to answer. A session can claim a directory before working in it, so the others are warned
 before they edit there. A repo's notes board carries decisions and handoffs to the sessions that come later.
 
@@ -44,7 +44,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | `yap sessions` | The live sessions, their names, what each says it is doing and what each edited. |
 | `yap say [--question\|--blocker] [--re <id>] [@name] <text>` | Message one session, or all of them in this repo, or `@user` for you. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
 | `yap doing <text>` | From inside a session: say what it is working on, one line its peers and you see. |
-| `yap inbox` | What sessions in this repo said to you (`yap say @user`), and how background sessions you started ended. |
+| `yap inbox` | What sessions in this repo said to you (`yap say '@user'`), and how background sessions you started ended. |
 | `yap spawn [--codex] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. |
 | `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
@@ -81,7 +81,7 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
 - A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
   its id. Only edits inside its working tree count, so a scratchpad or temp file never warns anyone.
-- Sessions talk: `yap say @<name> <text>` to one (a prefix of the name or id will do), `yap say <text>` to all
+- Sessions talk: `yap say '@<name>' <text>` to one (a prefix of the name or id will do), `yap say <text>` to all
   of them in the repo. A message lands on the recipient's next edit, shell command or prompt, or before it ends its turn. Run from your own terminal, it comes from "an unverified local process": anything on the machine could have sent it. Only a device paired through the relay speaks as the user.
   A recipient sitting idle in a Herdr pane is prompted to read it at once, unless that pane is focused: you may
   be typing in it. A woken session answers but is told not to start work on another session's word.
@@ -94,7 +94,7 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - Sessions say what they are on: `yap doing <text>` puts one line next to the session's name, in its peers'
   context, `yap sessions` and the web. Sessions are told to set it when they start a task, and to pin anything
   another session could use (an analysis, a decision, a research file) on the board with where it is.
-- A session can talk to you: `yap say @user <text>`, or `--question` / `--blocker`, lands in your inbox
+- A session can talk to you: `yap say '@user' <text>`, or `--question` / `--blocker`, lands in your inbox
   (`yap inbox`, and the web's `inbox`). Answer with `yap say --re <id> <text>` from the web; it goes to the
   asker and leaves its list. A background session asks you this way when a call is truly yours, and carries on.
 - Notes: `yap note <text>` pins a note on the repo's board (a decision, a warning, a handoff), `yap notes`
