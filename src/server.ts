@@ -202,6 +202,19 @@ Bun.serve({
       GET: api(req => sessions.notes(new URL(req.url).searchParams.get('cwd') ?? '')),
       POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),
     },
+    // Trusted handoffs: a peer's handoff on work the user started counts as their go. Turning it on is the user's
+    // call, so it waits on the desktop; turning it off doesn't.
+    '/api/handoffs': {
+      GET: api(() => ({ handoffs: store.setting('handoffs') ?? 'ask' })),
+      POST: api(async (_, b) => {
+        const mode = b.mode === 'trusted' ? 'trusted' : b.mode === 'ask' ? 'ask' : null
+        if (!mode) throw new Error('handoffs is trusted or ask')
+        if (mode === 'trusted' && store.setting('handoffs') !== 'trusted')
+          await vouch("Trust handoffs between agent sessions? A session's handoff on work you already started will count as your go: the agent acts on it and tells you after. Merging others' pull requests, anything public, money and anything destructive still wait for you.")
+        store.setSetting('handoffs', mode)
+        return { handoffs: mode }
+      }),
+    },
     '/api/notes/:id': { DELETE: api((req, b) => sessions.unnote(String(b.cwd ?? ''), Number(req.params.id))) },
     '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined, kind: b.kind || undefined, re: b.re || undefined })) },
 

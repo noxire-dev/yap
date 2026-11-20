@@ -16,6 +16,7 @@ export class SqliteStore implements Store {
     db.run('CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS spawn (n INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, data TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS to_user (n INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, data TEXT NOT NULL)')
+    db.run('CREATE TABLE IF NOT EXISTS setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
     db.run('CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, repo TEXT NOT NULL, ts INTEGER NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL)')
   }
 
@@ -84,6 +85,8 @@ export class SqliteStore implements Store {
   dropSession = (id: string) => void this.db.query('DELETE FROM session WHERE id = ?').run(id)
 
   spawns = () => (this.db.query('SELECT data FROM spawn ORDER BY n').all() as { data: string }[]).map(r => r.data)
+  setting = (key: string) => (this.db.query('SELECT value FROM setting WHERE key = ?').get(key) as { value: string } | null)?.value ?? null
+  setSetting = (key: string, value: string) => void this.db.query('INSERT OR REPLACE INTO setting (key, value) VALUES (?, ?)').run(key, value)
   userMessages = () => (this.db.query('SELECT data FROM to_user ORDER BY n').all() as { data: string }[]).map(r => r.data)
   saveUserMessage = (id: string, data: string, keep: number) =>
     this.db.transaction(() => {

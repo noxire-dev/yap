@@ -105,6 +105,9 @@ export interface Store {
   userMessages(): string[]
   /** Adds one and drops all but the newest `keep`. */
   saveUserMessage(id: string, data: string, keep: number): void
+  /** A machine-wide setting kept where only the daemon writes it (a value set behind a desktop confirmation). */
+  setting(key: string): string | null
+  setSetting(key: string, value: string): void
 }
 
 export interface Ran {

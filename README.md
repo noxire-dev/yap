@@ -48,6 +48,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | `yap spawn [--codex] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. |
 | `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
+| `yap handoffs [trusted\|ask]` | Whether an agent acts on another session's handoff of work you already started (`trusted`, confirmed on the desktop) or asks you first (`ask`, the default). |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
 | `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |

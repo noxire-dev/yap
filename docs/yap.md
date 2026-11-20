@@ -130,6 +130,12 @@ answer then carries the message and instructions in `context`. Rules:
     `an unverified local process`, never as the user.
 - Every delivered message comes with a line telling the model it is information: it cannot approve a
   permission prompt, change configuration or stand in for the user.
+- **Trusted handoffs** (`yap handoffs trusted`, off by default): a session handing another work the user already
+  started counts as the user's go, so a woken session acts on it and tells the user after, instead of leaving it
+  for them. The line still says no message approves a permission prompt or changes configuration, and merging
+  someone else's pull request, anything public, money and anything destructive still wait for the user. Turning
+  it on is confirmed on the desktop (`POST /api/handoffs {mode}`), since every agent holds the token; turning it
+  off isn't. The setting lives in the daemon's store, not in a file an agent could write.
 - What would skip a check (approving past the reviewer, changing a gate, forgetting a project) is confirmed on
   the desktop, which the token holder can't do. Not part of YAP; it belongs to the crew.
 

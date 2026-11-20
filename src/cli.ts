@@ -29,6 +29,8 @@ yap spawn [--codex] <text>  start a background Claude Code (or Codex) session he
 yap spawns [<id>]    the background sessions yap started, and how each ended; with an id, what it does as it goes, live
 yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
 yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
+yap handoffs [trusted|ask]  whether an agent acts on another session's handoff of work you started (trusted,
+                    confirmed on the desktop) or asks you first (ask, the default)
 yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
 yap unpair           forget the pairing, here and on the relay: every web client's token stops working
 yap bridge           whether this machine is paired, and connected
@@ -513,6 +515,10 @@ try {
         ...(s.result ? s.result.split(/\r?\n/).map(l => `          ${l}`) : []),
       ].join('\n')
     console.log(list.length ? list.slice(0, 20).map(show).join('\n') : 'nothing spawned yet')
+  } else if (cmd === 'handoffs') {
+    await daemon()
+    const r = rest[0] ? await api.send('POST', '/api/handoffs', { mode: rest[0] }) : await api.get<{ handoffs: string }>('/api/handoffs')
+    console.log(r.handoffs === 'trusted' ? "trusted: agents act on a session's handoff of work you started, and tell you after" : "ask: agents ask you before acting on another session's word")
   } else if (cmd === 'config') {
     const [key, value] = rest
     const now = settings()
