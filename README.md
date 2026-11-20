@@ -239,11 +239,9 @@ command = "yap.board"
 
 ## Herdr app
 
-`yap setup` copies a panel into the Herdr app (`~/.config/herdr-app/mods/yap`): the agents working in the repo
-you're in (status from Herdr, what each edited, conflicts, unanswered questions; click one to go to it), the rest
-under "elsewhere", and the repo's Rinai board. Open it beside a terminal:
-`herdr-app do pane.split '{"direction":"right","mod":"yap"}'`. An idle agent in a Herdr app terminal is woken by
-`yap say` the same way as in a Herdr pane.
+In a Herdr app terminal the hooks report its herdr-core terminal (`HC_TERMINAL_ID`), and an idle agent there is
+woken by `yap say` with `hc send --if idle`, the same way as in a Herdr pane. yap has no panel of its own in the
+app; mission-control layouts like Shepherdr sit on top, and their Claude agents show up as yap peers.
 
 ## Rinai
 

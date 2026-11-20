@@ -26,12 +26,16 @@ export class Herdr implements Panes {
   }
 }
 
+/** herdr-core's `hc`: HC_BIN, else on PATH, else where the Herdr app installs it on Windows. */
+export const hcBin = () =>
+  process.env.HC_BIN || Bun.which('hc') || (process.platform === 'win32' ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData/Local'), 'Programs/herdr-core/hc.exe') : 'hc')
+
 /**
  * The Herdr app's herdr-core (`hc`), for a session whose hooks reported its terminal. `hc send --if idle` types only
  * into an idle agent, and holds the text while the person has an unfinished draft there (up to a minute).
  */
 export class HerdrCore implements Panes {
-  constructor(private bin = process.env.HC_BIN || Bun.which('hc') || (process.platform === 'win32' ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData/Local'), 'Programs/herdr-core/hc.exe') : 'hc')) {}
+  constructor(private bin = hcBin()) {}
 
   async wake({ terminal }: { terminal?: string }, text: string) {
     if (!terminal) return false
