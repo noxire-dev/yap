@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
+import { boardArgs, boardRpc, isSlug } from './board'
+import { carriedFrom, claudeArgs } from './agent'
 import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
@@ -671,9 +673,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   })) }, ws, '/home/.yap', () => ++tick)
   store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
   const answer = remote(new Sessions(ws, store, () => 1), () => store.projects(), chats)
+  const hello: any = await answer('hello', {})
   const last = async (thread: string) => ((await answer('chat.read', { thread })) as any).events.at(-1)
   const started = (n: number) => until(async () => runs.length === n)
-  assert.ok(((await answer('hello', {})) as any).extensions.includes('chat'))
+  assert.ok(['chat', 'board-chat'].every(x => ((h: any) => h.extensions.includes(x))(hello)), 'a client can tell a yap with board chats from one without')
 
   const { thread } = (await answer('chat', { project: 'app', text: 'what does a do?' })) as any
   await started(1)
@@ -724,10 +727,82 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(cleaned, [['/repo', dir, `yap/chat-${edit.thread}`]])
   await assert.rejects(answer('chat.read', { thread: edit.thread }), /no chat/)
 
+  // A board chat is the Rinai agent for the project's board: its only tools are the board's MCP server, pinned to
+  // that board, and it runs outside the checkout. A remote added since registration is found.
+  ws.slug = async () => null
+  await assert.rejects(answer('chat', { project: 'app', text: 'how is the board?', board: true }), /app has no board/)
+  ws.slug = async () => 'acme/app'
+  const board: any = await answer('chat', { project: 'app', text: 'how is the board?', board: true })
+  await started(6)
+  assert.equal(runs[5].cwd, join('/home/.yap', 'chats', 'app', 'board'), "not the checkout, and a folder of yap's own, not a shared /tmp")
+  assert.equal(runs[5].only.name, 'rinai')
+  assert.deepEqual(runs[5].only.args.slice(-1), ['acme/app'], 'the server is pinned to this board')
+  assert.match(runs[5].chat.system, /Rinai agent for the board acme\/app/)
+  assert.equal(((await answer('chat.read', { thread: board.thread })) as any).board, 'acme/app')
+  finish({ ok: true, text: '' })
+  store.patchProject(store.projects()[0].id, { tracker: 'acme/app' })
+  assert.deepEqual(((await answer('projects', {})) as any[])[0].board, 'acme/app', 'the page can match a project to the board it came from')
+
   // A removed project's threads are gone from the web.
   store.removeProject(store.projects()[0].id)
   await assert.rejects(answer('chat.read', { thread }), /no project app/)
   assert.deepEqual(await answer('chats', {}), [])
+}
+
+// The board chat's command line: no built-in tool, only the board's server, dontAsk, no settings file, the user's
+// sign-in carried. A read or edits chat is unchanged.
+{
+  const only = { name: 'rinai', command: 'bun', args: ['board.ts', 'acme/app'] }
+  const args = claudeArgs({ cwd: '/tmp', prompt: '', only, chat: { session: 's', resume: false, system: 'x' } }, { apiKeyHelper: 'k' })
+  const after = (flag: string) => args[args.indexOf(flag) + 1]
+  assert.equal(after('--tools'), '', 'no built-in tool: no Read, no Bash')
+  assert.equal(after('--allowedTools'), 'mcp__rinai')
+  assert.equal(after('--permission-mode'), 'dontAsk')
+  assert.equal(after('--setting-sources'), '')
+  assert.deepEqual(JSON.parse(after('--settings')), { apiKeyHelper: 'k' })
+  assert.deepEqual(JSON.parse(after('--mcp-config')).mcpServers.rinai, { command: 'bun', args: ['board.ts', 'acme/app'] })
+  assert.ok(!claudeArgs({ cwd: '/tmp', prompt: '', only }).includes('--settings'), 'no settings flag when there is nothing to carry')
+  assert.equal(claudeArgs({ cwd: '/tmp', prompt: '', readOnly: true }).join(' ').includes('--tools Read,Grep,Glob'), true)
+}
+
+// The board's tools: every call is `gh rinai -R <board> <verb>`, an argument list. Another board, a shell, stdin
+// and flags smuggled in text are not reachable.
+{
+  const B = 'acme/app'
+  const args = (tool: string, a: object) => boardArgs(B, tool, a as any).args
+  assert.deepEqual(args('move', { n: 7, column: 'blocked' }), ['rinai', '-R', B, 'move', '7', 'blocked'])
+  assert.deepEqual(args('search', { column: 'todo', text: 'merge' }), ['rinai', '-R', B, 'search', '-c', 'todo', '-t', 'merge'])
+  assert.deepEqual(args('cycle_order', { numbers: [3, 1] }), ['rinai', '-R', B, 'cycle', 'order', '3', '1'])
+  // Bodies go on stdin, exactly as written: no argument for Windows' gh to drop, no command to run.
+  const body = '  indented\n"quoted"\n$(cat .env); git push'
+  assert.deepEqual(boardArgs(B, 'comment', { n: 7, text: body }), { args: ['rinai', '-R', B, 'comment', '7', '-'], input: body })
+  assert.deepEqual(boardArgs(B, 'update', { n: 4, health: 'at-risk', text: body }), { args: ['rinai', '-R', B, 'update', '4', 'at-risk', '-'], input: body })
+  assert.deepEqual(boardArgs(B, 'file', { title: 'Fix "it" now', body }), { args: ['rinai', '-R', B, 'file', 'Fix "it" now', '-b', '-'], input: body })
+  assert.equal(boardArgs(B, 'file', { title: 'x' }).input, undefined, 'no body, nothing on stdin')
+  assert.throws(() => boardArgs(B, 'comment', { n: 7, text: '-' }), /lone dash/, 'a lone dash would read stdin')
+  // An argument with a double quote and no space, which gh on Windows would drop: refused, not lost.
+  for (const a of [{ text: '"x"' }, { label: 'a"b' }]) assert.throws(() => boardArgs(B, 'search', a), /double quote/)
+  assert.throws(() => boardArgs(B, 'file', { title: '"fix"' }), /double quote/)
+  // gh rinai reads titles and search text positionally: a leading dash is text, passed as it is.
+  assert.deepEqual(args('file', { title: '-R other/repo' }).slice(3), ['file', '-R other/repo'])
+  assert.deepEqual(args('search', { label: '-wip' }).slice(-2), ['-l', '-wip'])
+  assert.equal(await boardRpc(B, async () => ({ ok: true, out: '' }), null), undefined, 'a null line does not kill the server')
+  assert.ok(!isSlug('-R/x') && !isSlug('a/b/c') && !isSlug('a b/c') && isSlug('acme/app'))
+  // Settings: how the user signs in and their model come along; what could widen the run does not.
+  assert.deepEqual(carriedFrom({ apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' }, permissions: { defaultMode: 'bypassPermissions' }, hooks: {}, mcpServers: {} }), { apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' } })
+  for (const [tool, a] of [['merge', { n: 1 }], ['api', {}], ['attach', { n: 1 }], ['move', { n: 7, column: 'shipped' }], ['move', { n: '7; whoami', column: 'todo' }], ['brief', { n: 0 }], ['comment', { n: 7, text: '  ' }]] as const)
+    assert.throws(() => boardArgs(B, tool, a as any), Error, `${tool} ${JSON.stringify(a)} is refused`)
+  const ran: [string[], string | undefined][] = []
+  const gh = async (a: string[], input?: string) => (ran.push([a, input]), { ok: true, out: '## Todo (1)' })
+  const call = (name: string, a: object) => boardRpc(B, gh, { id: 1, method: 'tools/call', params: { name, arguments: a } }) as Promise<any>
+  assert.equal((await call('board', {})).result.content[0].text, '## Todo (1)')
+  assert.deepEqual(ran, [[['rinai', '-R', B, 'board'], undefined]])
+  assert.equal((await call('api', { path: '/x' })).result.isError, true, 'no tool past the board')
+  assert.equal(ran.length, 1)
+  await call('comment', { n: 3, text: 'hi "there"' })
+  assert.deepEqual(ran[1], [['rinai', '-R', B, 'comment', '3', '-'], 'hi "there"'], 'the server hands gh the text on stdin')
+  const names = (((await boardRpc(B, gh, { id: 2, method: 'tools/list' })) as any).result.tools as any[]).map(t => t.name)
+  for (const t of names) assert.ok(!/merge|api|attach|download|kodr/.test(t), `${t} is a board tool`)
 }
 
 // rooted: the project's root off a tool line, however Windows spells it; elsewhere case counts.
@@ -763,7 +838,7 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   lines[0].onopen()
   await lines[0].onmessage({ data: JSON.stringify({ id: 'c1', verb: 'projects' }) })
   await lines[0].onmessage({ data: JSON.stringify({ id: 'c2', verb: 'notes', body: { project: 'nope' } }) })
-  assert.deepEqual(sent.map(t => JSON.parse(t)), [{ id: 'c1', answer: [{ name: 'app', base: 'main' }] }, { id: 'c2', error: sent[1] && JSON.parse(sent[1]).error }])
+  assert.deepEqual(sent.map(t => JSON.parse(t)), [{ id: 'c1', answer: [{ name: 'app', base: 'main', board: null }] }, { id: 'c2', error: sent[1] && JSON.parse(sent[1]).error }])
   assert.match(JSON.parse(sent[1]).error, /no project nope/)
   lines[0].onclose()
   assert.equal(bridge.connected, false)
