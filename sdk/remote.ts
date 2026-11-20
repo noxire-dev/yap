@@ -32,6 +32,28 @@ export interface Session {
   at: number
   /** Files it edited, relative to its working tree. */
   files: string[]
+  /** What it said it is working on, in its own words. */
+  doing?: string
+  /** Its questions and blockers to the user nobody has answered; `say` with `re` answers one. */
+  unanswered: { id: string; kind: 'question' | 'blocker'; text: string }[]
+}
+
+/** In the user's inbox: a session's message to the user, or the end of a background session the user started. */
+export interface Message {
+  project: string
+  id: string
+  /** Only goes up; pass the highest you have as `since`. */
+  seq: number
+  /** `question` and `blocker` wait for a `say` with `re`; `spawn` is a background session ending, `ok` how. */
+  kind: 'say' | 'question' | 'blocker' | 'spawn'
+  /** `session @name`, as the agents call it. */
+  from: string
+  /** The session's id; a `say` with `to` set to it reaches it. */
+  sender: string
+  text: string
+  at: number
+  re?: string
+  ok?: boolean
 }
 
 export interface Spawn {
@@ -47,6 +69,10 @@ export interface Spawn {
   ok?: boolean
   /** Its final message. */
   result?: string
+  /** How many lines its log has had; one a tool call. */
+  steps: number
+  /** With `spawns(id)`: what it did as it went, one line a tool call (`Edit src/a.ts`), after `since`. Claude Code only. */
+  log?: { n: number; at: number; line: string }[]
 }
 
 /** One line of a chat. `n` counts up per thread. */
@@ -141,9 +167,9 @@ export class Yap {
     return this.verb<Session[]>('sessions')
   }
 
-  /** Background sessions started since the daemon did, newest first. */
-  spawns() {
-    return this.verb<Spawn[]>('spawns')
+  /** Background sessions started since the daemon did, newest first. `id` picks one, with its `log` after line `since`. */
+  spawns(id?: string, since = 0) {
+    return this.verb<Spawn[]>('spawns', id ? { id, since } : {})
   }
 
   notes(project: string) {
@@ -155,9 +181,17 @@ export class Yap {
     return this.verb<Note>('note', { project, text })
   }
 
-  /** Message one session (`to`: its name or id, a prefix will do) or all of them in the project. */
-  say(project: string, text: string, to?: string) {
-    return this.verb<{ to: string[]; woke: string[] }>('say', { project, text, to })
+  /**
+   * Message one session (`to`: its name or id, a prefix will do) or all of them in the project. `re`: the id of a
+   * session's question or blocker this answers; with no `to` it goes to the asker and clears the question.
+   */
+  say(project: string, text: string, to?: string, o: { re?: string; kind?: 'question' | 'blocker' } = {}) {
+    return this.verb<{ id: string; to: string[]; woke: string[] }>('say', { project, text, to, ...o })
+  }
+
+  /** What sessions said to the user, and how background sessions ended, oldest first, after `since` (a `seq`); in one project, or all. */
+  inbox(since = 0, project?: string) {
+    return this.verb<Message[]>('inbox', { since, project })
   }
 
   /** Start a background agent session in the project on `task`. It runs on the user's machine. */
@@ -193,14 +227,19 @@ export class Yap {
     return this.verb<ChatThread[]>('chats', project ? { project } : {})
   }
 
-  /** Poll until the spawned session ends, and return how it did. Rides out the machine dropping off for a while. */
-  async wait(id: string, { every = 3000, timeout = 30 * 60_000 } = {}) {
+  /**
+   * Poll until the spawned session ends, and return how it did. `onLine` hears each line of its log once, as it
+   * goes. Rides out the machine dropping off for a while.
+   */
+  async wait(id: string, { every = 3000, timeout = 30 * 60_000, onLine }: { every?: number; timeout?: number; onLine?: (line: string) => void } = {}) {
     const until = Date.now() + timeout
+    let since = 0
     for (;;) {
-      const s = await this.verb<Spawn[]>('spawns', { id }).then(
+      const s = await this.verb<Spawn[]>('spawns', { id, since }).then(
         ([s]) => s ?? Promise.reject(new YapError(400, `no spawn ${id} on this machine`)),
         e => (e instanceof YapError && (e.status === 503 || e.status === 504) ? null : Promise.reject(e)),
       )
+      for (const l of s?.log ?? []) if (l.n > since) (onLine?.(l.line), (since = l.n))
       if (s?.done) return s
       if (Date.now() > until) throw new YapError(504, `spawn ${id} still running after ${timeout} ms`)
       await new Promise(r => setTimeout(r, every))

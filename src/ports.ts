@@ -98,6 +98,10 @@ export interface Store {
   /** Background sessions yap started, each an opaque JSON blob, oldest first. */
   spawns(): string[]
   saveSpawn(id: string, data: string): void
+  /** Messages sessions left for the user, each an opaque JSON blob, oldest first. */
+  userMessages(): string[]
+  /** Adds one and drops all but the newest `keep`. */
+  saveUserMessage(id: string, data: string, keep: number): void
 }
 
 export interface Ran {

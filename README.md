@@ -41,9 +41,11 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 
 | Command | |
 |---|---|
-| `yap sessions` | The live sessions, their names and what each edited. |
-| `yap say [--question\|--blocker] [--re <id>] [@name] <text>` | Message one session, or all of them in this repo. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
-| `yap spawn [--codex] <text>` / `yap spawns` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. |
+| `yap sessions` | The live sessions, their names, what each says it is doing and what each edited. |
+| `yap say [--question\|--blocker] [--re <id>] [@name] <text>` | Message one session, or all of them in this repo, or `@user` for you. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
+| `yap doing <text>` | From inside a session: say what it is working on, one line its peers and you see. |
+| `yap inbox` | What sessions in this repo said to you (`yap say @user`), and how background sessions you started ended. |
+| `yap spawn [--codex] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. |
 | `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
@@ -88,6 +90,12 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - Claims: `yap claim src/auth <why>` before a task that touches several files there. Sessions in any worktree
   of the repo are warned once before they edit under it, and a claim that overlaps it says who holds it. It lasts
   20 minutes past your last edit there; `yap release <id>` ends it, `yap claims` lists them.
+- Sessions say what they are on: `yap doing <text>` puts one line next to the session's name, in its peers'
+  context, `yap sessions` and the web. Sessions are told to set it when they start a task, and to pin anything
+  another session could use (an analysis, a decision, a research file) on the board with where it is.
+- A session can talk to you: `yap say @user <text>`, or `--question` / `--blocker`, lands in your inbox
+  (`yap inbox`, and the web's `inbox`). Answer with `yap say --re <id> <text>` from the web; it goes to the
+  asker and leaves its list. A background session asks you this way when a call is truly yours, and carries on.
 - Notes: `yap note <text>` pins a note on the repo's board (a decision, a warning, a handoff), `yap notes`
   reads it, `yap note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
   starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
@@ -95,8 +103,8 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - Who is live, what each edited and undelivered messages survive a daemon restart.
 - `yap sessions` lists them.
 - `yap spawn <text>` starts a background Claude Code session in this repo on that task. It is a peer like the
-  others: it hears about them, they hear about it, and `yap say` reaches it. Nobody can answer its questions, so
-  it makes its own calls under auto mode. Its final message comes back to the session that started it, or to
+  others: it hears about them, they hear about it, and `yap say` reaches it. It makes its own calls under auto
+  mode; one that is truly yours goes to your inbox as a question while it carries on. Its final message comes back to the session that started it, or to
   `yap spawns` when you started it from your terminal. Three run at once unless `yap config spawns <n>` says
   otherwise; past that, `spawn` is refused with a 429. A daemon restart marks the ones it was running as failed.
 
@@ -133,16 +141,18 @@ yap bridge                                     # paired, and connected?
 yap unpair                                     # every web client's token stops working
 ```
 
-A paired client can list your registered projects and their sessions, read and pin notes, message sessions,
-spawn background ones, and chat with Claude Code in a project: read-only in your checkout, or with edits in a
-worktree and branch of its own that you merge when you want it. It names projects, never paths, and nothing outside a registered project is visible.
+A paired client can list your registered projects and their sessions (with what each is doing), read and pin
+notes, message sessions, spawn background ones and follow them live, read your inbox (what sessions said to you
+and how spawns ended) and answer a session's question with `say` and `re`, and chat with Claude Code in a
+project: read-only in your checkout, or with edits in a worktree and branch of its own that you merge when you
+want it. It names projects, never paths, and nothing outside a registered project is visible.
 The wire is in [docs/yap.md](docs/yap.md#remote), and `sdk/remote.ts` is a typed client for it with no
 dependencies:
 
 ```ts
 const yap = await Yap.claim('https://yap-relay.<you>.workers.dev', '<device>.<code>')
 const { id } = await yap.spawn('app', 'add a retry to fetchUser')
-console.log((await yap.wait(id)).result)
+console.log((await yap.wait(id, { onLine: console.log })).result)  // each tool call as it goes
 ```
 
 ## The crew

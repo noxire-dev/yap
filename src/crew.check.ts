@@ -422,7 +422,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const { store, ws } = rig([])
   const reg = new Sessions(ws, store, () => 1_000_000)
   const answer = local(reg)
-  assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn'], 'v1: extensions by short name')
+  assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn', 'doing', 'inbox'], 'v1: extensions by short name')
   const fetcher = async (url: string, init: RequestInit) => {
     if (url.includes('/yap/events'))
       return new Response((await events(reg, new URL(url).searchParams.get('cwd'))).pipeThrough(new TextEncoderStream()))
@@ -677,6 +677,56 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   bridge.stop()
 }
 
+// doing and the user's inbox: a session says what it is on, and peers and the web see it. Its question to the user
+// waits in the inbox and on its own row, the web answers it with re, and the asker hears; a spawn the web started
+// ends in the inbox. The inbox outlives a restart.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const reg = new Sessions(ws, store, () => now, undefined, { run: async o => (o.onActivity?.('Read README.md'), o.onActivity?.('Edit README.md'), { ok: true, text: 'tidied' }) })
+  store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
+  const as = (session: string) => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd: '/repo', ...b }) as Promise<any>
+  const [A, B] = [as('aaaa1111'), as('bbbb2222')]
+  await A('join', { name: 'auth' })
+  await B('join', { name: 'api' })
+  now += 1000
+  assert.deepEqual(await A('doing', { text: 'rewriting token refresh\nand more' }), {})
+  assert.match((await B('turn', { prompt: 'go on' })).context, /- @auth \(aaaa1111\), active just now, doing "rewriting token refresh": no edits yet/)
+  assert.equal((await reg.peers('/repo')).find(s => s.name === 'auth')!.doing, 'rewriting token refresh')
+  await assert.rejects(local(reg)('doing', { cwd: '/repo', text: 'x' }), /only a session/)
+
+  const q = await A('say', { to: '@user', kind: 'question', text: 'drop the v0 hooks?' })
+  assert.deepEqual([q.to, q.woke], [['@user'], []])
+  assert.equal((await B('will-edit', { path: 'x.ts' })).messages, undefined, 'not for a peer')
+  assert.deepEqual((await reg.peers('/repo')).find(s => s.name === 'auth')!.unanswered!.map(u => u.to), [['the user']])
+  const web = remote(reg, () => store.projects())
+  const [m, ...none] = (await web('inbox', {})) as any[]
+  assert.deepEqual([m.project, m.kind, m.from, m.sender, m.text, none], ['app', 'question', 'session @auth', 'aaaa1111', 'drop the v0 hooks?', []])
+  assert.deepEqual(await local(reg)('inbox', { cwd: '/repo', since: 0 }).then((l: any) => l.map((x: any) => x.id)), [q.id])
+  assert.deepEqual(await web('inbox', { since: m.seq }), [])
+  const auth = ((await web('sessions', {})) as any[]).find(s => s.name === 'auth')
+  assert.deepEqual([auth.doing, auth.unanswered], ['rewriting token refresh', [{ id: q.id.slice(0, 8), kind: 'question', text: 'drop the v0 hooks?' }]])
+
+  await web('say', { project: 'app', text: 'yes, drop them', re: q.id.slice(0, 8) })
+  assert.match((await A('will-edit', { path: 'y.ts' })).context, new RegExp(`From the user, answering ${q.id.slice(0, 8)}: yes, drop them`))
+  assert.equal((await B('will-edit', { path: 'y.ts' })).messages, undefined, 'the answer goes to the asker only')
+  assert.deepEqual((await reg.peers('/repo')).find(s => s.name === 'auth')!.unanswered, [])
+  await assert.rejects(web('say', { project: 'app', to: 'user', text: 'x' }), /you are the user/)
+  assert.match((await as('cccc3333')('join', { name: 'user' })).context, /You are session @user-2\./, '`user` is taken')
+
+  const { id: sp } = (await web('spawn', { project: 'app', text: 'tidy the README' })) as any
+  await new Promise(r => setImmediate(r))
+  const end = ((await web('inbox', { since: m.seq })) as any[])[0]
+  assert.deepEqual([end.kind, end.ok, end.text], ['spawn', true, 'tidied'])
+  // Its log: each tool call a line, numbered; the list counts them, one spawn brings the ones after `since`.
+  const [listed] = (await web('spawns', {})) as any[]
+  assert.deepEqual([listed.steps, 'log' in listed], [2, false])
+  const [one] = (await web('spawns', { id: sp, since: 1 })) as any[]
+  assert.deepEqual(one.log.map((l: any) => [l.n, l.line]), [[2, 'Edit README.md']])
+  assert.deepEqual(((await local(reg)('spawns', { cwd: '/repo', id: sp })) as any[])[0].log.length, 2)
+  assert.deepEqual(new Sessions(ws, store, () => now).inbox().map(x => x.kind), ['question', 'spawn'], 'kept across a restart')
+}
+
 // The web client: claims once, keeps what it needs as JSON, waits for a spawn, and turns refusals into YapError.
 {
   const calls: [string, any, string][] = []
@@ -689,7 +739,9 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
     if (url.endsWith('/spawn')) return ok({ id: 'ab12cd34' })
     if (url.endsWith('/chat')) return ok({ thread: 'th1' })
     if (url.endsWith('/spawns'))
-      return ++polls === 1 ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 }) : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it' }])
+      return ++polls === 1
+        ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 })
+        : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it', log: [{ n: 1, line: 'Read a.ts' }, { n: polls, line: `step ${polls}` }].filter(l => l.n > body.since) }])
     return new Response(JSON.stringify({ error: 'no project nope' }), { status: 400 })
   }) as any
   const yap = await Yap.claim('https://relay.test/', 'dev1.c0de', relay)
@@ -697,7 +749,9 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   const again = Yap.from(JSON.parse(JSON.stringify(yap)), relay)
   const { id } = await again.spawn('app', 'tidy')
   assert.deepEqual(calls[1], ['https://relay.test/d/dev1/spawn', { project: 'app', text: 'tidy' }, 'Bearer t0k'])
-  assert.equal((await again.wait(id, { every: 0 })).result, 'did it')
+  const lines: string[] = []
+  assert.equal((await again.wait(id, { every: 0, onLine: l => lines.push(l) })).result, 'did it')
+  assert.deepEqual(lines, ['Read a.ts', 'step 2', 'step 3'], 'each line once, in order')
   assert.equal(polls, 3, 'rode out a 503')
   await assert.rejects(again.notes('nope'), (e: any) => e instanceof YapError && e.status === 400 && /no project nope/.test(e.message))
   assert.deepEqual(await again.chat('app', 'why?', { edits: true }), { thread: 'th1' })

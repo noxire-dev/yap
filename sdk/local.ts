@@ -57,6 +57,13 @@ export type YapEvent =
   /** For `session`: wake it if it sits idle (`wakePrompt`), unless it is a `conflict`, which waits for its next turn. */
   | ({ type: 'message'; repo: string; session: string; name: string } & Message)
   | { type: 'note'; repo: string; id: number; author: string; text: string }
+  /** A background session started there made a tool call: `spawn` its id, `line` what it did. */
+  | { type: 'activity'; repo: string; spawn: string; line: string }
+  /** A session said what it is working on; `text` `''` cleared it. */
+  | { type: 'doing'; repo: string; session: string; name: string; text: string }
+
+/** In the user's inbox: a session's `say` to `user`, or the end of a background session the user started. */
+export type ForUser = Message & { repo: string }
 
 export interface Peer {
   id: string
@@ -68,6 +75,8 @@ export interface Peer {
   started: number
   /** Last heard from. */
   at: number
+  /** What it said it is working on (`doing`). */
+  doing?: string
   /** Files it edited, relative to `top`. */
   files: string[]
   /** Sessions in other worktrees whose working tree would conflict with its own if merged, and in which files. */
@@ -107,6 +116,10 @@ export interface Spawn {
   result?: string
   /** Who ran it; Claude Code when missing. */
   agent?: 'claude' | 'codex'
+  /** How many lines its log has had; one a tool call. */
+  steps: number
+  /** With an `id`: what it did as it went, one line a tool call, after `since`. Claude Code only. */
+  log?: { n: number; at: number; line: string }[]
 }
 
 /** A refusal: 400 a bad call, 403 a wrong token, 429 too many spawns running; 0 the daemon is not there. */
@@ -194,14 +207,19 @@ export class YapLocal {
     return this.call<Note[]>('notes', { cwd })
   }
 
-  /** Background sessions started in the repo, newest first. */
-  spawns(cwd: string) {
-    return this.call<Spawn[]>('spawns', { cwd })
+  /** Background sessions started in the repo, newest first. `id` (a prefix) picks one, with its `log` after line `since`. */
+  spawns(cwd: string, id?: string, since = 0) {
+    return this.call<Spawn[]>('spawns', { cwd, id, since })
   }
 
   /** The user's message to one session (`to`: a name or id prefix) or all of them in the repo. */
   say(cwd: string, text: string, to?: string, o: Said = {}) {
     return this.call<{ id: string; to: string[]; woke: string[] }>('say', { cwd, text, to, ...o })
+  }
+
+  /** What sessions in the repo said to the user (`say` to `user`), and how background sessions the user started ended, oldest first, after `since` (a `seq`). */
+  inbox(cwd: string, since = 0) {
+    return this.call<ForUser[]>('inbox', { cwd, since })
   }
 
   /** The user's note on the repo's board. */
@@ -321,6 +339,11 @@ export class YapSession {
   /** Message one peer (`to`: a name or id prefix) or every session in the repo, as this session. */
   say(text: string, to?: string, o: Said = {}) {
     return this.yap.call<{ id: string; to: string[]; woke: string[] }>('say', { session: this.id, cwd: this.cwd, text, to, ...o })
+  }
+
+  /** Say what this session is working on, one line peers and the user see; `''` clears it. */
+  doing(text: string) {
+    return this.yap.call<{}>('doing', { session: this.id, cwd: this.cwd, text })
   }
 
   /** Pin a note on the repo's board, as this session. */

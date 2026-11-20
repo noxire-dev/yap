@@ -186,7 +186,10 @@ Bun.serve({
     },
     '/yap/:verb': { POST: api((req, b) => answerLocal(req.params.verb, b), true) },
     '/api/sessions': api(() => sessions.list()),
-    '/api/spawns': api(() => sessions.spawns()),
+    '/api/spawns': api(req => {
+      const q = new URL(req.url).searchParams
+      return sessions.spawns(q.get('id') || undefined, Number(q.get('since')) || 0)
+    }),
     '/api/bridge': {
       GET: api(() => (bridge ? { relay: bridge.pairing.relay, device: bridge.pairing.device, connected: bridge.connected } : {})),
       POST: api(() => rebridge()),

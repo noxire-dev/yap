@@ -1,7 +1,7 @@
 import { PROTOCOL, type Sessions, VERBS, type Verb } from './sessions'
 
 /** Everything `/yap/<verb>` takes: the agent's own verbs, then the ones about the repo. */
-export const ALL = [...VERBS, 'say', 'note', 'unnote', 'spawn', 'claim', 'release', 'hello', 'sessions', 'notes', 'spawns', 'claims']
+export const ALL = [...VERBS, 'say', 'note', 'unnote', 'spawn', 'claim', 'release', 'doing', 'hello', 'sessions', 'notes', 'spawns', 'claims', 'inbox']
 
 /** `POST /yap/<verb>` on this machine: a JSON body in, the verb's answer out. Throws on a bad call. */
 export function local(sessions: Sessions) {
@@ -14,11 +14,13 @@ export function local(sessions: Sessions) {
     if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? ''), agent: str('agent') === 'codex' ? 'codex' : undefined })
     if (verb === 'claim') return sessions.claim({ from: str('session'), cwd, path: String(b.path ?? ''), why: String(b.why ?? '') })
     if (verb === 'release') return sessions.release({ from: str('session'), id: String(b.id ?? '') })
+    if (verb === 'doing') return sessions.doing({ from: str('session'), cwd, text: String(b.text ?? '') })
+    if (verb === 'inbox') return sessions.inboxIn(cwd, Number(b.since) || 0)
     if (verb === 'claims') return sessions.claims(cwd)
     if (verb === 'hello') return { ...PROTOCOL, verbs: ALL }
     if (verb === 'sessions') return sessions.peers(cwd)
     if (verb === 'notes') return sessions.notes(cwd)
-    if (verb === 'spawns') return sessions.spawnsIn(cwd)
+    if (verb === 'spawns') return sessions.spawnsIn(cwd, str('id'), Number(b.since) || 0)
     if (!VERBS.includes(verb as Verb)) throw new Error(`no verb ${verb}; YAP has ${ALL.join(', ')}`)
     return sessions.yap(verb as Verb, {
       session: str('session'),

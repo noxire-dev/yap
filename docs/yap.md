@@ -38,23 +38,25 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. When two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first. |
 | `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
-| `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`) | Queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
+| `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`) | `to` `user` is the person, not a peer: the message goes to the user's inbox (`inbox`, local and remote), a `question` or `blocker` stays on the sender's `unanswered` until the user replies with `re`, and nobody is woken; the user can't `say` to `user`, and no session is named `user`. Otherwise queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
 | `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
 | `unnote` | `id` | Takes a note down. |
 | `claim` | `path`, `why` | Claims a file or directory inside the session's working tree, before working under it. Answers `{ id }`, or `{ held: { session, name, path, why } }` when a peer's live claim in any worktree of the repo overlaps it. Overlap is by path components: `src/auth` covers `src/auth/token.ts`, not `src/author`. First claim wins; nothing queues. Join and turn context list peers' claims. |
 | `release` | `id` | Ends one of the session's claims early. |
 | `spawn` | `text`, the task; `agent`, optional: `codex` | Starts a background Claude Code session (or Codex: `codex exec` in its workspace sandbox) in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
+| `doing` | `text`, one line | Sets what the session says it is working on, in its own words; empty `text` clears it. Peers see it next to its name in join and turn context (they hear on their next prompt, as for an edit), and `sessions`, local and remote, list it. Only a session sends it. |
 
 Messages queued for a session are delivered with its next answer, on any verb.
 
-Five more read the repo `cwd` sits in, for a harness or a tool, and change nothing:
+Six more read the repo `cwd` sits in, for a harness or a tool, and change nothing:
 
 | Verb | Answers |
 |---|---|
 | `hello` | `{ protocol: "yap", version, verbs, extensions }` |
-| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, files, conflicts, undelivered, unanswered }]`, `files` relative to `top`; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries; `unanswered` is `[{ id, to, kind, text }]`, its questions and blockers nobody has replied to with `re` |
+| `sessions` | its live sessions: `[{ id, name, top, repo, started, at, doing?, files, conflicts, undelivered, unanswered }]`, `files` relative to `top`; `doing` what it said it is working on; `conflicts` is `[{ with, files }]`, the peers whose working tree would conflict with its own; `undelivered` is `[{ id, from, text }]`, messages it never acked after three deliveries; `unanswered` is `[{ id, to, kind, text }]`, its questions and blockers nobody has replied to with `re`, `to` `the user` for one asked of the person |
+| `inbox` | `since`, optional, a `seq`. What sessions in the repo said to the user and how background sessions the user started ended, oldest first, after `since`: `[{ id, seq, kind: "say" \| "question" \| "blocker" \| "spawn", origin, from, sender, text, at, re?, ok?, repo }]`. The newest 200 are kept, across restarts. |
 | `notes` | its board, newest first: `[{ id, ts, author, text, repo }]` |
-| `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result? }]` |
+| `spawns` | background sessions started there, newest first: `[{ id, name, task, from, started, done?, ok?, result?, steps }]`. `steps` counts its log: one line a tool call it made (`Edit src/a.ts`), Claude Code only. `id` (a prefix) picks one and adds `log`, `[{ n, at, line }]`, the lines after `since` (an `n`); the newest 200 are kept. Poll it to follow a spawn live |
 | `claims` | its live claims, every worktree: `[{ id, session, name, top, path, why, expires }]`, `path` relative to `top` |
 
 ## Core and extensions
@@ -69,6 +71,8 @@ Every YAP daemon has the core: `join`, `turn`, `will-edit`, `edited`, `will-run`
 | `claims` | `claim`, `release`, `claims` |
 | `conflicts` | the merge check at `idle` and the `conflict` message kind |
 | `spawn` | `spawn`, `spawns` |
+| `doing` | `doing`, and `doing` on `sessions` |
+| `inbox` | `say` to `user`, `inbox` |
 
 A daemon has an extension or it doesn't; nothing negotiates. The relay (Remote, below) is not an extension.
 
@@ -159,8 +163,10 @@ curl -s -H content-type:application/json -H "x-yap-token: $(cat ~/.yap/token)" \
 | `join` | `session`, `name`, `pid` | a session registers (any verb from a new id) |
 | `leave` | `session`, `name` | it leaves, or goes 2 hours silent |
 | `edited` | `session`, `name`, `path` (relative to its tree) | it edits a file, or a shell command of its does |
-| `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending, a merge conflict found or cleared |
+| `message` | `session` (the one it is for), `name`, and the message's `kind`, `from`, `sender`, `text`, `at`, `ok?` | something is queued for it: a `say`, a note, a spawn it started ending, a merge conflict found or cleared. `session` `user`: it went to the user's inbox |
 | `note` | `id`, `author`, `text` | a note goes on the board |
+| `doing` | `session`, `name`, `text` | a session says what it is working on; `""` cleared it |
+| `activity` | `spawn` (its id, 8 characters), `line` | a background session yap started made a tool call |
 
 Every event also has `repo`, the repo's main checkout, normalized (forward slashes, lowercase on Windows). The
 stream starts empty: read `sessions` first for who is already there.
@@ -206,7 +212,7 @@ An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an M
 joins on its first request, named for the client (`clientInfo`, from `initialize` or `_meta`), and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
 `run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
-`yap_claim` (`path` and `why`, or `release`), `yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
+`yap_claim` (`path` and `why`, or `release`), `yap_doing`, `yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
 `yap_say` takes `kind` and `re`, and `yap_peers` lists claims and unanswered questions and blockers. It speaks MCP
 2026-07-28 (no handshake: `server/discover`, the version in each request's `_meta`, `-32022` for one it doesn't
 support) and the handshake versions before it, answering an `initialize` with the client's version when it
@@ -282,13 +288,14 @@ token was given it by the user.
 
 | Verb | Body | Answer |
 |---|---|---|
-| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn` and `chat` |
+| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox` and `chat` |
 | `projects` | | `[{ name, base }]` |
-| `sessions` | | live sessions in projects: `[{ project, id, name, at, files }]` |
-| `spawns` | `id`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result? }]`; `id` picks one |
+| `sessions` | | live sessions in projects: `[{ project, id, name, at, files, doing?, unanswered }]`; `unanswered` is `[{ id, kind, text }]`, its questions and blockers to the user nobody has answered |
+| `spawns` | `id`?, `since`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result?, steps }]`; `id` picks one and adds its `log` after line `since`, as locally |
 | `notes` | `project` | the project's board |
 | `note` | `project`, `text` | pins a note |
-| `say` | `project`, `text`, `to`? | messages a session there, or all of them |
+| `say` | `project`, `text`, `to`?, `kind`?, `re`? | messages a session there, or all of them: `{ id, to, woke }`. With `re`, the id (or 8 characters of it) of a session's question or blocker, it answers it: with no `to` it goes to the asker and leaves its `unanswered` |
+| `inbox` | `since`?, `project`? | what sessions said to the user and how background sessions ended, oldest first, after `since`: `[{ project, id, seq, kind, origin, from, sender, text, at, re?, ok? }]`, every project or one. Poll it with the highest `seq` you have |
 | `spawn` | `project`, `text` | starts a background session on the task: `{ id }` |
 | `chat` | `project`, `text`, `thread`?, `edits`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
 | `chat.read` | `thread`, `after`? | `{ thread, project, branch, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
@@ -317,11 +324,17 @@ import { Yap } from './remote'
 const yap = await Yap.claim('https://yap-relay.example.workers.dev', '<device>.<code>')
 localStorage.yap = JSON.stringify(yap)            // { relay, device, token }; the code works once
 const { id } = await yap.spawn('app', 'add a retry to fetchUser')
-const run = await yap.wait(id)                    // polls spawns until it ends
+const run = await yap.wait(id, { onLine: console.log })  // polls spawns until it ends, each tool call as it goes
 console.log(run.ok, run.result)
 
 const later = Yap.from(JSON.parse(localStorage.yap))
 await later.say('app', 'the deploy is frozen until 6pm')
+
+let since = 0
+for (const m of await later.inbox(since)) {   // what agents said to you, and spawns ending
+  since = m.seq
+  if (m.kind === 'question') await later.say(m.project, 'yes', undefined, { re: m.id })
+}
 ```
 
 Each remote verb is a method; a refusal throws `YapError` with the status above.
