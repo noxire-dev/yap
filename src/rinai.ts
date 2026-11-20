@@ -47,16 +47,7 @@ export class Rinai implements Tracker {
       .sort((a, b) => rank(a) - rank(b))
   }
 
-  async brief(repo: string, n: number, by?: string) {
-    if (!by) return this.call('GET', `/${repo}/issues/${n}.md`)
-    // ponytail: the first 100 comments. A longer thread loses by's later ones; page by the Link header if that bites.
-    const [issue, comments] = await Promise.all([
-      this.json(`/repos/${repo}/issues/${n}`),
-      this.json(`/repos/${repo}/issues/${n}/comments?per_page=100`),
-    ])
-    const own = (comments as any[]).filter(c => c.user?.login?.toLowerCase() === by.toLowerCase())
-    return [`# #${n} ${issue.title}`, '', issue.body ?? '', ...own.flatMap(c => ['', `## ${by}, ${c.created_at}`, '', c.body ?? ''])].join('\n')
-  }
+  brief = (repo: string, n: number) => this.call('GET', `/${repo}/issues/${n}.md`)
 
   file = async (repo: string, title: string, body: string) => JSON.parse(await this.call('POST', `/api/${repo}/issues`, { title, body })) as Card
 
@@ -72,24 +63,31 @@ export class Rinai implements Tracker {
     await this.call('POST', `/api/${repo}/issues/${n}/comments`, text)
   }
 
-  /** GitHub itself, for what Rinai does not answer: who applied a label, who commented, and who we are. */
+  /** GitHub itself, for what Rinai does not answer: who applied a label, and who we are. */
   private async github(path: string, token?: string) {
     const res = await fetch(GITHUB + path, { headers: { authorization: `Bearer ${token ?? (await this.auth())}`, 'user-agent': 'yap', accept: 'application/vnd.github+json' } })
     if (!res.ok) throw new Error(`github answered ${res.status}`)
     return res
   }
-  private json = async (path: string) => (await this.github(path)).json() as Promise<any>
 
   async handed(repo: string, label: string) {
-    return (JSON.parse(await this.call('GET', `/api/${repo}/issues?label=${encodeURIComponent(label)}`)).issues as Card[]).filter(c => c.column !== 'done')
+    const body = JSON.parse(await this.call('GET', `/api/${repo}/issues?label=${encodeURIComponent(label)}`))
+    // A capped board would make a label look like it came off.
+    if (body.truncated) throw new Error(`${repo} has more tasks than the board reads at once`)
+    return (body.issues as Card[]).filter(c => c.column !== 'done')
   }
 
   async labeler(repo: string, n: number, label: string) {
-    // Events come oldest first, and the latest `labeled` is what counts: read page 1, then the last page if there is one.
-    const first = await this.github(`/repos/${repo}/issues/${n}/events?per_page=100`)
-    const last = first.headers.get('link')?.match(/<([^>]+)>;\s*rel="last"/)?.[1]
-    const events: any[] = [...(await first.json()), ...(last ? await (await this.github(last.slice(GITHUB.length))).json() : [])]
-    return (events.filter(e => e.event === 'labeled' && e.label?.name === label).pop()?.actor?.login as string | undefined) ?? null
+    // Events come oldest first and the latest `labeled` counts: walk back from the last page to the first that has one.
+    const path = `/repos/${repo}/issues/${n}/events?per_page=100`
+    const first = await this.github(path)
+    const pages = Number(first.headers.get('link')?.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/)?.[1] ?? 1)
+    for (let page = pages; page >= 1; page--) {
+      const events: any[] = await (page === 1 ? first : await this.github(`${path}&page=${page}`)).json()
+      const last = events.filter(e => e.event === 'labeled' && e.label?.name === label).pop()
+      if (last) return (last.actor?.login as string | undefined) ?? null
+    }
+    return null
   }
 
   /** Cached with the token it was read with: `gh auth switch` is a different person. */

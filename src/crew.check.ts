@@ -21,7 +21,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[]; briefFails?: boolean; slowBrief?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -89,16 +89,20 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
   const told: string[] = []
   const tracker: Tracker = {
     cards: async () => [{ number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: true }],
-    brief: async (_r, n, by) => {
+    brief: async (_r, n) => {
+      if (o.briefGate) told.push(`brief ${n}`)
       if (o.briefFails) throw new Error('offline')
-      if (o.slowBrief) await Bun.sleep(50)
-      return `# issue ${n}\nthe brief${by ? ` by ${by} only` : ''}`
+      await o.briefGate
+      return `# issue ${n}\nthe brief`
     },
     file: async (_r, title) => (told.push(`file ${title}`), { number: 9, title, column: 'todo', priority: 'normal', cycle: false }),
     claim: async (_r, n) => void told.push(`claim ${n}`),
     move: async (_r, n, column) => void told.push(`move ${n} ${column}`),
     comment: async (_r, n, text) => void told.push(`comment ${n} ${text.split('\n')[0]}`, ...(text.includes('The crew did') ? ['the reporter summary leaked'] : [])),
-    handed: async () => (o.handed ?? []).map(({ by, ...c }) => c),
+    handed: async () => {
+      if (o.handedFails) throw new Error('capped')
+      return (o.handed ?? []).map(({ by, ...c }) => c)
+    },
     labeler: async (_r, n) => (told.push(`events ${n}`), o.handed?.find(c => c.number === n)?.by ?? null),
     me: async () => 'you',
   }
@@ -208,17 +212,18 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal(store.tickets()[0].summary, 'did the thing', 'the ticket carries its author\'s report')
 }
 
-// Handed on the board: the crew label from the person this machine works for is the go for that issue. Anyone
-// else's label is left alone, and an issue already on the rail is not taken twice, nor its labeller read again.
+// Handed on the board: the crew label from the person this machine works for brings the issue onto the rail as
+// drafts that wait for a human. Anyone else's label is left alone, and an issue already on the rail is not taken
+// twice, nor its labeller read again.
 {
   const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false }
-  const { store, crew, prompts, told } = rig([true, true], { handed: [{ ...card, by: 'You' }, { ...card, number: 8, by: 'stranger' }, { ...card, number: 9, by: null }] })
+  const { store, crew, told } = rig([true, true], { handed: [{ ...card, by: 'You' }, { ...card, number: 8, by: 'stranger' }, { ...card, number: 9, by: null }] })
   await crew.openProject('.')
   await crew.openProject('/elsewhere')
   await crew.watch()
-  await until(() => store.tickets().length === 2 && store.tickets().every(t => t.status !== 'draft'))
+  await until(() => store.goals()[0]?.status === 'ready')
   assert.deepEqual(store.goals().map(g => g.issue), [7], 'only the issue its own person handed, in one project of the two on that board')
-  assert.match(prompts[0], /the brief by You only/, 'an auto-started brief is the body and my own comments')
+  assert.deepEqual(store.tickets().map(t => t.status), ['draft', 'draft'], 'drafts: a human starts them')
   told.length = 0
   await crew.watch()
   assert.equal(store.goals().length, 1, 'not taken twice')
@@ -227,12 +232,14 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 // A take in flight holds the issue: a manual `yap take` racing the poll does not put it on the rail twice.
 {
   const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, by: 'you' }
-  const { store, crew, told } = rig([true, true], { handed: [card], slowBrief: true })
+  let open!: () => void
+  const o = { handed: [card], briefGate: new Promise<void>(r => (open = r)) }
+  const { store, crew, told } = rig([true, true], o)
   const p = await crew.openProject('.')
   const polling = crew.watch()
-  await until(() => told.includes('events 7'))
-  await Bun.sleep(5) // the poll is now inside its take, waiting on the brief
+  await until(() => told.includes('brief 7'))
   await assert.rejects(crew.take(p.id, 7, 'from the board'), /already on the rail/)
+  open()
   await polling
   assert.equal(store.goals().length, 1, 'one goal for one issue')
 }
@@ -254,17 +261,25 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const tracked = down.store.events({ project_id: q.id }).filter(e => e.kind === 'tracker').map(e => e.data.did)
   assert.deepEqual(tracked, ['hand failed'], 'one failure line, no handed line for what was not taken')
 }
-// Taking the label off is the take back: the handed goal's tickets that have not started are dropped.
+// Taking the label off is the take back: the handed goal's drafts are dropped. A board that can't be read whole
+// drops nothing, and an issue a human took with `yap take` is theirs, label or none.
 {
   const card = { number: 7, title: 'from the board', column: 'todo', priority: 'normal', cycle: false, by: 'you' }
-  const o = { handed: [card], hang: true }
+  const o: { handed: (typeof card)[]; handedFails?: boolean } = { handed: [card] }
   const { store, crew } = rig([true, true], o)
-  await crew.openProject('.')
+  const p = await crew.openProject('.')
   await crew.watch()
-  await until(() => store.tickets().some(t => t.status === 'working'))
+  await crew.take(p.id, 5, 'taken by hand')
+  await until(() => store.goals().every(g => g.status === 'ready') && store.tickets().length === 4)
   o.handed = []
+  o.handedFails = true
   await crew.watch()
-  assert.deepEqual(store.tickets().map(t => t.status), ['working', 'dropped'], 'the running one is left to a human; the waiting one goes')
+  assert.ok(store.tickets().every(t => t.status === 'draft'), 'a failed read is not a label coming off')
+  o.handedFails = false
+  await crew.watch()
+  const by = (issue: number) => store.tickets().filter(t => store.goals().find(g => g.id === t.goal_id)!.issue === issue).map(t => t.status)
+  assert.deepEqual(by(7), ['dropped', 'dropped'], 'the handed drafts go')
+  assert.deepEqual(by(5), ['draft', 'draft'], 'the hand-taken ones stay')
 }
 
 // An author that reports BLOCKED goes to a human, not to the reviewer.

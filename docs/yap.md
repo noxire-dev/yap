@@ -241,16 +241,16 @@ Another agent is one more adapter like it, or none (above): a harness can call `
 ## Handed on the board
 
 A Rinai board hands an issue to the crew with one label, `crew`. Nothing on the web reaches the machine: the
-daemon reads each registered project's board once a minute (`Crew.watch`), and for an open issue carrying the
-label it reads who put it there (GitHub's issue events, the latest `labeled`). It takes the issue only if that
-login is the one `gh` is signed in as, and only once: an issue that has ever been on the rail, a failed one
-included, waits for `yap take`. The label is the go for that issue, so its tickets start as soon as they are
-planned. Progress goes back as it already does: claimed, commented, In review or Blocked.
+daemon reads each running project's board once a minute (`Crew.watch`), one project per board however many
+checkouts of the repo are registered. For an open issue carrying the label it reads who put it there (GitHub's
+issue events, walking back from the newest page to the latest `labeled`). It takes the issue only if that login is
+the one `gh` is signed in as, and only once: an issue that has ever been on the rail, a failed one included, waits
+for `yap take`.
 
-Because nobody reads those drafts first, the planner's brief for a handed issue is the issue body and the comments
-of the person who handed it, nothing else: on a public repo anyone can comment. A running project reads a board
-once, however many checkouts of that repo are registered. Taking the label off (or closing the issue) is the take
-back: the handed goal's tickets that have not started are dropped, and a running one is left for a human to stop.
+The label brings the issue onto the rail as drafts, never as started work: its title, body and comments are
+whoever wrote them, so a human reads the plan and starts it. Taking the label off (or closing the issue) drops the
+handed goal's drafts; anything already started is the human's to stop. A board read that is capped or fails drops
+nothing. Progress goes back as it already does: claimed, commented, In review or Blocked.
 
 ## Remote
 
