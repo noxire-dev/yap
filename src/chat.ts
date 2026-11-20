@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { isSlug } from './board'
 import type { AgentRunner, Project, Workspace } from './ports'
 
 /** One line of a chat, as the web client draws it. `n` counts up per thread, so a client asks for what is after it. */
@@ -94,13 +94,14 @@ export class Chats {
     if (!t) {
       // A remote added since the project was registered counts: ask git again, as the crew does.
       const slug = mode === 'board' ? (p.tracker ?? (await this.ws.slug(p.path))) : null
-      if (mode === 'board' && !slug) throw new Error(`${p.name} has no board: it needs a GitHub remote`)
+      if (mode === 'board' && !isSlug(slug)) throw new Error(`${p.name} has no board: it needs a GitHub remote`)
       const edits = mode === 'edits'
       const session = randomUUID()
       const id = session.slice(0, 8)
       const branch = edits ? `yap/chat-${id}` : null
-      // A board chat has no use for the checkout and no tools that read it: it runs outside it.
-      const cwd = branch ? join(this.home, 'chats', p.name, id) : slug ? tmpdir() : p.path
+      // A board chat has no use for the checkout and no tools that read it: it runs outside it, in a folder of yap's
+      // own (a shared /tmp would let another user leave a CLAUDE.md or bunfig.toml there for it).
+      const cwd = branch ? join(this.home, 'chats', p.name, id) : slug ? join(this.home, 'chats', p.name, 'board') : p.path
       // The worktree is made behind the answer: a big repo takes longer than the relay waits for `{ thread }`.
       const ready = branch ? this.ws.worktree(p.path, cwd, branch, p.base) : Promise.resolve()
       ready.catch(() => {})

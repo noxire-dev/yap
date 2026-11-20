@@ -60,12 +60,19 @@ const one = (v: unknown, of: string[]) => {
   if (typeof v !== 'string' || !of.includes(v)) throw new Error(`expected one of ${of.join(', ')}`)
   return v
 }
-/** Free text, as one argument. "-" alone would make gh rinai read stdin, and a leading dash reads as a flag. */
+/**
+ * Free text, as one argument, exactly as given. gh rinai reads its text positionally (a leading dash is text), and
+ * only a lone "-" means something else: read stdin.
+ */
 const words = (v: unknown, what: string) => {
   const s = typeof v === 'string' ? v.trim() : ''
   if (!s) throw new Error(`${what} is empty`)
-  return s.startsWith('-') ? ` ${s}` : s
+  if (s === '-') throw new Error(`${what} cannot be a lone dash`)
+  return s
 }
+
+/** An `owner/repo` slug, and nothing that could read as a flag or a path. */
+export const isSlug = (s: unknown): s is string => typeof s === 'string' && /^[\w.-]+\/[\w.-]+$/.test(s) && !s.startsWith('-')
 const nums = (v: unknown) => {
   if (!Array.isArray(v) || !v.length) throw new Error('give at least one task number')
   return v.map(num)
@@ -122,8 +129,8 @@ export function boardArgs(board: string, tool: string, a: Record<string, unknown
 }
 
 /** One JSON-RPC message in, its reply out; none for a notification. */
-export async function boardRpc(board: string, gh: Gh, m: { id?: unknown; method?: string; params?: any }) {
-  if (m.id === undefined) return
+export async function boardRpc(board: string, gh: Gh, m: { id?: unknown; method?: string; params?: any } | null) {
+  if (!m || typeof m !== 'object' || m.id === undefined) return
   const ok = (result: object) => ({ jsonrpc: '2.0', id: m.id, result })
   if (m.method === 'initialize')
     return ok({ protocolVersion: m.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'rinai', version: '1' } })
@@ -158,13 +165,13 @@ export async function serveBoard(board: string, input: AsyncIterable<string> | R
     } catch {
       continue
     }
-    const reply = await boardRpc(board, gh, m)
-    if (reply) process.stdout.write(JSON.stringify(reply) + '\n')
+    // Each call answers when it is done: a slow board read does not hold up a move made beside it.
+    void boardRpc(board, gh, m).then(reply => reply && process.stdout.write(JSON.stringify(reply) + '\n'))
   }
 }
 
 if (import.meta.main) {
   const board = process.argv[2] ?? ''
-  if (!/^[\w.-]+\/[\w.-]+$/.test(board)) throw new Error('bun src/board.ts <owner/repo>')
+  if (!isSlug(board)) throw new Error('bun src/board.ts <owner/repo>')
   await serveBoard(board, console as unknown as AsyncIterable<string>)
 }

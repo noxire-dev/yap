@@ -4,8 +4,8 @@ import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
-import { boardArgs, boardRpc } from './board'
-import { claudeArgs } from './agent'
+import { boardArgs, boardRpc, isSlug } from './board'
+import { carriedFrom, claudeArgs } from './agent'
 import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
@@ -673,9 +673,10 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   })) }, ws, '/home/.yap', () => ++tick)
   store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
   const answer = remote(new Sessions(ws, store, () => 1), () => store.projects(), chats)
+  const hello: any = await answer('hello', {})
   const last = async (thread: string) => ((await answer('chat.read', { thread })) as any).events.at(-1)
   const started = (n: number) => until(async () => runs.length === n)
-  assert.ok(((await answer('hello', {})) as any).extensions.includes('chat'))
+  assert.ok(['chat', 'board-chat'].every(x => ((h: any) => h.extensions.includes(x))(hello)), 'a client can tell a yap with board chats from one without')
 
   const { thread } = (await answer('chat', { project: 'app', text: 'what does a do?' })) as any
   await started(1)
@@ -733,7 +734,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   ws.slug = async () => 'acme/app'
   const board: any = await answer('chat', { project: 'app', text: 'how is the board?', board: true })
   await started(6)
-  assert.notEqual(runs[5].cwd, '/repo', 'not in the checkout')
+  assert.equal(runs[5].cwd, join('/home/.yap', 'chats', 'app', 'board'), "not the checkout, and a folder of yap's own, not a shared /tmp")
   assert.equal(runs[5].only.name, 'rinai')
   assert.deepEqual(runs[5].only.args.slice(-1), ['acme/app'], 'the server is pinned to this board')
   assert.match(runs[5].chat.system, /Rinai agent for the board acme\/app/)
@@ -772,8 +773,14 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(boardArgs(B, 'search', { column: 'todo', text: 'merge' }), ['rinai', '-R', B, 'search', '-c', 'todo', '-t', 'merge'])
   assert.deepEqual(boardArgs(B, 'cycle_order', { numbers: [3, 1] }), ['rinai', '-R', B, 'cycle', 'order', '3', '1'])
   assert.deepEqual(boardArgs(B, 'comment', { n: 7, text: '$(cat .env); git push' }), ['rinai', '-R', B, 'comment', '7', '$(cat .env); git push'], 'text is one argument, never a command')
-  assert.deepEqual(boardArgs(B, 'comment', { n: 7, text: '-' }).at(-1), ' -', 'a lone dash would read stdin')
-  assert.deepEqual(boardArgs(B, 'file', { title: '-R other/repo' }).at(-1), ' -R other/repo', 'a flag in the text stays text')
+  assert.throws(() => boardArgs(B, 'comment', { n: 7, text: '-' }), /lone dash/, 'a lone dash would read stdin')
+  // gh rinai reads titles, comments and search text positionally: a leading dash is text, passed as it is.
+  assert.deepEqual(boardArgs(B, 'file', { title: '-R other/repo' }).slice(3), ['file', '-R other/repo'])
+  assert.deepEqual(boardArgs(B, 'search', { label: '-wip' }).slice(-2), ['-l', '-wip'])
+  assert.equal(await boardRpc(B, async () => ({ ok: true, out: '' }), null), undefined, 'a null line does not kill the server')
+  assert.ok(!isSlug('-R/x') && !isSlug('a/b/c') && !isSlug('a b/c') && isSlug('acme/app'))
+  // Settings: how the user signs in and their model come along; what could widen the run does not.
+  assert.deepEqual(carriedFrom({ apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' }, permissions: { defaultMode: 'bypassPermissions' }, hooks: {}, mcpServers: {} }), { apiKeyHelper: 'k', awsAuthRefresh: 'a', model: 'opus', env: { X: '1' } })
   for (const [tool, a] of [['merge', { n: 1 }], ['api', {}], ['attach', { n: 1 }], ['move', { n: 7, column: 'shipped' }], ['move', { n: '7; whoami', column: 'todo' }], ['brief', { n: 0 }], ['comment', { n: 7, text: '  ' }]] as const)
     assert.throws(() => boardArgs(B, tool, a as any), Error, `${tool} ${JSON.stringify(a)} is refused`)
   const ran: string[][] = []

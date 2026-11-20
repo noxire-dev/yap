@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { childEnv } from './env'
@@ -53,6 +53,8 @@ export class ClaudeCli implements AgentRunner {
   async run(o: AgentRun) {
     const { cwd, prompt, signal, onActivity, onText, peer, chat } = o
     const args = claudeArgs(o, carried())
+    // A board run's folder is yap's own and may not exist yet: it is where the run stands, nothing is read there.
+    if (o.only) mkdirSync(cwd, { recursive: true })
 
     // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet. A peer's hooks report,
     // so they need to find this daemon.
@@ -120,14 +122,18 @@ export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, set
 }
 
 /**
- * What of the user's Claude Code settings a run that reads none must keep: how they sign in (apiKeyHelper, a
- * gateway's env). Permissions stay out.
+ * What of the user's Claude Code settings a run that reads none keeps: everything but what could widen it. How they
+ * sign in (apiKeyHelper, Bedrock's awsAuthRefresh, forceLoginMethod, a gateway's env), their model, stay; their
+ * permissions, hooks and MCP servers do not.
  */
+export function carriedFrom(s: Record<string, unknown>) {
+  const WIDEN = ['permissions', 'hooks', 'enableAllProjectMcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers', 'mcpServers', 'statusLine', 'enabledPlugins', 'extraKnownMarketplaces']
+  return Object.fromEntries(Object.entries(s).filter(([k]) => !WIDEN.includes(k)))
+}
 function carried() {
   try {
     const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
-    const s = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
-    return Object.fromEntries(Object.entries({ apiKeyHelper: s.apiKeyHelper, env: s.env }).filter(([, v]) => v !== undefined))
+    return carriedFrom(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')))
   } catch {
     return {}
   }

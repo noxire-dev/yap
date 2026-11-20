@@ -308,7 +308,7 @@ token was given it by the user.
 
 | Verb | Body | Answer |
 |---|---|---|
-| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox` and `chat` |
+| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox`, `chat` and `board-chat` |
 | `projects` | | `[{ name, base, board }]`; `board` is the project's Rinai board, `owner/repo`, or null |
 | `sessions` | | live sessions in projects: `[{ project, id, name, at, files, doing?, unanswered }]`; `unanswered` is `[{ id, kind, text }]`, its questions and blockers to the user nobody has answered |
 | `spawns` | `id`?, `since`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result?, steps }]`; `id` picks one and adds its `log` after line `since`, as locally |
@@ -323,12 +323,13 @@ token was given it by the user.
 | `chat.drop` | `thread` | forgets the thread; an edits thread's worktree and branch are removed, unmerged work with them |
 | `chats` | `project`? | threads, newest first: `[{ thread, project, branch, board, busy, at, title }]` |
 
-A **board chat** (`board: true`, set when the thread starts) is the Rinai agent for the project's board. It has
+A **board chat** (`board: true`, set when the thread starts; a daemon that has them says `board-chat` in `hello`, and an older one would start a read chat instead, so a client checks) is the Rinai agent for the project's board. It has
 no built-in tool at all, no Read and no Bash: only `src/board.ts`, an MCP server whose tools (board, search,
 brief, goals, pulse, cycle; move, priority, claim, cycle_add, cycle_remove, cycle_order, file, comment, update,
 goal, ungoal) each run `gh rinai -R <that board> <verb>` as an argument list, never through a shell. It runs
-outside the checkout, with `--permission-mode dontAsk` and no settings file read (only the user's `apiKeyHelper`
-and `env` carried in). Claude Code's Bash rules could not hold it: commands Claude Code judges read-only, `cat`
+outside the checkout, in `~/.yap/chats/<project>/board`, with `--permission-mode dontAsk` and no settings file
+read; the user's settings come in through `--settings` less their permissions, hooks and MCP servers, so a Bedrock or
+helper sign-in and their model still work. Claude Code's Bash rules could not hold it: commands Claude Code judges read-only, `cat`
 and a `; whoami` after an allowed command among them, ran past the allow list, so a chat with Bash or Read could
 post a file in a comment. A comment injected on a public repo can reach this board's own cards and no further.
 It is told to read the board before answering, to make a change the user asked for in so many words, and to list
