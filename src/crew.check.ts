@@ -644,6 +644,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
     const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 })
     if (url.endsWith('/claim')) return ok({ token: 't0k' })
     if (url.endsWith('/spawn')) return ok({ id: 'ab12cd34' })
+    if (url.endsWith('/chat')) return ok({ thread: 'th1' })
     if (url.endsWith('/spawns'))
       return ++polls === 1 ? new Response(JSON.stringify({ error: 'the machine is offline' }), { status: 503 }) : ok([{ id: body.id, done: polls >= 3 ? 5 : undefined, ok: true, result: 'did it' }])
     return new Response(JSON.stringify({ error: 'no project nope' }), { status: 400 })
@@ -656,6 +657,8 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.equal((await again.wait(id, { every: 0 })).result, 'did it')
   assert.equal(polls, 3, 'rode out a 503')
   await assert.rejects(again.notes('nope'), (e: any) => e instanceof YapError && e.status === 400 && /no project nope/.test(e.message))
+  assert.deepEqual(await again.chat('app', 'why?', { edits: true }), { thread: 'th1' })
+  assert.deepEqual(calls.at(-1)!.slice(0, 2), ['https://relay.test/d/dev1/chat', { project: 'app', text: 'why?', edits: true }], 'chat goes out as the chat verb')
 }
 
 // YAP without the hooks: plain verbs, plain answers.
