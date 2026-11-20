@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
-import { Chats } from './chat'
+import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
@@ -561,19 +561,27 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 {
   const { store, ws } = rig([])
   const worktrees: string[][] = []
-  ws.worktree = async (repo, dir, branch) => void worktrees.push([repo, dir, branch])
+  const cleaned: string[][] = []
+  let made: () => void = () => {}
+  // The worktree takes as long as the test says: a big repo's checkout outlasts the relay's wait.
+  ws.worktree = (repo, dir, branch) => (worktrees.push([repo, dir, branch]), new Promise<void>(r => (made = r)))
+  ws.cleanup = async (repo, dir, branch) => void cleaned.push([repo, dir, branch ?? ''])
   const runs: any[] = []
   let finish: (r: { ok: boolean; text: string }) => void = () => {}
   let tick = 0
-  const chats = new Chats({ run: o => (runs.push(o), o.onActivity?.(`Read ${o.cwd}\\src\\a.ts`), o.onText?.('it reads a'), new Promise(r => {
+  // A 'quiet' turn says nothing before it ends.
+  const chats = new Chats({ run: o => (runs.push(o), o.prompt !== 'quiet' && (o.onActivity?.(`Read ${o.cwd}\\src\\a.ts`), o.onText?.('it reads a')), new Promise(r => {
     finish = r
     o.signal?.addEventListener('abort', () => r({ ok: false, text: 'killed' }))
   })) }, ws, '/home/.yap', () => ++tick)
   store.addProject({ name: 'app', path: '/repo', base: 'main', gate: '', workers: 1, running: true, tracker: null, hint: '' })
   const answer = remote(new Sessions(ws, store, () => 1), () => store.projects(), chats)
+  const last = async (thread: string) => ((await answer('chat.read', { thread })) as any).events.at(-1)
+  const started = (n: number) => until(async () => runs.length === n)
   assert.ok(((await answer('hello', {})) as any).extensions.includes('chat'))
 
   const { thread } = (await answer('chat', { project: 'app', text: 'what does a do?' })) as any
+  await started(1)
   assert.equal(runs[0].cwd, '/repo')
   assert.equal(runs[0].readOnly, true, 'no edits unless asked')
   assert.equal(runs[0].chat.resume, false)
@@ -582,20 +590,55 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await until(async () => !((await answer('chat.read', { thread })) as any).busy)
   const read: any = await answer('chat.read', { thread, after: 1 })
   assert.deepEqual(read.events.map((e: any) => [e.kind, e.text]), [['tool', 'Read src\\a.ts'], ['text', 'it reads a'], ['done', '']], 'what came after the question; paths read from the project root')
+  assert.equal(read.events[0].at, ((await answer('chats', {})) as any[])[0].at - 2, 'one clock read per event')
 
   await answer('chat', { project: 'app', text: 'and b?', thread })
+  await started(2)
   assert.equal(runs[1].chat.session, runs[0].chat.session)
   assert.equal(runs[1].chat.resume, true, 'the second turn resumes the same session')
-  await answer('chat.stop', { thread })
-  await until(async () => ((await answer('chat.read', { thread })) as any).events.at(-1)?.text === 'stopped')
+  // A turn that spoke and then failed says it failed, not its last words again.
+  finish({ ok: false, text: 'it reads a' })
+  await until(async () => (await last(thread))?.kind === 'error')
+  assert.equal((await last(thread)).text, 'the turn ended with an error')
 
+  // Stopped before it said a word: the session exists all the same, so the next turn resumes it.
+  const quiet: any = await answer('chat', { project: 'app', text: 'quiet' })
+  await started(3)
+  await answer('chat.stop', { thread: quiet.thread })
+  await until(async () => (await last(quiet.thread))?.text === 'stopped')
+  await answer('chat', { project: 'app', text: 'again', thread: quiet.thread })
+  await started(4)
+  assert.equal(runs[3].chat.resume, true, 'a silent first turn still made the session')
+  finish({ ok: true, text: '' })
+
+  // An edits thread answers before its worktree exists, and runs once it does.
   const edit: any = await answer('chat', { project: 'app', text: 'fix b', edits: true })
-  assert.deepEqual(worktrees, [['/repo', join('/home/.yap', 'chats', 'app', edit.thread), `yap/chat-${edit.thread}`]])
-  assert.equal(runs[2].cwd, worktrees[0][1], 'edits run in the worktree, never the checkout')
-  assert.equal(runs[2].readOnly, false)
-  assert.deepEqual(((await answer('chats', { project: 'app' })) as any[]).map(c => c.title), ['fix b', 'what does a do?'])
+  const dir = join('/home/.yap', 'chats', 'app', edit.thread)
+  assert.deepEqual(worktrees, [['/repo', dir, `yap/chat-${edit.thread}`]])
+  await Bun.sleep(5)
+  assert.equal(runs.length, 4, 'no run before the worktree is there')
+  made()
+  await started(5)
+  assert.equal(runs[4].cwd, dir, 'edits run in the worktree, never the checkout')
+  assert.equal(runs[4].readOnly, false)
+  assert.deepEqual(((await answer('chats', { project: 'app' })) as any[]).map(c => c.title), ['fix b', 'quiet', 'what does a do?'])
   await assert.rejects(answer('chat', { project: 'nope', text: 'x' }), /no project nope/)
+
+  // Dropping an edits thread stops it and takes its worktree and branch.
+  await answer('chat.drop', { thread: edit.thread })
+  assert.deepEqual(cleaned, [['/repo', dir, `yap/chat-${edit.thread}`]])
+  await assert.rejects(answer('chat.read', { thread: edit.thread }), /no chat/)
+
+  // A removed project's threads are gone from the web.
+  store.removeProject(store.projects()[0].id)
+  await assert.rejects(answer('chat.read', { thread }), /no project app/)
+  assert.deepEqual(await answer('chats', {}), [])
 }
+
+// rooted: the project's root off a tool line, however Windows spells it; elsewhere case counts.
+assert.equal(rooted('Read c:\\users\\x\\app\\src\\a.ts', 'C:/Users/X/app', true), 'Read src\\a.ts')
+assert.equal(rooted('Read /repo/src/a.ts and /repo2/b', '/repo', false), 'Read src/a.ts and /repo2/b')
+assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts')
 
 // The remote bridge: a web call names a registered project, never a path, and sees nothing outside them. The
 // line answers what comes down it and comes back after a drop.

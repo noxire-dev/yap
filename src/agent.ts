@@ -91,7 +91,7 @@ export class ClaudeCli implements AgentRunner {
             if (block.type === 'text') (text = block.text), onText?.(block.text)
             if (block.type !== 'tool_use') continue
             if (block.name === 'StructuredOutput') data = block.input
-            else onActivity?.(activity(block.name, block.input ?? {}))
+            else onActivity?.(activity(block.name, block.input ?? {}, chat ? Infinity : 140)) // a chat roots paths first, then cuts
           }
         } else if (msg.type === 'result') {
           ok = !msg.is_error
@@ -114,7 +114,7 @@ function auth() {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(anthropic_\w+|claude_code_oauth_token)$/i.test(k)))
 }
 
-function activity(tool: string, input: Record<string, unknown>) {
+function activity(tool: string, input: Record<string, unknown>, max = 140) {
   const detail = input.command ?? input.file_path ?? input.pattern ?? input.description ?? ''
-  return `${tool} ${String(detail).replace(/\s+/g, ' ')}`.trim().slice(0, 140)
+  return `${tool} ${String(detail).replace(/\s+/g, ' ')}`.trim().slice(0, max)
 }

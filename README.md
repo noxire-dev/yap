@@ -133,8 +133,9 @@ yap bridge                                     # paired, and connected?
 yap unpair                                     # every web client's token stops working
 ```
 
-A paired client can list your registered projects and their sessions, read and pin notes, message sessions and
-spawn background ones. It names projects, never paths, and nothing outside a registered project is visible.
+A paired client can list your registered projects and their sessions, read and pin notes, message sessions,
+spawn background ones, and chat with Claude Code in a project: read-only in your checkout, or with edits in a
+worktree and branch of its own that you merge when you want it. It names projects, never paths, and nothing outside a registered project is visible.
 The wire is in [docs/yap.md](docs/yap.md#remote), and `sdk/remote.ts` is a typed client for it with no
 dependencies:
 

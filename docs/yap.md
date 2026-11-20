@@ -290,16 +290,19 @@ token was given it by the user.
 | `note` | `project`, `text` | pins a note |
 | `say` | `project`, `text`, `to`? | messages a session there, or all of them |
 | `spawn` | `project`, `text` | starts a background session on the task: `{ id }` |
-| `chat` | `project`, `text`, `thread`?, `edits`? | a message in a chat, a new thread when none is named: `{ thread }`. 409 while the thread is still answering |
+| `chat` | `project`, `text`, `thread`?, `edits`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
 | `chat.read` | `thread`, `after`? | `{ thread, project, branch, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
 | `chat.stop` | `thread` | stops the turn running |
+| `chat.drop` | `thread` | forgets the thread; an edits thread's worktree and branch are removed, unmerged work with them |
 | `chats` | `project`? | threads, newest first: `[{ thread, project, branch, busy, at, title }]` |
 
 A chat is one Claude Code session per thread: the first turn names it, every later one resumes it. Without
 `edits` it reads and searches the project's own checkout and changes nothing. With `edits` (set when the thread
 starts) it runs in a worktree of its own under `~/.yap/chats/<project>/<thread>`, on a `yap/chat-<thread>`
 branch, in auto mode: a page never writes where the user is working, and the user merges the branch when they
-want it. Threads live in the daemon's memory; a restart loses the list, not the sessions or the worktrees.
+want it. A thread is reached through its project: once the project is removed, its threads are gone from the web.
+Threads live in the daemon's memory; a restart loses the list, not the sessions or the worktrees (remove those
+with `git worktree remove`, or drop the thread before restarting).
 
 Nothing else: no `join` or `edited` (a web client is not a peer in a working tree), no shell, no path, nothing
 the crew's desktop confirmation guards.

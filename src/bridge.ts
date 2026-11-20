@@ -50,9 +50,15 @@ export function remote(sessions: Sessions, projects: () => Project[], chats?: Ch
   // Chat: a Claude Code session the web talks to, read-only in the project, or with edits in a worktree of its own.
   if (chats) {
     verbs.chat = b => chats.say(project(b.project), text(b), typeof b.thread === 'string' ? b.thread : undefined, b.edits === true)
-    verbs['chat.read'] = b => chats.read(String(b.thread), Number(b.after) || 0)
-    verbs['chat.stop'] = b => chats.stop(String(b.thread))
-    verbs.chats = b => chats.list(b.project === undefined ? undefined : project(b.project).name)
+    // A thread is reached through its project: once the user removes the project, its threads are gone from the web.
+    const mine = (b: any) => (project(chats.projectOf(String(b.thread))), String(b.thread))
+    verbs['chat.read'] = b => chats.read(mine(b), Number(b.after) || 0)
+    verbs['chat.stop'] = b => chats.stop(mine(b))
+    verbs['chat.drop'] = b => chats.drop(mine(b), project(chats.projectOf(String(b.thread))).path)
+    verbs.chats = b => {
+      const names = new Set(projects().map(p => p.name))
+      return chats.list(b.project === undefined ? undefined : project(b.project).name).filter(t => names.has(t.project))
+    }
   }
   return async (verb: string, body: unknown) => {
     const fn = verbs[verb]

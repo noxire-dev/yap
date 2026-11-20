@@ -183,6 +183,11 @@ export class Yap {
     return this.verb<{}>('chat.stop', { thread })
   }
 
+  /** Forget the thread; an edits thread's worktree and branch go too, unmerged work with them. */
+  chatDrop(thread: string) {
+    return this.verb<{}>('chat.drop', { thread })
+  }
+
   /** Chat threads, newest first, each titled by its first message. */
   chats(project?: string) {
     return this.verb<ChatThread[]>('chats', project ? { project } : {})
