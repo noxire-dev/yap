@@ -1,7 +1,7 @@
 {
   "name": "yap",
   "description": "Claude Code sessions on one machine see each other, message each other and stay out of each other's way (YAP). Starts the yap daemon with the session. Also: hand work to yap's crew.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "noxire-dev"
   },
