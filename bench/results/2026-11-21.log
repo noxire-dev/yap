@@ -1,0 +1,236 @@
+2026-11-21T21:45:08.789Z bench 2026-11-21: 6 pairs × 3 repeats × setups ABCDE, model claude-sonnet-5-5, 3 at a time, 45 min a run; shared daemon port 4170 is never used; plan weekly usage 28%
+2026-11-21T21:45:09.032Z 26-1_2-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-A\yap YAP_PORT=4200
+2026-11-21T21:45:09.073Z 26-1_2-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-B\yap YAP_PORT=4201
+2026-11-21T21:45:09.120Z 26-1_2-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-C\yap YAP_PORT=4202
+2026-11-21T21:45:57.736Z 26-1_2-r1-B: FAIL f1=false f2=false cost=$0.22 tokens=357822 wall=49s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:45:57.983Z 26-1_2-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-D\yap YAP_PORT=4201
+2026-11-21T21:46:59.608Z 26-1_2-r1-A: PASS f1=true f2=true cost=$0.47 tokens=857586 wall=106s collisions=0 interventions=0 agents=1
+2026-11-21T21:46:59.997Z 26-1_2-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-E\yap YAP_PORT=4200
+2026-11-21T21:47:53.428Z 26-1_2-r1-D: PASS f1=true f2=true cost=$0.48 tokens=835464 wall=111s collisions=0 interventions=0 agents=3
+2026-11-21T21:47:53.614Z 26-1_2-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-A\yap YAP_PORT=4201
+2026-11-21T21:48:13.792Z 26-1_2-r1-C: FAIL f1=false f2=false cost=$0.30 tokens=710698 wall=185s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:48:13.975Z 26-1_2-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-B\yap YAP_PORT=4202
+2026-11-21T21:49:02.500Z 26-1_2-r2-B: FAIL f1=false f2=false cost=$0.32 tokens=406147 wall=49s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:49:02.679Z 26-1_2-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-C\yap YAP_PORT=4202
+2026-11-21T21:49:31.868Z 26-1_2-r2-A: PASS f1=true f2=true cost=$0.42 tokens=739239 wall=94s collisions=0 interventions=0 agents=1
+2026-11-21T21:49:32.047Z 26-1_2-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-D\yap YAP_PORT=4201
+2026-11-21T21:49:56.125Z 26-1_2-r2-C: FAIL f1=false f2=false cost=$0.33 tokens=454197 wall=54s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:49:56.308Z 26-1_2-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-E\yap YAP_PORT=4202
+2026-11-21T21:51:28.520Z 26-1_2-r2-D: PASS f1=true f2=true cost=$0.48 tokens=684276 wall=112s collisions=0 interventions=0 agents=3
+2026-11-21T21:51:28.691Z 26-1_2-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-A\yap YAP_PORT=4201
+2026-11-21T21:52:48.371Z 26-1_2-r3-A: PASS f1=true f2=true cost=$0.45 tokens=842665 wall=75s collisions=1 interventions=0 agents=1
+2026-11-21T21:52:48.587Z 26-1_2-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-B\yap YAP_PORT=4201
+2026-11-21T21:53:45.937Z 26-1_2-r3-B: FAIL f1=false f2=false cost=$0.34 tokens=453126 wall=57s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:53:46.154Z 26-1_2-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-C\yap YAP_PORT=4201
+2026-11-21T21:54:08.005Z 26-1_2-r2-E: PASS f1=true f2=true cost=$0.74 tokens=766720 wall=246s collisions=0 interventions=0 agents=6
+2026-11-21T21:54:08.239Z 26-1_2-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-D\yap YAP_PORT=4202
+2026-11-21T21:54:42.204Z 26-1_2-r3-C: FAIL f1=false f2=false cost=$0.33 tokens=454476 wall=56s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:54:42.505Z 26-1_2-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-E\yap YAP_PORT=4201
+2026-11-21T21:55:48.808Z 26-1_2-r1-E: PASS f1=true f2=true cost=$0.73 tokens=1022007 wall=524s collisions=0 interventions=0 agents=6
+2026-11-21T21:55:49.045Z 56-1_5-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-A\yap YAP_PORT=4200
+2026-11-21T21:55:53.429Z 26-1_2-r3-D: PASS f1=true f2=true cost=$0.51 tokens=822019 wall=100s collisions=1 interventions=0 agents=3
+2026-11-21T21:55:53.651Z 56-1_5-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-B\yap YAP_PORT=4202
+2026-11-21T21:57:10.221Z 56-1_5-r1-B: FAIL f1=false f2=false cost=$0.48 tokens=652141 wall=77s collisions=2 interventions=0 agents=2 notes: merge conflict in context.go, tree.go
+2026-11-21T21:57:10.419Z 56-1_5-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-C\yap YAP_PORT=4202
+2026-11-21T21:57:52.234Z 56-1_5-r1-A: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T21:57:52.234Z 56-1_5-r1-A: FAIL f1=false f2=true cost=$0.65 tokens=1094003 wall=117s collisions=0 interventions=0 agents=1
+2026-11-21T21:57:52.442Z 56-1_5-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-D\yap YAP_PORT=4200
+2026-11-21T21:58:48.205Z 26-1_2-r3-E: PASS f1=true f2=true cost=$0.72 tokens=577215 wall=241s collisions=0 interventions=0 agents=6
+2026-11-21T21:58:48.407Z 56-1_5-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-E\yap YAP_PORT=4201
+2026-11-21T21:59:03.017Z 56-1_5-r1-C: FAIL f1=false f2=false cost=$0.46 tokens=704197 wall=113s collisions=1 interventions=0 agents=2 notes: merge conflict in tree.go
+2026-11-21T21:59:03.212Z 56-1_5-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-A\yap YAP_PORT=4202
+2026-11-21T22:02:15.997Z 56-1_5-r2-A: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:02:15.998Z 56-1_5-r2-A: feature 5: --- FAIL: TestCORS (0.00s) |     --- FAIL: TestCORS/OPTIONS_request_returns_appropriate_CORS_headers (0.00s) | FAIL
+2026-11-21T22:02:15.998Z 56-1_5-r2-A: FAIL f1=false f2=false cost=$0.71 tokens=1682663 wall=188s collisions=1 interventions=0 agents=1
+2026-11-21T22:02:16.248Z 56-1_5-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-B\yap YAP_PORT=4202
+2026-11-21T22:03:36.914Z 56-1_5-r2-B: FAIL f1=false f2=false cost=$0.47 tokens=650439 wall=81s collisions=3 interventions=0 agents=2 notes: merge conflict in context.go, mux.go, tree.go
+2026-11-21T22:03:37.165Z 56-1_5-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-C\yap YAP_PORT=4202
+2026-11-21T22:04:05.751Z 56-1_5-r1-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:04:05.751Z 56-1_5-r1-E: FAIL f1=false f2=true cost=$1.25 tokens=1426082 wall=313s collisions=0 interventions=0 agents=8
+2026-11-21T22:04:05.980Z 56-1_5-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-D\yap YAP_PORT=4201
+2026-11-21T22:05:22.595Z 56-1_5-r2-C: FAIL f1=false f2=false cost=$0.47 tokens=666533 wall=106s collisions=1 interventions=0 agents=2 notes: merge conflict in tree.go
+2026-11-21T22:05:22.811Z 56-1_5-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-E\yap YAP_PORT=4202
+2026-11-21T22:06:34.648Z 56-1_5-r2-D: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:06:34.648Z 56-1_5-r2-D: FAIL f1=false f2=true cost=$0.71 tokens=1220191 wall=144s collisions=0 interventions=0 agents=3
+2026-11-21T22:06:34.859Z 56-1_5-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-A\yap YAP_PORT=4201
+2026-11-21T22:07:42.713Z 56-1_5-r1-D: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:07:42.713Z 56-1_5-r1-D: feature 5: --- FAIL: TestCORS (0.00s) |     --- FAIL: TestCORS/OPTIONS_request_returns_appropriate_CORS_headers (0.00s) | FAIL
+2026-11-21T22:07:42.714Z 56-1_5-r1-D: FAIL f1=false f2=false cost=$0.68 tokens=1159086 wall=585s collisions=0 interventions=0 agents=3
+2026-11-21T22:07:43.044Z 56-1_5-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-B\yap YAP_PORT=4200
+2026-11-21T22:08:56.524Z 56-1_5-r3-A: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:08:56.524Z 56-1_5-r3-A: feature 5: --- FAIL: TestCORS (0.00s) |     --- FAIL: TestCORS/OPTIONS_request_returns_appropriate_CORS_headers (0.00s) | FAIL
+2026-11-21T22:08:56.524Z 56-1_5-r3-A: FAIL f1=false f2=false cost=$0.61 tokens=1140186 wall=137s collisions=1 interventions=0 agents=1
+2026-11-21T22:08:56.740Z 56-1_5-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-C\yap YAP_PORT=4201
+2026-11-21T22:08:58.481Z 56-1_5-r3-B: feature 1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:08:58.482Z 56-1_5-r3-B: FAIL f1=false f2=true cost=$0.44 tokens=685761 wall=70s collisions=0 interventions=0 agents=2
+2026-11-21T22:08:58.680Z 56-1_5-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-D\yap YAP_PORT=4200
+2026-11-21T22:10:30.799Z 56-1_5-r2-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:10:30.799Z 56-1_5-r2-E: FAIL f1=false f2=true cost=$1.22 tokens=1335367 wall=303s collisions=0 interventions=0 agents=8
+2026-11-21T22:10:30.973Z 56-1_5-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-E\yap YAP_PORT=4202
+2026-11-21T22:10:37.728Z 56-1_5-r3-C: FAIL f1=false f2=false cost=$0.44 tokens=751016 wall=101s collisions=1 interventions=0 agents=2 notes: merge conflict in tree.go
+2026-11-21T22:10:37.970Z 27-2_4-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-A\yap YAP_PORT=4201
+2026-11-21T22:10:51.358Z 56-1_5-r3-D: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:10:51.358Z 56-1_5-r3-D: FAIL f1=false f2=true cost=$0.64 tokens=832281 wall=108s collisions=0 interventions=0 agents=3
+2026-11-21T22:10:51.548Z 27-2_4-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-B\yap YAP_PORT=4200
+2026-11-21T22:11:44.121Z 27-2_4-r1-B: FAIL f1=false f2=false cost=$0.33 tokens=457161 wall=53s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:11:44.349Z 27-2_4-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-C\yap YAP_PORT=4200
+2026-11-21T22:12:08.106Z 27-2_4-r1-A: PASS f1=true f2=true cost=$0.46 tokens=933084 wall=86s collisions=1 interventions=0 agents=1
+2026-11-21T22:12:08.352Z 27-2_4-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-D\yap YAP_PORT=4201
+2026-11-21T22:12:33.932Z 27-2_4-r1-C: FAIL f1=false f2=false cost=$0.31 tokens=406441 wall=50s collisions=2 interventions=0 agents=2 notes: merge conflict in mux.go, mux_test.go
+2026-11-21T22:12:34.194Z 27-2_4-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-E\yap YAP_PORT=4200
+2026-11-21T22:14:02.613Z 27-2_4-r1-D: PASS f1=true f2=true cost=$0.57 tokens=887083 wall=110s collisions=2 interventions=0 agents=3
+2026-11-21T22:14:02.805Z 27-2_4-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-A\yap YAP_PORT=4201
+2026-11-21T22:15:29.607Z 56-1_5-r3-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:15:29.607Z 56-1_5-r3-E: FAIL f1=false f2=true cost=$1.25 tokens=1409721 wall=294s collisions=0 interventions=0 agents=8
+2026-11-21T22:15:29.789Z 27-2_4-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-B\yap YAP_PORT=4202
+2026-11-21T22:15:49.330Z 27-2_4-r2-A: PASS f1=true f2=true cost=$0.48 tokens=955286 wall=101s collisions=2 interventions=0 agents=1
+2026-11-21T22:15:49.597Z 27-2_4-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-C\yap YAP_PORT=4201
+2026-11-21T22:16:15.924Z 27-2_4-r2-B: FAIL f1=false f2=false cost=$0.29 tokens=351720 wall=46s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:16:16.116Z 27-2_4-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-D\yap YAP_PORT=4202
+2026-11-21T22:16:45.089Z 27-2_4-r2-C: FAIL f1=false f2=false cost=$0.34 tokens=594159 wall=56s collisions=2 interventions=0 agents=2 notes: merge conflict in mux.go, mux_test.go
+2026-11-21T22:16:45.307Z 27-2_4-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-E\yap YAP_PORT=4201
+2026-11-21T22:17:10.983Z 27-2_4-r1-E: PASS f1=true f2=true cost=$0.82 tokens=761667 wall=273s collisions=0 interventions=0 agents=6
+2026-11-21T22:17:11.166Z 27-2_4-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-A\yap YAP_PORT=4200
+2026-11-21T22:17:41.058Z 27-2_4-r2-D: PASS f1=true f2=true cost=$0.60 tokens=883645 wall=80s collisions=2 interventions=0 agents=3
+2026-11-21T22:17:41.287Z 27-2_4-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-B\yap YAP_PORT=4202
+2026-11-21T22:18:29.501Z 27-2_4-r3-B: FAIL f1=false f2=false cost=$0.31 tokens=447597 wall=48s collisions=1 interventions=0 agents=2 notes: merge conflict in mux_test.go
+2026-11-21T22:18:29.682Z 27-2_4-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-C\yap YAP_PORT=4202
+2026-11-21T22:19:22.168Z 27-2_4-r3-C: FAIL f1=false f2=false cost=$0.33 tokens=505492 wall=53s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:19:22.400Z 27-2_4-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-D\yap YAP_PORT=4202
+2026-11-21T22:21:23.952Z 27-2_4-r2-E: PASS f1=true f2=true cost=$0.84 tokens=1000250 wall=274s collisions=1 interventions=0 agents=6
+2026-11-21T22:21:24.130Z 27-2_4-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-E\yap YAP_PORT=4201
+2026-11-21T22:21:54.497Z 27-2_4-r3-D: PASS f1=true f2=true cost=$0.53 tokens=976581 wall=148s collisions=1 interventions=0 agents=3
+2026-11-21T22:21:54.673Z 26-2_4-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-A\yap YAP_PORT=4202
+2026-11-21T22:23:24.475Z 27-2_4-r3-E: could not run: yap gate: 
+2026-11-21T22:23:24.536Z 27-2_4-r3-E: FAIL f1=false f2=false cost=$0.00 tokens=0 wall=121s collisions=0 interventions=0 agents=0
+2026-11-21T22:23:24.733Z 26-2_4-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-B\yap YAP_PORT=4201
+2026-11-21T22:24:31.062Z 26-2_4-r1-A: PASS f1=true f2=true cost=$0.58 tokens=1084285 wall=152s collisions=2 interventions=0 agents=1
+2026-11-21T22:24:31.247Z 26-2_4-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-C\yap YAP_PORT=4202
+2026-11-21T22:24:34.786Z 26-2_4-r1-B: FAIL f1=false f2=false cost=$0.41 tokens=614685 wall=70s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:24:34.970Z 26-2_4-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-D\yap YAP_PORT=4201
+2026-11-21T22:25:54.063Z 26-2_4-r1-C: FAIL f1=false f2=false cost=$0.45 tokens=791024 wall=83s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:25:54.284Z 26-2_4-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-E\yap YAP_PORT=4202
+2026-11-21T22:26:44.572Z 26-2_4-r1-D: PASS f1=true f2=true cost=$0.64 tokens=1018699 wall=125s collisions=1 interventions=0 agents=3
+2026-11-21T22:26:44.778Z 26-2_4-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-A\yap YAP_PORT=4201
+2026-11-21T22:27:54.648Z 26-2_4-r1-E: could not run: yap gate: 
+2026-11-21T22:27:54.711Z 26-2_4-r1-E: FAIL f1=false f2=false cost=$0.00 tokens=0 wall=121s collisions=0 interventions=0 agents=0
+2026-11-21T22:27:54.894Z 26-2_4-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-B\yap YAP_PORT=4202
+2026-11-21T22:29:22.866Z 26-2_4-r2-B: FAIL f1=false f2=false cost=$0.43 tokens=655155 wall=88s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:29:23.062Z 26-2_4-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-C\yap YAP_PORT=4202
+2026-11-21T22:29:27.996Z 26-2_4-r2-A: PASS f1=true f2=true cost=$0.59 tokens=1139810 wall=158s collisions=0 interventions=0 agents=1
+2026-11-21T22:29:28.212Z 26-2_4-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-D\yap YAP_PORT=4201
+2026-11-21T22:29:37.354Z 27-2_4-r3-A: PASS f1=true f2=true cost=$0.47 tokens=1129327 wall=741s collisions=1 interventions=0 agents=1
+2026-11-21T22:29:37.561Z 26-2_4-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-E\yap YAP_PORT=4200
+2026-11-21T22:31:42.000Z harness: stopped the run at 52 rows. `yap gate` on each E run put a yes/no dialog on the desktop (the daemon confirms gate changes with a person). Two E runs died waiting on it, the rest carry the click delay in their wall-clock. Throwaway daemons now run with YAP_YOLO=1. The 10 E rows done with the dialog are moved to 2026-11-21.e-with-dialog.json and E is run again; the 3 runs in flight (26-2_4-r2-C, D, E) are run again from the start.
+2026-11-21T22:31:51.826Z bench 2026-11-21: 6 pairs × 3 repeats × setups ABCDE, model claude-sonnet-5-5, 3 at a time, 45 min a run; shared daemon port 4170 is never used; plan weekly usage 32%
+2026-11-21T22:31:52.065Z 26-1_2-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-E\yap YAP_PORT=4200
+2026-11-21T22:31:52.113Z 26-1_2-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r2-E\yap YAP_PORT=4201
+2026-11-21T22:31:52.147Z 26-1_2-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r3-E\yap YAP_PORT=4202
+2026-11-21T22:36:07.654Z 26-1_2-r3-E: PASS f1=true f2=true cost=$0.68 tokens=724072 wall=251s collisions=0 interventions=0 agents=6
+2026-11-21T22:36:07.914Z 56-1_5-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r1-E\yap YAP_PORT=4202
+2026-11-21T22:37:47.589Z 26-1_2-r2-E: PASS f1=true f2=true cost=$0.67 tokens=767024 wall=351s collisions=0 interventions=0 agents=6
+2026-11-21T22:37:47.822Z 56-1_5-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r2-E\yap YAP_PORT=4201
+2026-11-21T22:40:53.527Z 56-1_5-r1-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:40:53.528Z 56-1_5-r1-E: FAIL f1=false f2=true cost=$1.17 tokens=1374844 wall=281s collisions=0 interventions=0 agents=8
+2026-11-21T22:40:53.772Z 56-1_5-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-1_5-r3-E\yap YAP_PORT=4202
+2026-11-21T22:43:43.193Z 56-1_5-r2-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:43:43.193Z 56-1_5-r2-E: FAIL f1=false f2=true cost=$1.25 tokens=1698108 wall=351s collisions=0 interventions=0 agents=8
+2026-11-21T22:43:43.412Z 27-2_4-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r1-E\yap YAP_PORT=4201
+2026-11-21T22:46:19.350Z 56-1_5-r3-E: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-21T22:46:19.351Z 56-1_5-r3-E: FAIL f1=false f2=true cost=$1.14 tokens=1160363 wall=321s collisions=0 interventions=0 agents=8
+2026-11-21T22:46:19.566Z 27-2_4-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r2-E\yap YAP_PORT=4202
+2026-11-21T22:47:08.700Z 27-2_4-r1-E: PASS f1=true f2=true cost=$0.68 tokens=857744 wall=201s collisions=1 interventions=0 agents=6
+2026-11-21T22:47:08.885Z 27-2_4-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-2_4-r3-E\yap YAP_PORT=4201
+2026-11-21T22:47:37.553Z 26-1_2-r1-E: PASS f1=true f2=true cost=$0.73 tokens=1036470 wall=941s collisions=0 interventions=0 agents=6
+2026-11-21T22:47:37.752Z 26-2_4-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r1-E\yap YAP_PORT=4200
+2026-11-21T22:49:54.869Z 27-2_4-r2-E: PASS f1=true f2=true cost=$0.75 tokens=888878 wall=211s collisions=0 interventions=0 agents=6
+2026-11-21T22:49:55.076Z 26-2_4-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-C\yap YAP_PORT=4202
+2026-11-21T22:50:44.641Z 27-2_4-r3-E: PASS f1=true f2=true cost=$0.77 tokens=1014039 wall=211s collisions=0 interventions=0 agents=6
+2026-11-21T22:50:44.854Z 26-2_4-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-D\yap YAP_PORT=4201
+2026-11-21T22:51:12.687Z 26-2_4-r2-C: FAIL f1=false f2=false cost=$0.28 tokens=642548 wall=78s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:51:12.911Z 26-2_4-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r2-E\yap YAP_PORT=4202
+2026-11-21T22:52:33.403Z 26-2_4-r1-E: PASS f1=true f2=true cost=$1.36 tokens=1485678 wall=291s collisions=1 interventions=0 agents=8
+2026-11-21T22:52:33.608Z 26-2_4-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r3-A\yap YAP_PORT=4200
+2026-11-21T22:53:27.469Z 26-2_4-r2-D: PASS f1=true f2=true cost=$0.56 tokens=1174016 wall=158s collisions=0 interventions=0 agents=3
+2026-11-21T22:53:27.646Z 26-2_4-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r3-B\yap YAP_PORT=4201
+2026-11-21T22:54:40.249Z 26-2_4-r3-A: PASS f1=true f2=true cost=$0.62 tokens=955939 wall=122s collisions=0 interventions=0 agents=1
+2026-11-21T22:54:40.440Z 26-2_4-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r3-C\yap YAP_PORT=4200
+2026-11-21T22:54:50.478Z 26-2_4-r3-B: FAIL f1=false f2=false cost=$0.42 tokens=624933 wall=83s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:54:50.676Z 26-2_4-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r3-D\yap YAP_PORT=4201
+2026-11-21T22:55:48.853Z 26-2_4-r2-E: PASS f1=true f2=true cost=$0.94 tokens=899887 wall=271s collisions=0 interventions=0 agents=6
+2026-11-21T22:55:49.065Z 26-2_4-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-2_4-r3-E\yap YAP_PORT=4202
+2026-11-21T22:55:54.476Z 26-2_4-r3-C: FAIL f1=false f2=false cost=$0.41 tokens=629853 wall=74s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T22:55:54.655Z 56-2_3-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r1-A\yap YAP_PORT=4200
+2026-11-21T22:56:50.444Z 26-2_4-r3-D: PASS f1=true f2=true cost=$0.66 tokens=1052323 wall=115s collisions=0 interventions=0 agents=3
+2026-11-21T22:56:50.630Z 56-2_3-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r1-B\yap YAP_PORT=4201
+2026-11-21T22:57:25.449Z 56-2_3-r1-A: PASS f1=true f2=true cost=$0.55 tokens=783026 wall=86s collisions=0 interventions=0 agents=1
+2026-11-21T22:57:25.629Z 56-2_3-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r1-C\yap YAP_PORT=4200
+2026-11-21T22:57:45.333Z 56-2_3-r1-B: FAIL f1=false f2=false cost=$0.36 tokens=421074 wall=55s collisions=1 interventions=0 agents=2 notes: merge conflict in context.go
+2026-11-21T22:57:45.527Z 56-2_3-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r1-D\yap YAP_PORT=4201
+2026-11-21T22:58:25.773Z 56-2_3-r1-C: FAIL f1=false f2=false cost=$0.37 tokens=522128 wall=60s collisions=2 interventions=0 agents=2 notes: merge conflict in context.go, tree.go
+2026-11-21T22:58:25.995Z 56-2_3-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r1-E\yap YAP_PORT=4200
+2026-11-21T23:00:29.291Z 56-2_3-r1-D: PASS f1=true f2=true cost=$0.59 tokens=909198 wall=159s collisions=1 interventions=0 agents=3
+2026-11-21T23:00:29.481Z 56-2_3-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r2-A\yap YAP_PORT=4201
+2026-11-21T23:00:44.443Z 26-2_4-r3-E: PASS f1=true f2=true cost=$1.39 tokens=1680045 wall=291s collisions=0 interventions=0 agents=8
+2026-11-21T23:00:44.643Z 56-2_3-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r2-B\yap YAP_PORT=4202
+2026-11-21T23:01:45.575Z 56-2_3-r2-B: FAIL f1=false f2=false cost=$0.40 tokens=574557 wall=61s collisions=1 interventions=0 agents=2 notes: merge conflict in context.go
+2026-11-21T23:01:45.784Z 56-2_3-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r2-C\yap YAP_PORT=4202
+2026-11-21T23:02:46.953Z 56-2_3-r2-C: FAIL f1=false f2=false cost=$0.37 tokens=428207 wall=61s collisions=3 interventions=0 agents=2 notes: merge conflict in context.go, mux.go, tree.go
+2026-11-21T23:02:47.143Z 56-2_3-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r2-D\yap YAP_PORT=4202
+2026-11-21T23:02:58.365Z 56-2_3-r2-A: PASS f1=true f2=true cost=$0.57 tokens=1155464 wall=145s collisions=0 interventions=0 agents=1
+2026-11-21T23:02:58.556Z 56-2_3-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r2-E\yap YAP_PORT=4201
+2026-11-21T23:04:36.057Z 56-2_3-r2-D: PASS f1=true f2=true cost=$0.63 tokens=1077722 wall=104s collisions=0 interventions=0 agents=3
+2026-11-21T23:04:36.238Z 56-2_3-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r3-A\yap YAP_PORT=4202
+2026-11-21T23:05:11.492Z 56-2_3-r1-E: PASS f1=true f2=true cost=$1.33 tokens=1472265 wall=401s collisions=0 interventions=0 agents=8
+2026-11-21T23:05:11.676Z 56-2_3-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r3-B\yap YAP_PORT=4200
+2026-11-21T23:06:04.548Z 56-2_3-r3-A: PASS f1=true f2=true cost=$0.51 tokens=905071 wall=84s collisions=0 interventions=0 agents=1
+2026-11-21T23:06:04.725Z 56-2_3-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r3-C\yap YAP_PORT=4202
+2026-11-21T23:06:17.298Z 56-2_3-r3-B: FAIL f1=false f2=false cost=$0.42 tokens=630401 wall=66s collisions=1 interventions=0 agents=2 notes: merge conflict in context.go
+2026-11-21T23:06:17.487Z 56-2_3-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r3-D\yap YAP_PORT=4200
+2026-11-21T23:07:35.704Z 56-2_3-r3-C: FAIL f1=false f2=false cost=$0.43 tokens=738570 wall=91s collisions=2 interventions=0 agents=2 notes: merge conflict in context.go, tree.go
+2026-11-21T23:07:35.897Z 56-2_3-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\56-2_3-r3-E\yap YAP_PORT=4202
+2026-11-21T23:07:55.072Z 56-2_3-r3-D: PASS f1=true f2=true cost=$0.61 tokens=1112461 wall=93s collisions=2 interventions=0 agents=3
+2026-11-21T23:07:55.267Z 27-3_4-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r1-A\yap YAP_PORT=4200
+2026-11-21T23:08:23.949Z 56-2_3-r2-E: PASS f1=true f2=true cost=$1.01 tokens=1280132 wall=321s collisions=0 interventions=0 agents=6
+2026-11-21T23:08:24.125Z 27-3_4-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r1-B\yap YAP_PORT=4201
+2026-11-21T23:09:14.642Z 27-3_4-r1-B: FAIL f1=false f2=false cost=$0.31 tokens=403538 wall=51s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T23:09:14.826Z 27-3_4-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r1-C\yap YAP_PORT=4201
+2026-11-21T23:09:20.478Z 27-3_4-r1-A: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:24:2: undefined: debugLogging
+2026-11-21T23:09:20.478Z 27-3_4-r1-A: FAIL f1=false f2=true cost=$0.46 tokens=885544 wall=80s collisions=0 interventions=0 agents=1
+2026-11-21T23:09:20.660Z 27-3_4-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r1-D\yap YAP_PORT=4200
+2026-11-21T23:10:08.985Z 27-3_4-r1-C: FAIL f1=false f2=false cost=$0.31 tokens=490930 wall=54s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T23:10:09.204Z 27-3_4-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r1-E\yap YAP_PORT=4201
+2026-11-21T23:11:18.888Z 27-3_4-r1-D: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:11:18.889Z 27-3_4-r1-D: FAIL f1=false f2=true cost=$0.53 tokens=875477 wall=114s collisions=0 interventions=0 agents=3
+2026-11-21T23:11:19.086Z 27-3_4-r2-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r2-A\yap YAP_PORT=4200
+2026-11-21T23:12:50.064Z 27-3_4-r2-A: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:12:50.065Z 27-3_4-r2-A: FAIL f1=false f2=true cost=$0.46 tokens=921173 wall=86s collisions=0 interventions=0 agents=1
+2026-11-21T23:12:50.277Z 27-3_4-r2-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r2-B\yap YAP_PORT=4200
+2026-11-21T23:13:40.722Z 27-3_4-r2-B: FAIL f1=false f2=false cost=$0.33 tokens=537722 wall=51s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T23:13:40.933Z 27-3_4-r2-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r2-C\yap YAP_PORT=4200
+2026-11-21T23:14:01.784Z 56-2_3-r3-E: PASS f1=true f2=true cost=$1.23 tokens=1259634 wall=381s collisions=0 interventions=0 agents=8
+2026-11-21T23:14:01.961Z 27-3_4-r2-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r2-D\yap YAP_PORT=4202
+2026-11-21T23:14:14.412Z 27-3_4-r1-E: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:14:14.413Z 27-3_4-r1-E: FAIL f1=false f2=true cost=$0.76 tokens=810449 wall=241s collisions=0 interventions=0 agents=6
+2026-11-21T23:14:14.606Z 27-3_4-r2-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r2-E\yap YAP_PORT=4201
+2026-11-21T23:15:18.719Z 27-3_4-r2-C: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:15:18.719Z 27-3_4-r2-C: FAIL f1=false f2=true cost=$0.38 tokens=742116 wall=94s collisions=0 interventions=0 agents=2
+2026-11-21T23:15:18.897Z 27-3_4-r3-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r3-A\yap YAP_PORT=4200
+2026-11-21T23:17:09.740Z 27-3_4-r3-A: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:17:09.741Z 27-3_4-r3-A: FAIL f1=false f2=true cost=$0.48 tokens=949895 wall=107s collisions=0 interventions=0 agents=1
+2026-11-21T23:17:09.932Z 27-3_4-r3-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r3-B\yap YAP_PORT=4200
+2026-11-21T23:18:12.783Z 27-3_4-r3-B: FAIL f1=false f2=false cost=$0.34 tokens=630682 wall=63s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T23:18:13.004Z 27-3_4-r3-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r3-C\yap YAP_PORT=4200
+2026-11-21T23:18:19.957Z 27-3_4-r2-E: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:24:2: undefined: debugLogging
+2026-11-21T23:18:19.957Z 27-3_4-r2-E: FAIL f1=false f2=true cost=$0.75 tokens=985950 wall=241s collisions=1 interventions=0 agents=6
+2026-11-21T23:18:20.144Z 27-3_4-r3-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r3-D\yap YAP_PORT=4201
+2026-11-21T23:19:09.651Z 27-3_4-r3-C: FAIL f1=false f2=false cost=$0.33 tokens=500534 wall=57s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T23:19:09.828Z 27-3_4-r3-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\27-3_4-r3-E\yap YAP_PORT=4200
+2026-11-21T23:20:15.050Z 27-3_4-r3-D: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:20:15.051Z 27-3_4-r3-D: FAIL f1=false f2=true cost=$0.49 tokens=775421 wall=111s collisions=0 interventions=0 agents=3
+2026-11-21T23:23:45.224Z 27-3_4-r2-D: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:23:45.224Z 27-3_4-r2-D: FAIL f1=false f2=true cost=$0.49 tokens=778880 wall=579s collisions=0 interventions=0 agents=3
+2026-11-21T23:24:35.082Z 27-3_4-r3-E: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-21T23:24:35.082Z 27-3_4-r3-E: FAIL f1=false f2=true cost=$0.76 tokens=854867 wall=321s collisions=0 interventions=0 agents=6
+2026-11-21T23:24:35.290Z bench 2026-11-21: done, 90 rows, 0 could not run, cost $50.61, plan weekly usage 32% -> 34%
+2026-11-21T23:24:35.291Z bench 2026-11-21: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench\bench\results\2026-11-21.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench\bench\results\2026-11-21.md

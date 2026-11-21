@@ -3,7 +3,7 @@
 // scorer against the dataset's own patches; `--report <json>` rewrites the report from a results file.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dir, '..')
 const CACHE = join(ROOT, 'bench', '.cache')
@@ -128,10 +128,12 @@ export function tally(lines: unknown[]) {
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
-const usd = (x: number) => `$${x.toFixed(2)}`
+// Three places and seconds: medians a few cents or seconds apart must not print as a tie that "lost".
+const usd = (x: number) => `$${x.toFixed(3)}`
+const mins = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
 
 /** Medians per setup, and for each setup where it lost: the metrics it was not best on, and the pairs it failed. */
-export function report(rows: Row[], date: string) {
+export function report(rows: Row[], date: string, raw = `${date}.json`) {
   const by = (s: Setup) => rows.filter(r => r.setup === s)
   const stat = SETUPS.map(s => {
     const rs = by(s)
@@ -160,11 +162,11 @@ export function report(rows: Row[], date: string) {
   const out = [
     `# Bench results, ${date}`,
     '',
-    `${rows.length} runs: ${[...new Set(rows.map(r => `${r.task}[${r.pair.join(',')}]`))].length} CooperBench go-chi pairs × ${Math.max(...rows.map(r => r.repeat))} repeats × 5 setups, on the user's Claude plan through \`claude -p\`. Pass is both features' hidden tests on the merged tree. Cost is Claude Code's own \`total_cost_usd\` (the API-price equivalent; the plan was billed, not an API key). Harness: \`bench/run.ts\`, spec: \`docs/bench/brief.md\`, raw rows: \`bench/results/${date}.json\`.`,
+    `${rows.length} runs: ${[...new Set(rows.map(r => `${r.task}[${r.pair.join(',')}]`))].length} CooperBench go-chi pairs × ${Math.max(...rows.map(r => r.repeat))} repeats × 5 setups, on the user's Claude plan through \`claude -p\`. Pass is both features' hidden tests on the merged tree. Cost is Claude Code's own \`total_cost_usd\` (the API-price equivalent; the plan was billed, not an API key). Harness: \`bench/run.ts\`, spec: \`docs/bench/brief.md\`, raw rows: \`bench/results/${raw}\`.`,
     '',
     '| Setup | Runs | Pass | Median cost | Median tokens | Median wall-clock | Median collisions | Median interventions |',
     '|---|---|---|---|---|---|---|---|',
-    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? `${Math.round(x.wall / 60)} min` : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
+    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? mins(x.wall) : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
     '',
     '## Where each setup lost',
     '',
@@ -177,7 +179,7 @@ export function report(rows: Row[], date: string) {
     const lost: string[] = []
     if (x.pass < best.pass) lost.push(`pass rate (${pct(x.pass)} against ${winner('pass')}'s ${pct(best.pass)})`)
     if (x.cost > best.cost) lost.push(`cost (${usd(x.cost)} median against ${winner('cost')}'s ${usd(best.cost)})`)
-    if (x.wall > best.wall) lost.push(`wall-clock (${Math.round(x.wall / 60)} min against ${winner('wall')}'s ${Math.round(best.wall / 60)})`)
+    if (x.wall > best.wall) lost.push(`wall-clock (${mins(x.wall)} against ${winner('wall')}'s ${mins(best.wall)})`)
     if (x.collisions > best.collisions) lost.push(`collisions (${x.collisions} median against ${best.collisions})`)
     if (x.interventions > best.interventions) lost.push(`interventions (${x.interventions} median against ${best.interventions})`)
     const rs = by(x.s)
@@ -416,6 +418,8 @@ function runEnv(home: string, port: number, logs: string, model: string) {
     YAP_HOME: home,
     YAP_PORT: String(port),
     YAP_PASS: 'BENCH_REAL_CLAUDE,BENCH_LOG_DIR,BENCH_MODEL',
+    // `yap gate` asks for a yes on the desktop; a throwaway daemon must not put dialogs in front of the user.
+    YAP_YOLO: '1',
   }
 }
 
@@ -486,6 +490,13 @@ export async function weekly(): Promise<number | null> {
   }
 }
 
+/** The report next to its results, with the hand-written notes on how the run went (<tag>.notes.md) after it. */
+function writeReport(json: string, rows: Row[], date: string) {
+  const notes = json.replace(/\.json$/, '.notes.md')
+  const extra = existsSync(notes) ? `\n${readFileSync(notes, 'utf8').trim()}\n` : ''
+  writeFileSync(json.replace(/\.json$/, '.md'), `${report(rows, date, basename(json))}\n${extra}`)
+}
+
 async function main() {
   const argv = process.argv.slice(2)
   const opt = (k: string, d: string) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : d)
@@ -494,7 +505,7 @@ async function main() {
   if (argv.includes('--report')) {
     const file = opt('--report', '')
     const rows: Row[] = JSON.parse(readFileSync(file, 'utf8'))
-    writeFileSync(file.replace(/\.json$/, '.md'), report(rows, rows[0]?.date ?? date) + '\n')
+    writeReport(file, rows, rows[0]?.date ?? date)
     return console.log(`wrote ${file.replace(/\.json$/, '.md')}`)
   }
   await prepare()
@@ -522,7 +533,8 @@ async function main() {
   const tag = tasks === 1 && repeats === 1 ? `${date}-dry` : date
   const out = join(RESULTS, `${tag}.json`)
   const logFile = join(RESULTS, `${tag}.log`)
-  const rows: Row[] = existsSync(out) && argv.includes('--resume') ? JSON.parse(readFileSync(out, 'utf8')) : []
+  // The rows a stopped run already wrote are kept; --fresh starts over.
+  const rows: Row[] = existsSync(out) && !argv.includes('--fresh') ? JSON.parse(readFileSync(out, 'utf8')) : []
   const before = await weekly()
   log(logFile, `bench ${tag}: ${tasks} pairs × ${repeats} repeats × setups ${setups.join('')}, model ${model}, ${parallel} at a time, ${minutes} min a run; shared daemon port ${SHARED_PORT} is never used; plan weekly usage ${before ?? '?'}%`)
   // Interleaved so time-of-day and plan throttling fall on every setup alike.
@@ -547,7 +559,7 @@ async function main() {
     }),
   )
   const after = await weekly()
-  writeFileSync(out.replace(/\.json$/, '.md'), report(rows, date) + '\n')
+  writeReport(out, rows, date)
   const cost = rows.reduce((a, r) => a + r.total_cost_usd, 0)
   log(logFile, `bench ${tag}: done, ${rows.length} rows, ${rows.filter(r => r.error).length} could not run, cost ${usd(cost)}, plan weekly usage ${before ?? '?'}% -> ${after ?? '?'}%`)
   log(logFile, `bench ${tag}: wrote ${out} and ${out.replace(/\.json$/, '.md')}`)

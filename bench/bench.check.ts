@@ -63,10 +63,14 @@ const md = report(
   [row('A', true, 1), row('A', true, 2), row('B', false, 1, { collisions: 1, collisions_detail: { merge_conflict_files: 1, destructive_git: 0, stale_edits: 0 } }), row('C', false, 3, { error: 'boom' })],
   'd',
 )
-assert.match(md, /\| A: .* \| 2 \| 100% \| \$1\.50 \|/)
-assert.match(md, /\*\*A\*\* .*lost on cost \(\$1\.50 median against B's \$1\.00\)/)
+assert.match(md, /\| A: .* \| 2 \| 100% \| \$1\.500 \| 100 \| 10:00 \|/)
+assert.match(md, /\*\*A\*\* .*lost on cost \(\$1\.500 median against B's \$1\.000\)/)
 assert.match(md, /\*\*B\*\* .*lost on pass rate \(0% against A's 100%\).*collisions.*1 on a merge conflict/)
 assert.match(md, /\*\*C\*\* .*1 that could not run \(boom\)/)
 assert.match(md, /\*\*D\*\* .*has no runs/)
+
+// Medians a few cents and seconds apart print apart, never as a tie that one of them "lost".
+const close = report([row('A', true, 0.351, { wall_s: 61 }), row('B', true, 0.354, { wall_s: 65 })], 'd')
+assert.match(close, /\*\*B\*\* .*lost on cost \(\$0\.354 median against A's \$0\.351\), wall-clock \(1:05 against A's 1:01\)/)
 
 console.log('bench ok')
