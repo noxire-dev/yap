@@ -620,9 +620,13 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const reply = (await b.idle()).messages!.find(m => m.text === 'main')!
   assert.equal(reply.re, q.id)
   assert.deepEqual((await yap.sessions('/repo')).find(s => s.id === 'k2')!.unanswered, [])
-  // An re that matches nothing is still delivered.
+  // An re that matches nothing, with a `to`, is still delivered.
   await a.say('late answer', 'a', { re: 'deadbeef' })
   assert.equal((await b.idle()).messages!.find(m => m.text === 'late answer')!.re, 'deadbeef')
+  // With no `to`, an re nobody waits on (answered already, or asked by no session) is refused, never sent to everyone.
+  await assert.rejects(a.say('stray answer', undefined, { re: 'deadbeef' }), /nobody is waiting on deadbeef/)
+  await assert.rejects(a.say('second answer', undefined, { re: q.id.slice(0, 8) }), /nobody is waiting on/)
+  assert.equal((await b.idle()).messages?.some(m => /stray|second/.test(m.text)) ?? false, false)
   // A blocker stays listed until the asker leaves.
   await a.say('I need the db schema first', 'a', { kind: 'blocker' })
   assert.equal((await yap.sessions('/repo')).find(s => s.id === 'k1')!.unanswered!.length, 1)

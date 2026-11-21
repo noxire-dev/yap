@@ -674,6 +674,8 @@ export class Sessions {
       break
     }
     const to = m.to?.replace(/^@/, '').toLowerCase() || (asker && asker.id !== s?.id ? asker.id : undefined)
+    // A reply with no asker to go to must not fall through to everyone in the repo.
+    if (re && !to) throw new Error(`nobody is waiting on ${re.slice(0, 8)}: it was answered already, or no session asked it. Name who gets it: yap say --re ${re.slice(0, 8)} '@<session>' <text>, or '@user'`)
     if (to === USER) {
       if (!s && m.user) throw new Error('you are the user: say it to a session')
       const kind = m.kind === 'question' || m.kind === 'blocker' ? m.kind : 'say'
