@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "bun src/cli.ts",
-    "check": "bun src/crew.check.ts && bun src/repo.check.ts && bunx tsc --noEmit -p . && echo all checks passed"
+    "check": "bun src/crew.check.ts && bun src/repo.check.ts && bun bench/bench.check.ts && bunx tsc --noEmit -p . && echo all checks passed"
   },
   "devDependencies": {
     "@types/bun": "latest"

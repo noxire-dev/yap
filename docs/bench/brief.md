@@ -70,3 +70,26 @@ Paste in a fresh session in this repo, in auto mode:
 ## Where it lives
 
 `bench/` in this repo (runner, task fetch, scoring), results in `bench/results/`, this brief in `docs/bench/`.
+
+## How the harness runs it (decided 2026-11-21)
+
+- Tasks: the six go-chi pairs in CooperBench's lite and core subsets (`PAIRS` in `bench/run.ts`). This machine has
+  no Docker. The Python and Rust tasks need Docker; the Go ones run on the local `go`. The results cover one Go
+  library only, and the report says so.
+- Model: `claude-sonnet-5-5` for every agent, forced by the shim (`--model`). Sonnet costs less of the plan than
+  Opus, and CooperBench's paper ran Sonnet.
+- `bench/shim.ts` is compiled to `claude.exe` and goes first on PATH. Every Claude Code process in a run goes
+  through it, including the ones the daemon starts. It strips API keys and logs the stream. Cost, tokens and
+  collisions are read from those logs, and `apiKeySource` is checked to be `none` (the plan).
+- B and C each get one worktree per agent, both started at once, then a plain `git merge`. A conflict fails the
+  run, as in CooperBench (no union merge). D's workers share the commander's tree, which is yap's gap today. E
+  merges through its own gate (`go test ./...`).
+- Every run gets its own daemon: `YAP_HOME` in the run's temp dir, `YAP_PORT` 4200 + slot. A and B run with
+  `YAP_AGENT=1`, so yap's hooks stay quiet. `runEnv` refuses port 4170 and `~/.yap`.
+- Scoring: the final patch without test files, on a fresh base checkout, plus each feature's `tests.patch`, then
+  `go test -run <its tests> ./...`. `bun bench/run.ts --gold` shows the scorer passes the gold patch and fails the
+  base on every pair.
+- Plan usage: read from the account's weekly-usage endpoint (the number `/usage` shows), before and after. The dry
+  run's change in that number, times 18, is the projection for the full run. Other sessions on the plan count
+  too, so the projection is an upper bound.
+- A run cut short by the plan's limit is waited out and run again. Any other failure stays in the results.
