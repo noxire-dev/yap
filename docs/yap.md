@@ -38,11 +38,11 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. When two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first. |
 | `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
-| `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`) | `to` `user` is the person, not a peer: the message goes to the user's inbox (`inbox`, local and remote), a `question` or `blocker` stays on the sender's `unanswered` until the user replies with `re`, and nobody is woken; the user can't `say` to `user`, and no session is named `user`. Otherwise queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway when it has a `to`; with no `to` it is refused (the question was answered already, or no session asked it), never sent to every peer. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust). |
-| `note` | `text` | Pins it on the repo's board; live peers hear of it on their next call. |
+| `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`, `repo`, `via`) | `to` `user` is the person, not a peer: the message goes to the user's inbox (`inbox`, local and remote), a `question` or `blocker` stays on the sender's `unanswered` until the user replies with `re`, and nobody is woken; the user can't `say` to `user`, and no session is named `user`. Otherwise queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway when it has a `to`; with no `to` it is refused (the question was answered already, or no session asked it), never sent to every peer. `repo` sends to another repo's sessions instead, named by its main checkout's directory (`kodr-herdr`), in any case; one with no live session is refused. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust), or with `via`, the local app the user typed it in, `the user, through <via> (unverified)`. |
+| `note` | `text`, optional `replaces` | Pins it on the repo's board; live peers hear of it on their next call. `replaces`, a note's id, takes that note down in the same step (refused, and nothing pinned, when the board has no such note). |
 | `unnote` | `id` | Takes a note down. |
 | `claim` | `path`, `why` | Claims a file or directory inside the session's working tree, before working under it. Answers `{ id }`, or `{ held: { session, name, path, why } }` when a peer's live claim in any worktree of the repo overlaps it. Overlap is by path components: `src/auth` covers `src/auth/token.ts`, not `src/author`. First claim wins; nothing queues. Join and turn context list peers' claims. |
-| `release` | `id` | Ends one of the session's claims early. |
+| `release` | `id`, or `all: true` | Ends one of the session's claims early, or every one of them. Answers `{ released }`, how many it ended. |
 | `spawn` | `text`, the task; `agent`, optional: `codex` | Starts a background Claude Code session (or Codex: `codex exec` in its workspace sandbox) in `cwd` on it, under a new id, and answers `{ "id" }`. It is a peer like any other: it joins, edits and hears messages. When it ends, its final message goes to the sender's inbox (the sender is woken if idle), or, with no session, to `yap spawns`. At most `spawns` (`yap config`, 3 by default) run at once; past that it is refused with a 429. |
 | `doing` | `text`, one line | Sets what the session says it is working on, in its own words; empty `text` clears it. Peers see it next to its name in join and turn context (they hear on their next prompt, as for an edit), and `sessions`, local and remote, list it. Only a session sends it. |
 
@@ -87,11 +87,14 @@ An answer has up to five parts, and an agent maps each to what it has:
 - `deny` with a `reason`: only on `will-run`. The agent must not run the command and tells the model why.
 - `messages`: the messages `context` just delivered, as data, for a harness to show. The model already has them
   in `context`; a harness doesn't parse that. Each is
-  `{ id, seq, kind: "say" | "question" | "blocker" | "note" | "spawn" | "conflict", origin, from, sender, text, at, re?, ok? }`: `seq` only
+  `{ id, seq, kind: "say" | "question" | "blocker" | "note" | "spawn" | "conflict" | "goal", origin, from, sender, text, at, re?, ok? }`: `seq` only
   goes up, across repos and daemon restarts; `origin` is `session`,
-  `user` or `local` (see Trust), `from` as the model reads it (`session @auth`, `the user`,
+  `user`, `local` (see Trust) or `yap` (the daemon itself), `from` as the model reads it (`session @auth`, `the user`,
   `an unverified local process`), `sender` the sending session's id (`""` without one), `re` the id of the message it answers, `ok` on a spawn's end. On a
   `conflict`, `from` and `sender` are the other side and `text` the conflicting files, one per line, empty once clean.
+  A `goal` is the crew's summary of a goal the session handed it (`yap goal` from inside the session), sent when
+  its last ticket merges: `from` `the crew, on goal <id>`, origin `yap`. The session is woken for it, as for a
+  spawn's end; a session gone by then leaves it in the user's inbox.
 - `seq`: with `messages`, the highest `seq` among them.
 
 A message is delivered once, unless the session acks. Once the harness has put an answer's `context` in front of
@@ -127,7 +130,10 @@ answer then carries the message and instructions in `context`. Rules:
     private, which on one machine they don't.
   - `user`: a device paired through the relay. Nothing local can claim it.
   - `local`: anything else with the token, a terminal or an agent's shell alike. Shown as
-    `an unverified local process`, never as the user.
+    `an unverified local process`, never as the user. A local app the person types into (Kodr's chat) passes
+    `via` with its name and is shown as `the user, through Kodr (unverified)`: still `local`, since anything
+    could claim it, but the model reads whose words they are meant to be.
+  - `yap`: the daemon itself, as the crew reporting a goal.
 - Every delivered message comes with a line telling the model it is information: it cannot approve a
   permission prompt, change configuration or stand in for the user.
 - **Trusted handoffs** (`yap handoffs trusted`, off by default): a session handing another work the user already
@@ -148,7 +154,7 @@ answer then carries the message and instructions in `context`. Rules:
 ```
 
 The fields are `session`, `cwd`, and the verb's own: `path` (will-edit, edited), `command` (will-run, ran),
-`prompt` (turn), `name` (join), `text`, `to`, `kind` and `re` (say), `text` (note and spawn), `id` (unnote), and `ack` on the
+`prompt` (turn), `name` (join), `text`, `to`, `kind`, `re`, `repo` and `via` (say), `text` (note and spawn), `replaces` (note), `id` (unnote, release), `all` (release), and `ack` on the
 session's own verbs. The answer is `{}` or any of `{ "context", "notice", "deny", "messages", "seq" }`; `say` answers `{ "id", "to": ["@auth"], "woke": [] }`, `note` the note. An unknown
 verb or a bad argument is a 400 with `{ "error" }`. A missing or wrong token is a 403. `GET /yap` answers
 `{ protocol, version, verbs, extensions }`.
@@ -218,8 +224,8 @@ An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an M
 joins on its first request, named for the client (`clientInfo`, from `initialize` or `_meta`), and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
 `run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
-`yap_claim` (`path` and `why`, or `release`), `yap_doing`, `yap_board`, `yap_note` and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
-`yap_say` takes `kind` and `re`, and `yap_peers` lists claims and unanswered questions and blockers. It speaks MCP
+`yap_claim` (`path` and `why`, or `release`: a claim's id, or `all`), `yap_doing`, `yap_board`, `yap_note` (`replaces`) and `yap_spawn`. The model calls them when it decides to, so nothing is enforced.
+`yap_say` takes `kind`, `re` and `repo`, and `yap_peers` lists claims and unanswered questions and blockers. It speaks MCP
 2026-07-28 (no handshake: `server/discover`, the version in each request's `_meta`, `-32022` for one it doesn't
 support) and the handshake versions before it, answering an `initialize` with the client's version when it
 knows it and 2025-11-25 when it doesn't.

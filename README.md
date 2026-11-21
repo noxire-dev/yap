@@ -72,7 +72,8 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | `yap handoffs [trusted\|ask]` | Whether an agent acts on another session's handoff of work you already started (`trusted`, confirmed on the desktop) or asks you first (`ask`, the default). |
 | `yap config [<key> [<value>]]` | yap's settings, in `~/.yap/config.json`: `spawns`, how many background sessions run at once (3). |
 | `yap pair <relay>` / `yap unpair` / `yap bridge` | Let a web client reach this machine through a relay, take that back, or check the line. |
-| `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `-d <id>` takes one down. |
+| `yap note <text>` / `yap notes` | Pin a note on this repo's board, or read it. `--replaces <id>` takes the note it supersedes down in the same step, `-d <id>` takes one down. |
+| `yap help` | Every command; `yap <command> --help` prints the lines about one. An unknown command is one line and exit 1. |
 | `yap` | The crew's board. Closing it leaves the crew running. |
 | `yap status` | Print every project's rail and exit. |
 | `yap start` / `yap stop` | Daemon in the background. Stopping kills running agents and requeues their tickets. |
@@ -111,15 +112,19 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
 - Claims: `yap claim src/auth <why>` before a task that touches several files there. Sessions in any worktree
   of the repo are warned once before they edit under it, and a claim that overlaps it says who holds it. It lasts
-  20 minutes past your last edit there; `yap release <id>` ends it, `yap claims` lists them.
+  20 minutes past your last edit there; `yap release <id>` ends it, `yap release --mine` ends all of yours,
+  `yap claims` lists them.
 - Sessions say what they are on: `yap doing <text>` puts one line next to the session's name, in its peers'
   context, `yap sessions` and the web. Sessions are told to set it when they start a task, and to pin anything
   another session could use (an analysis, a decision, a research file) on the board with where it is.
 - A session can talk to you: `yap say '@user' <text>`, or `--question` / `--blocker`, lands in your inbox
   (`yap inbox`, and the web's `inbox`). Answer with `yap say --re <id> <text>` from the web; it goes to the
   asker and leaves its list. A background session asks you this way when a call is truly yours, and carries on.
+- Another repo's sessions: `yap say --repo kodr-herdr <text>` reaches them, by the directory name of that
+  repo's main checkout.
 - Notes: `yap note <text>` pins a note on the repo's board (a decision, a warning, a handoff), `yap notes`
-  reads it, `yap note -d <id>` takes one down. Notes outlive the session and the daemon: every session that
+  reads it, `yap note -d <id>` takes one down, and `yap note --replaces <id> <text>` posts the decision that
+  settles an older note and takes it down in one step. Notes outlive the session and the daemon: every session that
   starts in the repo, worktrees included, reads the latest ten, and live ones hear of a new note at once. A
   note over a day old is marked "may be stale", and sessions are told to check it before acting on it.
 - Who is live, what each edited and undelivered messages survive a daemon restart.
@@ -247,7 +252,7 @@ in a session and read back what it did:
 ```
 yap goal "<what should be true when it is done>"   # plans drafts; --rinai files it as an issue too
 yap take 154                                        # plans from a Rinai issue
-yap go                                              # starts the drafts
+yap go [<goal>]                                     # starts the drafts, or one goal's
 yap status · yap show 12 · yap init
 ```
 

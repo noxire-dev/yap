@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import type { Agent, AgentRunner, Panes, Store, Workspace } from './ports'
 
 /**
@@ -93,8 +93,9 @@ export interface Message {
   ok?: boolean
 }
 
-export type Kind = 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict'
-export type Origin = 'session' | 'user' | 'local'
+export type Kind = 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict' | 'goal'
+/** `yap`: the daemon itself, as when the crew reports a goal. */
+export type Origin = 'session' | 'user' | 'local' | 'yap'
 const origin = (s: object | null, user?: boolean): Origin => (s ? 'session' : user ? 'user' : 'local')
 
 /** On Windows, Git Bash's `/c/Users/...` is `c:/Users/...`; `resolve` alone makes it `C:\c\Users\...`. */
@@ -160,7 +161,11 @@ interface Claim {
 }
 
 /** Whether claim path `a` takes in `b`: the same, or a directory above it. By components: `src/auth` isn't over `src/author`. */
-const covers = (a: string, b: string) => a === b || b.startsWith(`${a}/`)
+/** Whether claim path `a` covers `b`; claims keep the case they were written in, so case counts only where the OS's does. */
+const covers = (a: string, b: string) => {
+  if (process.platform === 'win32') (a = a.toLowerCase()), (b = b.toLowerCase())
+  return a === b || b.startsWith(`${a}/`)
+}
 
 /** A background session yap started, and what came of it. */
 interface Spawn {
@@ -595,21 +600,30 @@ export class Sessions {
     for (const o of this.others(s))
       for (const c of this.claimed(o))
         if (covers(c.path, path) || covers(path, c.path)) return { held: { session: o.id, name: this.tag(o), path: c.path, why: c.why } }
-    const c = { id: randomUUID().slice(0, 8), path, why: m.why.trim().slice(0, 300), at: this.now() }
+    // `norm` lower-cases on Windows; the claim keeps the case it was written in, the same length from the end.
+    const shown = resolve(native(m.cwd), native(m.path)).replace(/\\/g, '/').slice(-path.length)
+    const c = { id: randomUUID().slice(0, 8), path: shown, why: m.why.trim().slice(0, 300), at: this.now() }
     s.claims = [...this.claimed(s), c]
     s.news = this.now()
     this.save(s)
     return { id: c.id }
   }
 
-  /** End one of the session's claims early. */
-  release(m: { from?: string; id: string }) {
+  /** End one of the session's claims early, or with `all`, every one of them. Answers how many it ended. */
+  release(m: { from?: string; id?: string; all?: boolean }) {
     const s = this.all.get(String(m.from ?? ''))
+    if (m.all) {
+      if (!s) throw new Error('a claim is released by the session that made it: run it from inside one')
+      const released = this.claimed(s).length
+      s.claims = []
+      this.save(s)
+      return { released }
+    }
     const c = s?.claims?.find(c => c.id === m.id)
     if (!s || !c) throw new Error(`no claim ${m.id} of yours`)
     s.claims = s.claims!.filter(x => x !== c)
     this.save(s)
-    return {}
+    return { released: 1 }
   }
 
   /** The live claims in the repo `cwd` sits in. */
@@ -620,15 +634,22 @@ export class Sessions {
       .flatMap(s => this.claimed(s).map(c => ({ id: c.id, session: s.id, name: this.tag(s), top: s.top, path: c.path, why: c.why, expires: c.at + CLAIM })))
   }
 
-  /** Pin a note on the board of the repo `cwd` sits in. Live sessions there hear about it on their next hook call. */
-  async note(m: { from?: string; cwd: string; text: string; user?: boolean }) {
+  /**
+   * Pin a note on the board of the repo `cwd` sits in. Live sessions there hear about it on their next hook call.
+   * `replaces`: a note it supersedes, taken down in the same step.
+   */
+  async note(m: { from?: string; cwd: string; text: string; user?: boolean; replaces?: number }) {
     const text = m.text.trim()
     if (!text) throw new Error('say what the note is')
     const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
     const repo = s?.repo ?? (await this.root(m.cwd)).repo
+    const old = m.replaces
+    if (old !== undefined && !this.store.notes(repo).some(n => n.id === old)) throw new Error(`no note #${old} on this repo's board to replace`)
     const n = this.store.addNote({ repo, ts: this.now(), author: this.label(s, m.user), text })
+    if (old !== undefined) this.store.removeNote(repo, old)
     const them = [...this.all.values()].filter(o => o.repo === repo && o.id !== s?.id)
-    for (const o of them) this.post(o, { kind: 'note', origin: origin(s, m.user), from: n.author, sender: s?.id ?? '', text }, `New note on the board, #${n.id} from ${n.author}: ${text}`)
+    const line = `New note on the board, #${n.id} from ${n.author}${old !== undefined ? `, replacing #${old}` : ''}: ${text}`
+    for (const o of them) this.post(o, { kind: 'note', origin: origin(s, m.user), from: n.author, sender: s?.id ?? '', text }, line)
     this.save(s, ...them)
     this.emit({ type: 'note', repo: checkout(repo), id: n.id, author: n.author, text })
     return n
@@ -643,9 +664,10 @@ export class Sessions {
   }
 
   /** Who a message is from, as the recipient reads it. */
-  private label(s: Session | null, user = false) {
-    // Anything on this machine can hold the token, so only a device paired through the relay speaks as the user.
-    return s ? `session @${this.tag(s)}` : user ? 'the user' : 'an unverified local process'
+  private label(s: Session | null, user = false, via?: string) {
+    // Anything on this machine can hold the token, so only a device paired through the relay speaks as the user. A
+    // local app the person types into (`via`) says so, and still reads as unverified.
+    return s ? `session @${this.tag(s)}` : user ? 'the user' : via ? `the user, through ${via} (unverified)` : 'an unverified local process'
   }
 
   /**
@@ -653,13 +675,18 @@ export class Sessions {
    * sender with no session is the user only with `user` (a paired device); otherwise it is unverified. Delivered on each recipient's next hook call; one sitting
    * idle in a pane is prompted, so that call comes now.
    */
-  async say(m: { from?: string; cwd: string; text: string; to?: string; user?: boolean; kind?: string; re?: string }) {
+  async say(m: { from?: string; cwd: string; text: string; to?: string; user?: boolean; kind?: string; re?: string; repo?: string; via?: string }) {
     const text = m.text.trim()
     if (!text) throw new Error('say something')
     const s = m.from ? await this.touch({ session: m.from, cwd: m.cwd }) : null
-    const repo = s?.repo ?? (await this.root(m.cwd)).repo
     const now = this.now()
     const live = [...this.all.values()].filter(o => o.id !== s?.id && now - o.at <= LIVE)
+    // `repo`: another repo's sessions, by the name of its main checkout's directory.
+    const there = m.repo?.trim().toLowerCase()
+    const named = there ? [...new Set(live.map(o => o.repo))].find(r => basename(checkout(r)).toLowerCase() === there) : undefined
+    if (there && !named) throw new Error(`no live session in a repo named ${m.repo}`)
+    const repo = named ?? s?.repo ?? (await this.root(m.cwd)).repo
+    const via = !s && !m.user ? m.via?.replace(/[^\w .-]/g, '').trim().slice(0, 32) || undefined : undefined
     // `re` answers a question or blocker: the first reply takes it off the asker's list, and with no `to` goes to the
     // asker. One that matches nothing is delivered anyway.
     let re = m.re?.trim().replace(/^#/, '') || undefined
@@ -679,7 +706,7 @@ export class Sessions {
     if (to === USER) {
       if (!s && m.user) throw new Error('you are the user: say it to a session')
       const kind = m.kind === 'question' || m.kind === 'blocker' ? m.kind : 'say'
-      const msg = this.tell(repo, { kind, origin: origin(s, m.user), from: this.label(s), sender: s?.id ?? '', text, ...(re ? { re } : {}) })
+      const msg = this.tell(repo, { kind, origin: origin(s, m.user), from: this.label(s, false, via), sender: s?.id ?? '', text, ...(re ? { re } : {}) })
       if (s && kind !== 'say') (s.unanswered ??= []).push({ id: msg.id, to: [USER], kind, text })
       this.save(s)
       return { id: msg.id, to: [`@${USER}`], woke: [] }
@@ -691,10 +718,10 @@ export class Sessions {
     }
     // Everyone means this repo; a named session in another repo is still reachable.
     let them = pick(live.filter(o => o.repo === repo))
-    if (!them.length && to) them = pick(live)
+    if (!them.length && to && !named) them = pick(live)
     if (!them.length) throw new Error(to ? `no live session @${to}` : 'nobody else is working in this repo')
     if (to && them.length > 1) throw new Error(`@${to} could be ${them.map(o => `@${this.tag(o)}`).join(' or ')}; give more of it`)
-    const from = this.label(s, m.user)
+    const from = this.label(s, m.user, via)
     // One id for every recipient, so whichever of them answers, the reply points at the same question.
     const id = randomUUID()
     const kind = m.kind === 'question' || m.kind === 'blocker' ? m.kind : 'say'
@@ -759,6 +786,20 @@ export class Sessions {
     this.post(s, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok }, `${from[0].toUpperCase()}${from.slice(1)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
     this.save(s)
     await this.panes.wake(s, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
+  }
+
+  /**
+   * A crew goal that `session` handed off has landed: the reporter's summary goes to it and wakes it, as a spawn's
+   * end does. With the session gone, it waits in the user's inbox.
+   */
+  async goalDone(m: { session: string; cwd: string; goal: number; text: string }) {
+    const s = this.all.get(m.session)
+    const from = `the crew, on goal ${m.goal}`
+    const said = m.text.trim().slice(0, 2000)
+    if (!s) return void this.tell((await this.root(m.cwd)).repo, { kind: 'goal', origin: 'yap', from, sender: '', text: said, ok: true })
+    this.post(s, { kind: 'goal', origin: 'yap', from, sender: '', text: said, ok: true }, `The crew merged goal ${m.goal}, which you handed it: ${said}`)
+    this.save(s)
+    await this.panes.wake(s, `${WAKE}the crew`)
   }
 
   /**

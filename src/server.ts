@@ -41,7 +41,10 @@ const changed = () => {
 // Keeps idle streams from being timed out by the client's fetch.
 setInterval(ping, 30_000)
 
-const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed)
+// A goal a session handed over reports back to it when it lands (`sessions` is set by then).
+const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed, (g, p) =>
+  void sessions.goalDone({ session: g.asker!, cwd: p.path, goal: g.id, text: g.summary }).catch(() => {}),
+)
 await crew.recover()
 // Tasks handed to the crew on the board. A pull, once a minute: nothing on the web can reach this machine.
 const watch = () => void crew.watch().catch(() => {})
@@ -200,7 +203,7 @@ Bun.serve({
     },
     '/api/notes': {
       GET: api(req => sessions.notes(new URL(req.url).searchParams.get('cwd') ?? '')),
-      POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? '') })),
+      POST: api((_, b) => sessions.note({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), replaces: b.replaces == null ? undefined : Number(b.replaces) })),
     },
     // Trusted handoffs: a peer's handoff on work the user started counts as their go. Turning it on is the user's
     // call, so it waits on the desktop; turning it off doesn't.
@@ -216,7 +219,7 @@ Bun.serve({
       }),
     },
     '/api/notes/:id': { DELETE: api((req, b) => sessions.unnote(String(b.cwd ?? ''), Number(req.params.id))) },
-    '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined, kind: b.kind || undefined, re: b.re || undefined })) },
+    '/api/say': { POST: api((_, b) => sessions.say({ from: b.from || undefined, cwd: String(b.cwd ?? ''), text: String(b.text ?? ''), to: b.to || undefined, kind: b.kind || undefined, re: b.re || undefined, repo: b.repo || undefined, via: b.via || undefined })) },
 
     // Opening is idempotent: the project for the repo that path sits in, new or not.
     '/api/projects': { POST: api((_, b) => crew.openProject(String(b.path ?? ''), b.init === true)) },
@@ -248,8 +251,8 @@ Bun.serve({
     '/api/goals': {
       POST: api((_, b) =>
         Number.isInteger(b.issue)
-          ? crew.take(Number(b.project_id), b.issue, String(b.title ?? ''))
-          : crew.compose(Number(b.project_id), String(b.text ?? ''), b.file === true),
+          ? crew.take(Number(b.project_id), b.issue, String(b.title ?? ''), b.session || undefined)
+          : crew.compose(Number(b.project_id), String(b.text ?? ''), b.file === true, b.session || undefined),
       ),
     },
     '/api/goals/:id/start': { POST: api(req => crew.startGoal(Number(req.params.id))) },

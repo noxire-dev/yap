@@ -10,9 +10,10 @@ import { type Client, type State, Tui, reader, sheet, status, useColor } from '.
 const USAGE = `yap                 open the board (starts the daemon if it isn't running)
 yap status          every project's rail
 yap show <ticket>   one ticket: criteria, verdicts, what was done, journal
-yap goal <text>     plan tickets for this repo from a sentence (--rinai files it as an issue too)
+yap goal <text>     plan tickets for this repo from a sentence (--rinai files it as an issue too); run from a
+                    session, its summary comes back to that session when the goal lands
 yap take <issue>    plan tickets from an issue on this repo's Rinai board
-yap go              start this repo's drafted tickets
+yap go [<goal>]     start this repo's drafted tickets, or only that goal's
 yap init            make this directory a git repo so the crew can work in it
 yap gate [<cmd>]    the command run on every merged result before the base moves; '' turns it off
 yap forget [name]   take this repo's project (or the named one) off the board
@@ -20,8 +21,9 @@ yap herdr <board|new|go> [popup|tab]   what the Herdr plugin's actions run
 yap setup           connect this machine's agents: the plugin in Claude Code, yap's tools in Codex and Cursor
 yap hooks           how to get the Claude Code hooks (the plugin), and takes out ones an older yap installed
 yap sessions        the Claude Code sessions the hooks have seen, and what each is doing
-yap say [--question|--blocker] [--re <id>] ['@id'] <text>
+yap say [--question|--blocker] [--re <id>] [--repo <name>] ['@id'] <text>
                     message the other sessions in this repo, or one of them, or @user for the person;
+                    --repo reaches the sessions of another repo, by its directory's name;
                     a question or blocker stays on your list until a reply with --re <its id>
 yap doing <text>    say what this session is working on, one line its peers and the user see; '' clears it
 yap inbox           what sessions in this repo said to the user, and how background sessions ended
@@ -34,13 +36,15 @@ yap handoffs [trusted|ask]  whether an agent acts on another session's handoff o
 yap pair <relay>     pair this machine with a YAP relay, so a web client can reach it; prints the pairing code
 yap unpair           forget the pairing, here and on the relay: every web client's token stops working
 yap bridge           whether this machine is paired, and connected
-yap note <text>     pin a note on this repo's board for every session, now and later; -d <id> takes one down
+yap note [--replaces <id>] <text>  pin a note on this repo's board for every session, now and later; --replaces
+                    takes the note it supersedes down in the same step, -d <id> takes one down
 yap notes           this repo's board
 yap claim <path> <why>   tell the other sessions you're working under that file or directory; they're warned before editing there
-yap release <id>    end a claim early
+yap release <id> | --mine   end a claim early, or every one of yours
 yap claims          this repo's live claims, every worktree
 yap start | stop    the daemon in the background; stop kills running agents and requeues their tickets
-yap serve           the daemon in the foreground`
+yap serve           the daemon in the foreground
+yap help            this list; yap <command> --help, the lines about one command`
 
 /** The session a command speaks as: the harness's YAP_SESSION, else Claude Code's or Codex's own id; none is the user. */
 const me = process.env.YAP_SESSION || process.env.CLAUDE_CODE_SESSION_ID || process.env.CODEX_THREAD_ID
@@ -372,10 +376,19 @@ async function mcp() {
 }
 
 const [cmd, ...rest] = process.argv.slice(2)
+/** The usage lines about `c`: those naming it before their description. */
+const helpFor = (c: string) => USAGE.split(/\n(?=yap )/).filter(e => e.split('\n')[0].split(/\s{2,}/)[0].split(' ').slice(1).includes(c))
+const HELP = ['help', '--help', '-h']
 const cols = process.stdout.columns || 100
 try {
   useColor(!!process.stdout.isTTY && !process.env.NO_COLOR)
   if (!cmd) await board()
+  else if (cmd === 'help' || HELP.includes(cmd)) console.log(USAGE)
+  else if (HELP.includes(rest[0] ?? '')) {
+    const lines = helpFor(cmd)
+    if (!lines.length) throw new Error(`no command ${cmd}; \`yap help\` lists them`)
+    console.log(lines.join('\n'))
+  }
   else if (cmd === 'serve') await import('./server')
   else if (cmd === 'start') await daemon()
   else if (cmd === 'status') {
@@ -392,21 +405,25 @@ try {
     const text = rest.filter(a => a !== '--rinai').join(' ').trim()
     if (!text) throw new Error('yap goal <what you want done>')
     const p = await here()
-    const g = await api.send('POST', '/api/goals', { project_id: p.id, text, file })
-    console.log(`goal ${g.id} on ${p.name}${g.issue ? ` (rinai #${g.issue})` : ''}: a planner is drafting tickets. \`yap status\` shows them, \`yap go\` starts them.`)
+    const g = await api.send('POST', '/api/goals', { project_id: p.id, text, file, session: me })
+    console.log(`goal ${g.id} on ${p.name}${g.issue ? ` (rinai #${g.issue})` : ''}: a planner is drafting tickets. \`yap status\` shows them, \`yap go ${g.id}\` starts them.${me ? ' Its summary comes back to this session when it lands.' : ''}`)
   } else if (cmd === 'take') {
     const n = Number(String(rest[0]).replace(/^#/, ''))
     const p = await here()
     const card = (await api.get<{ number: number; title: string }[]>(`/api/projects/${p.id}/cards`)).find(c => c.number === n)
     if (!card) throw new Error(`#${rest[0]} is not an open issue on ${p.tracker ?? 'this repo'}`)
-    const g = await api.send('POST', '/api/goals', { project_id: p.id, issue: n, title: card.title })
-    console.log(`goal ${g.id} on ${p.name} from #${n}: a planner is drafting tickets. \`yap go\` starts them.`)
+    const g = await api.send('POST', '/api/goals', { project_id: p.id, issue: n, title: card.title, session: me })
+    console.log(`goal ${g.id} on ${p.name} from #${n}: a planner is drafting tickets. \`yap go ${g.id}\` starts them.${me ? ' Its summary comes back to this session when it lands.' : ''}`)
   } else if (cmd === 'go') {
+    // Starting work isn't undone, so anything but nothing or one goal id is refused before it starts a thing.
+    const want = rest[0] === undefined ? undefined : Number(rest[0].replace(/^[g#]/i, ''))
+    if (rest.length > 1 || (want !== undefined && !Number.isInteger(want))) throw new Error(`yap go takes nothing, or one goal's id, not ${rest.join(' ')}`)
     const p = await here()
     const s = (await running())!
-    const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft').map(t => t.goal_id))
+    const goals = new Set(s.tickets.filter(t => t.project_id === p.id && t.status === 'draft' && (want === undefined || t.goal_id === want)).map(t => t.goal_id))
+    if (want !== undefined && !goals.size) throw new Error(`goal ${want} has no drafts on ${p.name}`)
     for (const g of goals) await api.send('POST', `/api/goals/${g}/start`)
-    console.log(goals.size ? `started the drafts of ${goals.size} goal${goals.size === 1 ? '' : 's'} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
+    console.log(goals.size ? `started the drafts of ${want === undefined ? `${goals.size} goal${goals.size === 1 ? '' : 's'}` : `goal ${want}`} on ${p.name}` : `nothing to start on ${p.name}: no drafts`)
   } else if (cmd === 'sessions') {
     if (!(await running())) throw new Error('the daemon is not running, so no session is being tracked')
     const list = await api.get<{ id: string; name: string; top: string; at: number; doing?: string; files: string[]; undelivered?: { from: string; text: string }[]; unanswered?: { id: string; kind: string; to: string[]; text: string }[] }[]>('/api/sessions')
@@ -422,14 +439,16 @@ try {
   } else if (cmd === 'say') {
     let kind: string | undefined
     let re: string | undefined
+    let repo: string | undefined
     for (;;) {
       if (rest[0] === '--question' || rest[0] === '--blocker') kind = rest.shift()!.slice(2)
       else if (rest[0] === '--re') (rest.shift(), (re = rest.shift()))
+      else if (rest[0] === '--repo') (rest.shift(), (repo = rest.shift()))
       else break
     }
     const to = rest[0]?.startsWith('@') ? rest.shift() : undefined
     await daemon()
-    const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' '), kind, re })
+    const r = await api.send('POST', '/api/say', { from: me, cwd: target(), to, text: rest.join(' '), kind, re, repo })
     if (kind) console.log(`${kind} ${r.id.slice(0, 8)}: a reply with \`--re ${r.id.slice(0, 8)}\` takes it off your list`)
     const asleep = r.to.filter((id: string) => !r.woke.includes(id))
     if (r.to[0] === '@user') console.log("left in the user's inbox: `yap inbox` here, and the web through the relay")
@@ -452,6 +471,9 @@ try {
     if (cmd === 'claims') {
       const cs = await api.send('POST', '/yap/claims', { cwd })
       console.log(cs.length ? cs.map((c: any) => `${c.id}  @${c.name}  ${c.path}  for ${Math.max(0, Math.round((c.expires - Date.now()) / 60_000))}m: ${c.why}`).join('\n') : 'no claims')
+    } else if (cmd === 'release' && rest[0] === '--mine') {
+      const r = await api.send('POST', '/yap/release', { session: me, cwd, all: true })
+      console.log(r.released ? `released ${r.released} claim${r.released === 1 ? '' : 's'}` : 'you held no claims')
     } else if (cmd === 'release') {
       await api.send('POST', '/yap/release', { session: me, cwd, id: rest[0] })
       console.log(`released ${rest[0]}`)
@@ -539,8 +561,10 @@ try {
       await api.send('DELETE', `/api/notes/${Number(String(rest[1]).replace(/^#/, ''))}`, { cwd })
       console.log(`took #${String(rest[1]).replace(/^#/, '')} down`)
     } else if (cmd === 'note') {
-      const n = await api.send('POST', '/api/notes', { from: me, cwd, text: rest.join(' ') })
-      console.log(`pinned #${n.id}: every session in this repo sees it`)
+      const replaces = rest[0] === '--replaces' ? (rest.shift(), Number(String(rest.shift()).replace(/^#/, ''))) : undefined
+      if (replaces !== undefined && !Number.isInteger(replaces)) throw new Error('yap note --replaces <id> <text>')
+      const n = await api.send('POST', '/api/notes', { from: me, cwd, text: rest.join(' '), replaces })
+      console.log(`pinned #${n.id}${replaces !== undefined ? `, took #${replaces} down` : ''}: every session in this repo sees it`)
     } else {
       const ns = await api.get<{ id: number; ts: number; author: string; text: string }[]>(`/api/notes?cwd=${encodeURIComponent(cwd)}`)
       console.log(ns.length ? ns.map(n => `#${n.id}  ${ago(n.ts)}${Date.now() - n.ts > STALE ? ', may be stale' : ''}  ${n.author}\n      ${n.text}`).join('\n') : 'the board is empty')
@@ -571,7 +595,7 @@ try {
     console.log(`${p.name} is off the board`)
   } else if (cmd === 'stop') {
     console.log((await running()) ? (await api.send('POST', '/api/stop'), 'stopped') : 'not running')
-  } else console.log(USAGE)
+  } else throw new Error(`no command ${cmd}; \`yap help\` lists them`)
 } catch (e: any) {
   console.error(`yap: ${e?.message ?? e}`)
   process.exit(1)

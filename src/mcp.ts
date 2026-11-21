@@ -22,8 +22,8 @@ const TOOLS = [
   {
     name: 'yap_say',
     description:
-      'Message another agent session in this repo (`to`: its name or id, without @) or all of them, or the person with `to` "user" (it waits in their inbox, on the web too). An idle session wakes to read it. `kind` "question" or "blocker" keeps it on your list until someone replies with `re` set to its id; answer one sent to you the same way.',
-    inputSchema: { type: 'object', properties: { text: s, to: s, kind: { type: 'string', enum: ['question', 'blocker'] }, re: s }, required: ['text'] },
+      'Message another agent session in this repo (`to`: its name or id, without @) or all of them, or the person with `to` "user" (it waits in their inbox, on the web too). `repo` reaches another repo\'s sessions instead, by its directory\'s name. An idle session wakes to read it. `kind` "question" or "blocker" keeps it on your list until someone replies with `re` set to its id; answer one sent to you the same way.',
+    inputSchema: { type: 'object', properties: { text: s, to: s, kind: { type: 'string', enum: ['question', 'blocker'] }, re: s, repo: s }, required: ['text'] },
   },
   {
     name: 'yap_doing',
@@ -37,13 +37,13 @@ const TOOLS = [
   },
   {
     name: 'yap_note',
-    description: "Pin a note on the repo's board for every session, now and later: a decision, a warning, who owns what.",
-    inputSchema: { type: 'object', properties: { text: s }, required: ['text'] },
+    description: "Pin a note on the repo's board for every session, now and later: a decision, a warning, who owns what. `replaces`: the id of a note this one supersedes, taken down in the same step.",
+    inputSchema: { type: 'object', properties: { text: s, replaces: { type: 'number' } }, required: ['text'] },
   },
   {
     name: 'yap_claim',
     description:
-      'Before a task that touches several files in one directory, claim it (a file or directory, relative to the repo root), so other sessions are warned before they edit there. Says who holds it when another session already claimed an overlapping path. Lasts 20 minutes past your last edit under it. Pass release with the claim id when you are done.',
+      'Before a task that touches several files in one directory, claim it (a file or directory, relative to the repo root), so other sessions are warned before they edit there. Says who holds it when another session already claimed an overlapping path. Lasts 20 minutes past your last edit under it. Pass release with the claim id when you are done, or "all" for every one of yours.',
     inputSchema: { type: 'object', properties: { path: s, why: s, release: s } },
   },
   {
@@ -93,11 +93,12 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
   }
   if (name === 'yap_say') {
     const kind = a.kind === 'question' || a.kind === 'blocker' ? a.kind : undefined
-    const r = await me.say(String(a.text ?? ''), a.to ? String(a.to).replace(/^@/, '') : undefined, { kind, re: a.re ? String(a.re) : undefined })
+    const r = await me.say(String(a.text ?? ''), a.to ? String(a.to).replace(/^@/, '') : undefined, { kind, re: a.re ? String(a.re) : undefined, repo: a.repo ? String(a.repo) : undefined })
     const sent = `sent to ${r.to.join(', ')}${r.woke.length ? `; ${r.woke.join(', ')} woke to read it` : ''}`
     return kind ? `${sent}. Your ${kind} is ${r.id.slice(0, 8)}; it stays on your list until a reply with that re.` : sent
   }
   if (name === 'yap_claim') {
+    if (a.release === 'all') return `released ${(await me.release('all')).released} claims`
     if (a.release) return (await me.release(String(a.release)), `released ${a.release}`)
     const r = await me.claim(String(a.path ?? ''), String(a.why ?? ''))
     return 'held' in r ? `already claimed: ${r.held.path} by @${r.held.name}, ${r.held.why}. Ask them with yap_say before working there.` : `claimed as ${r.id}; release it with yap_claim release "${r.id}" when done`
@@ -107,7 +108,7 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
     return ns.length ? ns.map(n => `#${n.id} ${n.author}: ${n.text}`).join('\n') : 'the board is empty'
   }
   if (name === 'yap_doing') return (await me.doing(String(a.text ?? '')), a.text ? 'the others see it next to your name' : 'cleared')
-  if (name === 'yap_note') return `pinned #${(await me.note(String(a.text ?? ''))).id}`
+  if (name === 'yap_note') return `pinned #${(await me.note(String(a.text ?? ''), a.replaces == null ? undefined : Number(a.replaces))).id}`
   if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''), a.agent === 'codex' ? 'codex' : undefined)).id}; its last word comes back to you through yap_check`
   throw new Error(`no tool ${name}`)
 }

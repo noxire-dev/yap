@@ -28,6 +28,8 @@ export interface Goal {
   brief: string
   /** Brought in by the board's crew label, not by a human's `yap take`: taking the label off drops it. */
   handed?: boolean
+  /** The agent session that handed the goal over: the summary goes to it when the goal lands. */
+  asker?: string
   /** What the crew did, written for the person who asked, once every ticket has merged. */
   summary: string
 }

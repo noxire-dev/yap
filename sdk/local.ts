@@ -14,6 +14,10 @@
 export interface Said {
   kind?: 'question' | 'blocker'
   re?: string
+  /** Another repo's sessions instead, by the name of its main checkout's directory. */
+  repo?: string
+  /** The user's own `say` only: the local app they typed it in, so it reads `the user, through <via> (unverified)`. */
+  via?: string
 }
 
 /** What a verb answers. `{}` is "say nothing". */
@@ -35,11 +39,12 @@ export interface Message {
   id?: string
   /** Only goes up. */
   seq?: number
-  kind: 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict'
+  /** `goal`: the crew's summary of a goal the session handed it, once it landed. */
+  kind: 'say' | 'question' | 'blocker' | 'note' | 'spawn' | 'conflict' | 'goal'
   /** The id of the message this answers. */
   re?: string
-  /** `session`, `user` (a device paired through the relay) or `local` (unverified: anything on the machine). Missing from a daemon before it. */
-  origin?: 'session' | 'user' | 'local'
+  /** `session`, `user` (a device paired through the relay), `local` (unverified: anything on the machine) or `yap` (the daemon itself). Missing from a daemon before it. */
+  origin?: 'session' | 'user' | 'local' | 'yap'
   /** As the model reads it: `session @auth`, `the user`. */
   from: string
   /** The sending session's id, `''` for the user. */
@@ -222,9 +227,9 @@ export class YapLocal {
     return this.call<ForUser[]>('inbox', { cwd, since })
   }
 
-  /** The user's note on the repo's board. */
-  note(cwd: string, text: string) {
-    return this.call<Note>('note', { cwd, text })
+  /** The user's note on the repo's board; `replaces` takes the note it supersedes down. */
+  note(cwd: string, text: string, replaces?: number) {
+    return this.call<Note>('note', { cwd, text, replaces })
   }
 
   unnote(cwd: string, id: number) {
@@ -346,9 +351,9 @@ export class YapSession {
     return this.yap.call<{}>('doing', { session: this.id, cwd: this.cwd, text })
   }
 
-  /** Pin a note on the repo's board, as this session. */
-  note(text: string) {
-    return this.yap.call<Note>('note', { session: this.id, cwd: this.cwd, text })
+  /** Pin a note on the repo's board, as this session; `replaces` takes the note it supersedes down in the same step. */
+  note(text: string, replaces?: number) {
+    return this.yap.call<Note>('note', { session: this.id, cwd: this.cwd, text, replaces })
   }
 
   /**
@@ -359,8 +364,9 @@ export class YapSession {
     return this.yap.call<{ id: string } | { held: { session: string; name: string; path: string; why: string } }>('claim', { session: this.id, cwd: this.cwd, path, why })
   }
 
-  release(id: string) {
-    return this.yap.call<{}>('release', { session: this.id, cwd: this.cwd, id })
+  /** End a claim early, or `'all'` of this session's. */
+  release(id: string | 'all') {
+    return this.yap.call<{ released: number }>('release', { session: this.id, cwd: this.cwd, ...(id === 'all' ? { all: true } : { id }) })
   }
 
   /** Start a background Claude Code (or `codex`) session on `task`; its last word comes back to this one as a message. */

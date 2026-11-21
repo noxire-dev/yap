@@ -17,22 +17,25 @@ Run every command from inside the repo. The daemon starts on demand.
 |---|---|
 | See the board: what is drafted, running, needing a human, merged | `yap status` |
 | Read one ticket: criteria with verdicts, the crew's write-up, the journal | `yap show 12` |
-| Hand over work | `yap goal "<what should be true when it is done>"` |
+| Hand over work; the crew's summary comes back to this session when it lands | `yap goal "<what should be true when it is done>"` |
 | Hand over work and file it on the Rinai board too | `yap goal --rinai "<text>"` |
 | Work a Rinai issue | `yap take 154` |
-| Start the drafted tickets | `yap go` |
+| Start a goal's drafted tickets | `yap go <goal>` (bare `yap go` starts every goal's drafts in the repo) |
 | A directory with no git yet | `yap init` |
 | Which other Claude sessions are in this repo, and what they are doing | `yap sessions` |
 | Tell another session something, or all of them in this repo | `yap say [@<name>] <text>` |
+| Tell the sessions of another repo | `yap say --repo <its directory name> <text>` |
 | Ask something you need answered, or say you're blocked on another session | `yap say --question ['@<name>'] <text>` or `--blocker`; it stays on your row in `yap sessions` until a reply |
 | Answer a question or blocker | `yap say --re <its id> <text>`: it goes to the asker |
 | Say what this session is working on, when you start a task and when it changes | `yap doing <text>` |
 | Ask the user something that waits for them (they read it in `yap inbox` and on the web) | `yap say --question '@user' <text>` |
 | Read what sessions left for the user | `yap inbox` |
-| Before a task that touches more than two files in one directory, claim it | `yap claim <path> <why>` · `yap claims` · `yap release <id>` |
+| Before a task that touches more than two files in one directory, claim it | `yap claim <path> <why>` · `yap claims` · `yap release <id>` · `yap release --mine` |
 | Leave a note for every session in this repo, now and later | `yap note <text>` · `yap notes` · `yap note -d <id>` |
+| Settle a note that went stale (a decision now made) | `yap note --replaces <id> <text>` |
 
-A goal is planned into drafts first and nothing runs until `yap go`. Ask the user before running `yap go`
+A goal is planned into drafts first and nothing runs until `yap go`. `yap <command> --help` shows a command's
+usage without running it. Ask the user before running `yap go`
 unless they already said to start. Write goals as outcomes with enough context for an engineer who has not seen
 this conversation: file paths, the behaviour wanted, what must not change.
 

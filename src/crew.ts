@@ -282,6 +282,8 @@ export class Crew {
     private tracker: Tracker,
     private home: string,
     private changed: () => void = () => {},
+    /** A goal a session handed over has landed: tell that session the summary. */
+    private reported: (goal: Goal, project: Project) => void = () => {},
   ) {}
 
   /** What each running ticket's agent is doing right now, and when it last did anything. */
@@ -376,14 +378,14 @@ export class Crew {
   private taking = new Set<string>()
 
   /** Bring a tracker issue onto the rail: the planner turns its brief into draft tickets, which wait for a human. */
-  async take(project_id: number, issue: number, title: string) {
+  async take(project_id: number, issue: number, title: string, asker?: string) {
     const p = await this.tracked(project_id)
     if (!p.tracker) throw new Error('this repo has no board')
     const key = `${p.tracker}#${issue}`
     if (this.taking.has(key) || this.onRail(p.tracker).has(issue)) throw new Error(`#${issue} is already on the rail`)
     this.taking.add(key)
     try {
-      return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue))
+      return this.plan(p.id, `#${issue} ${title}`, issue, await this.tracker.brief(p.tracker, issue), asker)
     } finally {
       this.taking.delete(key)
     }
@@ -487,14 +489,14 @@ export class Crew {
   }
 
   /** A goal typed by the human, optionally filed on the tracker first so the board knows about it. */
-  async compose(project_id: number, text: string, file: boolean) {
+  async compose(project_id: number, text: string, file: boolean, asker?: string) {
     const p = await this.tracked(project_id)
     if (!text.trim()) throw new Error('say what you want done')
-    if (!file) return this.plan(p.id, text)
+    if (!file) return this.plan(p.id, text, null, '', asker)
     if (!p.tracker) throw new Error('this repo has no board to file on')
     const card = await this.tracker.file(p.tracker, text.trim().split(/\r?\n/)[0].slice(0, 120), text.trim())
     this.store.log(p.id, null, 'tracker', { did: 'filed', issue: card.number })
-    return this.plan(p.id, text, card.number)
+    return this.plan(p.id, text, card.number, '', asker)
   }
 
   /** Tell the tracker what became of the issue a ticket came from. Never blocks or fails the crew. */
@@ -531,6 +533,7 @@ export class Crew {
     this.store.patchGoal(goal.id, { summary })
     this.store.log(p.id, t.id, 'digest', { goal: goal.id, written: !!r?.ok })
     this.changed()
+    if (goal.asker) this.reported({ ...goal, summary }, p)
     if (!p.tracker || !goal.issue) return
     const lines = mine.map(o => `- ${o.sha?.slice(0, 7)} ${o.title} (${o.override ? 'human override' : `${o.criteria.length}/${o.criteria.length} criteria`}, round ${o.round})`)
     this.tracker
@@ -574,9 +577,9 @@ export class Crew {
   }
 
   /** Turn a goal into draft tickets. Returns at once; the planner runs behind it. */
-  plan(project_id: number, text: string, issue: number | null = null, brief = '') {
+  plan(project_id: number, text: string, issue: number | null = null, brief = '', asker?: string) {
     const p = this.project(project_id)
-    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief, summary: '' })
+    const goal = this.store.addGoal({ project_id, text: text.trim(), status: 'planning', note: '', issue, brief, summary: '', ...(asker ? { asker } : {}) })
     this.changed()
     void this.agent
       .run({ cwd: p.path, prompt: planPrompt(goal.text, brief), readOnly: true, schema: PLAN })

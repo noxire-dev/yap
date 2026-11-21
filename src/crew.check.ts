@@ -10,7 +10,7 @@ import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
 import { childEnv } from './env'
-import type { AgentRunner, Card, Tracker, Workspace } from './ports'
+import type { AgentRunner, Card, Goal, Project, Tracker, Workspace } from './ports'
 import { Sessions, gitRisk, gitWhere, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
@@ -24,7 +24,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean; planText?: string; noPlan?: boolean } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean; planText?: string; noPlan?: boolean; reported?: (g: Goal, p: Project) => void } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -109,7 +109,7 @@ function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: bo
     labeler: async (_r, n) => (told.push(`events ${n}`), o.handed?.find(c => c.number === n)?.by ?? null),
     me: async () => 'you',
   }
-  const crew = new Crew(store, ws, agent, tracker, '/tmp/yap')
+  const crew = new Crew(store, ws, agent, tracker, '/tmp/yap', () => {}, o.reported)
   return { store, crew, merged, squashed, prompts, told, ws, dirty }
 }
 
@@ -526,11 +526,73 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   now += 6 * 60_000
   assert.deepEqual(await reg.claims('/repo'), [])
   const two = await A('claim', { path: 'docs', why: 'spec' })
-  assert.deepEqual(await A('release', { id: two.id }), {})
+  assert.deepEqual(await A('release', { id: two.id }), { released: 1 })
   await assert.rejects(B('release', { id: two.id }), /no claim/)
   await A('claim', { path: 'docs', why: 'spec' })
   await A('leave')
   assert.deepEqual(await reg.claims('/repo'), [], 'gone with its session')
+}
+
+// Claims keep the case they were written in, and a session releases all of its own at once. A note replaces the
+// one it supersedes in one step. A say reaches another repo's sessions by its name, and a local app the user types
+// into says which it is.
+{
+  const { store, ws } = rig([])
+  const reg = new Sessions(ws, store, () => 1_000_000)
+  const as = (session: string, cwd = '/repo') => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd, ...b }) as Promise<any>
+  const [A, B, E] = [as('aaaa1111'), as('bbbb2222'), as('eeee5555', '/elsewhere')]
+  await A('join', { name: 'auth' })
+  await B('join', { name: 'api' })
+  await E('join', { name: 'far' })
+  await A('claim', { path: 'Docs/README.md', why: 'x' })
+  await A('claim', { path: 'src', why: 'y' })
+  assert.deepEqual((await reg.claims('/repo')).map(c => c.path), ['Docs/README.md', 'src'], 'as written')
+  assert.equal('held' in (await B('claim', { path: 'docs/readme.md', why: 'z' })), process.platform === 'win32', "case counts only where the OS's does")
+  assert.deepEqual(await A('release', { all: true }), { released: 2 })
+  assert.deepEqual((await reg.claims('/repo')).filter(c => c.session === 'aaaa1111'), [])
+  await assert.rejects(local(reg)('release', { cwd: '/repo', all: true }), /session that made it/)
+
+  const n1 = await A('note', { text: 'decision pending: v0 hooks' })
+  await B('will-edit', { path: 'q.ts' })
+  const n2 = await A('note', { text: 'decided: v0 hooks go', replaces: n1.id })
+  assert.deepEqual((await reg.notes('/repo')).map(n => n.id), [n2.id])
+  assert.match((await B('will-edit', { path: 'q2.ts' })).context, new RegExp(`#${n2.id} from session @auth, replacing #${n1.id}: decided`))
+  await assert.rejects(A('note', { text: 'x', replaces: 999 }), /no note #999/)
+  assert.equal((await reg.notes('/repo')).length, 1, 'a failed replace pins nothing')
+
+  assert.deepEqual((await A('say', { repo: 'Elsewhere', text: 'heads up from auth' })).to, ['@far'])
+  assert.match((await E('will-edit', { path: 'e.ts' })).context, /From session @auth: heads up from auth/)
+  assert.doesNotMatch((await B('will-edit', { path: 'b.ts' })).context ?? '', /heads up/, 'not its own repo')
+  await assert.rejects(A('say', { repo: 'nowhere', text: 'x' }), /no live session in a repo named nowhere/)
+
+  await local(reg)('say', { cwd: '/repo', via: 'Kodr<script>', to: '@auth', text: 'ship it' })
+  assert.match((await A('will-edit', { path: 'z.ts' })).context, /From the user, through Kodrscript \(unverified\): ship it/)
+  await local(reg)('say', { cwd: '/repo', session: 'bbbb2222', via: 'Kodr', to: '@auth', text: 'mine' })
+  assert.match((await A('will-edit', { path: 'z2.ts' })).context, /From session @api: mine/, 'a session is itself, via or not')
+}
+
+// A goal a session handed over: the reporter's summary goes back to that session and wakes it; with the session
+// gone, it waits in the user's inbox.
+{
+  const said: [Goal, Project][] = []
+  const { store, crew, ws } = rig([true, true], { reported: (g, p) => said.push([g, p]) })
+  const p = await crew.openProject('.')
+  const goal = await crew.compose(p.id, 'make retries sane', false, 'aaaa1111')
+  const other = await crew.compose(p.id, 'something else', false)
+  await until(() => store.goals().filter(g => g.status === 'ready').length === 2)
+  crew.startGoal(goal.id)
+  await until(() => said.length)
+  assert.deepEqual([said[0][0].id, said[0][0].asker, said[0][0].summary, said[0][1].id], [goal.id, 'aaaa1111', 'The crew did the thing in x.', p.id])
+  assert.equal(store.goals().find(g => g.id === other.id)!.asker, undefined, 'only when a session asked')
+
+  const woken: string[] = []
+  const reg = new Sessions(ws, store, () => 1_000_000, { wake: async s => (woken.push(s.id), true) })
+  await reg.yap('join', { session: 'aaaa1111', cwd: '/repo' })
+  await reg.goalDone({ session: 'aaaa1111', cwd: '/repo', goal: 3, text: 'did it' })
+  assert.deepEqual(woken, ['aaaa1111'])
+  assert.match((await reg.yap('will-edit', { session: 'aaaa1111', cwd: '/repo', path: 'x.ts' })).context!, /The crew merged goal 3, which you handed it: did it/)
+  await reg.goalDone({ session: 'gone', cwd: '/repo', goal: 4, text: 'also' })
+  assert.deepEqual(reg.inbox().map(m => [m.kind, m.origin, m.from, m.text]), [['goal', 'yap', 'the crew, on goal 4', 'also']])
 }
 
 // The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.
