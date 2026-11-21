@@ -1,0 +1,13 @@
+2026-11-21T21:38:47.026Z bench 2026-11-21-dry: 1 pairs × 1 repeats × setups ABCDE, model claude-sonnet-5-5, 3 at a time, 45 min a run; shared daemon port 4170 is never used; plan weekly usage 28%
+2026-11-21T21:38:47.252Z 26-1_2-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-A\yap YAP_PORT=4200
+2026-11-21T21:38:47.376Z 26-1_2-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-C\yap YAP_PORT=4202
+2026-11-21T21:38:47.381Z 26-1_2-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-B\yap YAP_PORT=4201
+2026-11-21T21:39:44.632Z 26-1_2-r1-C: FAIL f1=false f2=false cost=$0.20 tokens=459384 wall=57s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:39:44.861Z 26-1_2-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-D\yap YAP_PORT=4202
+2026-11-21T21:40:39.338Z 26-1_2-r1-A: PASS f1=true f2=true cost=$0.40 tokens=835886 wall=108s collisions=0 interventions=0 agents=1
+2026-11-21T21:40:39.564Z 26-1_2-r1-E: start, setup E (crew (yap goal + yap go, test gate)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21\26-1_2-r1-E\yap YAP_PORT=4200
+2026-11-21T21:41:24.208Z 26-1_2-r1-D: PASS f1=true f2=true cost=$0.45 tokens=975853 wall=95s collisions=0 interventions=0 agents=3
+2026-11-21T21:41:42.196Z 26-1_2-r1-B: FAIL f1=false f2=false cost=$0.15 tokens=591823 wall=175s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:44:58.546Z 26-1_2-r1-E: PASS f1=true f2=true cost=$0.70 tokens=877923 wall=254s collisions=0 interventions=0 agents=6
+2026-11-21T21:44:58.759Z bench 2026-11-21-dry: done, 5 rows, 0 could not run, cost $1.90, plan weekly usage 28% -> 28%
+2026-11-21T21:44:58.759Z bench 2026-11-21-dry: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench\bench\results\2026-11-21-dry.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench\bench\results\2026-11-21-dry.md
