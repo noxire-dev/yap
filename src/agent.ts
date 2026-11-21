@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GH_ENV } from './board'
 import { childEnv } from './env'
 import type { Agent, AgentRun, AgentRunner } from './ports'
 
@@ -17,7 +18,9 @@ export class Agents implements AgentRunner {
  * report under the peer's id through YAP_SESSION, the way a Claude peer's do under --session-id.
  */
 export class CodexCli implements AgentRunner {
-  async run({ cwd, prompt, signal, peer }: AgentRun) {
+  async run({ cwd, prompt, signal, peer, only }: AgentRun) {
+    // Codex has no way to drop its own tools for an MCP server's alone: a board run here would not be confined.
+    if (only) throw new Error('a board chat runs on Claude Code only')
     const dir = mkdtempSync(join(tmpdir(), 'yap-codex-'))
     const last = join(dir, 'last.txt')
     try {
@@ -50,22 +53,19 @@ function codexAuth() {
 
 /** Headless Claude Code. One process per run, so every run starts with a clean context. */
 export class ClaudeCli implements AgentRunner {
-  async run({ cwd, prompt, readOnly, schema, signal, onActivity, onText, peer, chat }: AgentRun) {
-    const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
-    // No human is there to answer a prompt: anything that would ask is denied.
-    args.push('--permission-prompts', 'none', '--strict-mcp-config')
-    // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
-    if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
-    else args.push('--no-session-persistence')
-    if (readOnly) args.push('--tools', 'Read,Grep,Glob')
-    else args.push('--permission-mode', 'auto')
-    if (schema) args.push('--json-schema', JSON.stringify(schema))
-    if (peer) args.push('--session-id', peer)
+  async run(o: AgentRun) {
+    const { cwd, prompt, signal, onActivity, onText, peer, chat } = o
+    // Only a board run reads no settings file, so only it needs the user's carried in.
+    const args = claudeArgs(o, o.only ? carried() : {})
+    // A board run's folder is yap's own and may not exist yet: it is where the run stands, nothing is read there.
+    if (o.only) mkdirSync(cwd, { recursive: true })
 
     // YAP_AGENT keeps the crew out of the session registry: its hooks see it and stay quiet. A peer's hooks report,
     // so they need to find this daemon.
     const yap = peer ? Object.fromEntries(['YAP_HOME', 'YAP_PORT'].filter(k => process.env[k]).map(k => [k, process.env[k]!])) : { YAP_AGENT: '1' }
-    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap } })
+    // A board run's server is gh: a gh signed in by environment needs that environment. The run has no shell to read it.
+    const gh = o.only ? Object.fromEntries(GH_ENV.filter(k => process.env[k]).map(k => [k, process.env[k]!])) : {}
+    const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap, ...gh } })
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()
@@ -103,6 +103,45 @@ export class ClaudeCli implements AgentRunner {
     await p.exited
     if (!ok && !text) text = (await stderr).trim() || `claude exited ${p.exitCode}`
     return { ok, text, data }
+  }
+}
+
+/** The `claude` command line for a run. Pure, so the check can read it. */
+export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, settings: Record<string, unknown> = {}) {
+  const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
+  // No human is there to answer a prompt: anything that would ask is denied.
+  args.push('--permission-prompts', 'none', '--strict-mcp-config')
+  // A chat keeps its session so the next message resumes it; every other run starts clean and leaves nothing.
+  if (chat) args.push(chat.resume ? '--resume' : '--session-id', chat.session, '--append-system-prompt', chat.system)
+  else args.push('--no-session-persistence')
+  if (only) {
+    // No built-in tool, only the server's. dontAsk refuses whatever is not allowed, and no settings file is read: a
+    // user's defaultMode bypassPermissions or allow rules would otherwise win. Their sign-in settings come back in.
+    args.push('--tools', '', '--mcp-config', JSON.stringify({ mcpServers: { [only.name]: { command: only.command, args: only.args } } }))
+    args.push('--allowedTools', `mcp__${only.name}`, '--permission-mode', 'dontAsk', '--setting-sources', '')
+    if (Object.keys(settings).length) args.push('--settings', JSON.stringify(settings))
+  } else if (readOnly) args.push('--tools', 'Read,Grep,Glob')
+  else args.push('--permission-mode', 'auto')
+  if (schema) args.push('--json-schema', JSON.stringify(schema))
+  if (peer) args.push('--session-id', peer)
+  return args
+}
+
+/**
+ * What of the user's Claude Code settings a run that reads none keeps: everything but what could widen it. How they
+ * sign in (apiKeyHelper, Bedrock's awsAuthRefresh, forceLoginMethod, a gateway's env), their model, stay; their
+ * permissions, hooks and MCP servers do not.
+ */
+export function carriedFrom(s: Record<string, unknown>) {
+  const WIDEN = ['permissions', 'hooks', 'enableAllProjectMcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers', 'mcpServers', 'statusLine', 'enabledPlugins', 'extraKnownMarketplaces']
+  return Object.fromEntries(Object.entries(s).filter(([k]) => !WIDEN.includes(k)))
+}
+function carried() {
+  try {
+    const dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')
+    return carriedFrom(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8')))
+  } catch {
+    return {}
   }
 }
 

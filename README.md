@@ -146,7 +146,8 @@ A paired client can list your registered projects and their sessions (with what 
 notes, message sessions, spawn background ones and follow them live, read your inbox (what sessions said to you
 and how spawns ended) and answer a session's question with `say` and `re`, and chat with Claude Code in a
 project: read-only in your checkout, or with edits in a worktree and branch of its own that you merge when you
-want it. It names projects, never paths, and nothing outside a registered project is visible.
+want it. Or chat with the Rinai agent for a project's board (`board: true`): it reads and changes the board
+through `gh rinai` and has nothing else, no shell and no file access. It names projects, never paths, and nothing outside a registered project is visible.
 The wire is in [docs/yap.md](docs/yap.md#remote), and `sdk/remote.ts` is a typed client for it with no
 dependencies:
 

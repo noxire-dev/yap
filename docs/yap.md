@@ -308,8 +308,8 @@ token was given it by the user.
 
 | Verb | Body | Answer |
 |---|---|---|
-| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox` and `chat` |
-| `projects` | | `[{ name, base }]` |
+| `hello` | | `{ protocol: "yap", version, verbs, extensions }`; the remote extensions are `board`, `spawn`, `doing`, `inbox`, `chat` and `board-chat` |
+| `projects` | | `[{ name, base, board }]`; `board` is the project's Rinai board, `owner/repo`, or null |
 | `sessions` | | live sessions in projects: `[{ project, id, name, at, files, doing?, unanswered }]`; `unanswered` is `[{ id, kind, text }]`, its questions and blockers to the user nobody has answered |
 | `spawns` | `id`?, `since`? | background sessions in projects, newest first: `[{ project, id, name, task, from, started, done?, ok?, result?, steps }]`; `id` picks one and adds its `log` after line `since`, as locally |
 | `notes` | `project` | the project's board |
@@ -317,11 +317,27 @@ token was given it by the user.
 | `say` | `project`, `text`, `to`?, `kind`?, `re`? | messages a session there, or all of them: `{ id, to, woke }`. With `re`, the id (or 8 characters of it) of a session's question or blocker, it answers it: with no `to` it goes to the asker and leaves its `unanswered` |
 | `inbox` | `since`?, `project`? | what sessions said to the user and how background sessions ended, oldest first, after `since`: `[{ project, id, seq, kind, origin, from, sender, text, at, re?, ok? }]`, every project or one. Poll it with the highest `seq` you have |
 | `spawn` | `project`, `text` | starts a background session on the task: `{ id }` |
-| `chat` | `project`, `text`, `thread`?, `edits`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
-| `chat.read` | `thread`, `after`? | `{ thread, project, branch, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
+| `chat` | `project`, `text`, `thread`?, `edits`?, `board`? | a message in a chat, a new thread when none is named: `{ thread }` at once (an edits thread's worktree is made behind it; a failure comes as an `error` event). 409 while the thread is still answering |
+| `chat.read` | `thread`, `after`? | `{ thread, project, branch, board, busy, events }`, the events numbered after `after`: `you`, `text`, `tool` (one line per tool call), `done`, `error` |
 | `chat.stop` | `thread` | stops the turn running |
 | `chat.drop` | `thread` | forgets the thread; an edits thread's worktree and branch are removed, unmerged work with them |
-| `chats` | `project`? | threads, newest first: `[{ thread, project, branch, busy, at, title }]` |
+| `chats` | `project`? | threads, newest first: `[{ thread, project, branch, board, busy, at, title }]` |
+
+A **board chat** (`board: true`, set when the thread starts; a daemon that has them says `board-chat` in `hello`, and an older one would start a read chat instead, so a client checks) is the Rinai agent for the project's board. It has
+no built-in tool at all, no Read and no Bash: only `src/board.ts`, an MCP server whose tools (board, search,
+brief, goals, pulse, cycle; move, priority, claim, cycle_add, cycle_remove, cycle_order, file, comment, update,
+goal, ungoal) each run `gh rinai -R <that board> <verb>` as an argument list, never through a shell; a comment,
+an update or a body goes on stdin, and a short argument with a double quote and no space (which gh on Windows
+drops) is refused. gh's own sign-in variables (`GH_TOKEN`, `GH_HOST`, `GH_CONFIG_DIR` and the like) and
+`RINAI_URL` reach it. It runs
+outside the checkout, in `~/.yap/chats/<project>/board`, with `--permission-mode dontAsk` and no settings file
+read; the user's settings come in through `--settings` less their permissions, hooks and MCP servers, so a Bedrock or
+helper sign-in and their model still work. Claude Code's Bash rules could not hold it: commands Claude Code judges read-only, `cat`
+and a `; whoami` after an allowed command among them, ran past the allow list, so a chat with Bash or Read could
+post a file in a comment. A comment injected on a public repo can reach this board's own cards and no further.
+It is told to read the board before answering, to make a change the user asked for in so many words, and to list
+the changes for a broad ask (reorganize, triage) and wait for a go. A project with no GitHub remote has no board,
+and the call says so.
 
 A chat is one Claude Code session per thread: the first turn names it, every later one resumes it. Without
 `edits` it reads and searches the project's own checkout and changes nothing. With `edits` (set when the thread
