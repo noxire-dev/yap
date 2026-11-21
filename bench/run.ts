@@ -195,7 +195,7 @@ export function report(rows: Row[], date: string, split = '') {
     '',
     '| Setup | Runs | Pass | Median cost | Median tokens | Median wall-clock | Median collisions | Median interventions |',
     '|---|---|---|---|---|---|---|---|',
-    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? `${Math.round(x.wall / 60)} min` : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
+    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? `${Math.round(x.wall)}s` : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
     '',
     ...(split ? ['## Where the time went', '', `From \`bun bench/trace.ts --setups ${date}\`, over every agent's log in the run directories.`, '', '```', split.trim(), '```', ''] : []),
     '## Where each setup lost',
@@ -209,7 +209,7 @@ export function report(rows: Row[], date: string, split = '') {
     const lost: string[] = []
     if (x.pass < best.pass) lost.push(`pass rate (${pct(x.pass)} against ${winner('pass')}'s ${pct(best.pass)})`)
     if (x.cost > best.cost) lost.push(`cost (${usd(x.cost)} median against ${winner('cost')}'s ${usd(best.cost)})`)
-    if (x.wall > best.wall) lost.push(`wall-clock (${Math.round(x.wall / 60)} min against ${winner('wall')}'s ${Math.round(best.wall / 60)})`)
+    if (x.wall > best.wall) lost.push(`wall-clock (${Math.round(x.wall)}s median against ${winner('wall')}'s ${Math.round(best.wall)}s)`)
     if (x.collisions > best.collisions) lost.push(`collisions (${x.collisions} median against ${best.collisions})`)
     if (x.interventions > best.interventions) lost.push(`interventions (${x.interventions} median against ${best.interventions})`)
     const rs = by(x.s)
