@@ -41,9 +41,9 @@ const changed = () => {
 // Keeps idle streams from being timed out by the client's fetch.
 setInterval(ping, 30_000)
 
-// A goal a session handed over reports back to it when it lands (`sessions` is set by then).
-const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed, (g, p) =>
-  void sessions.goalDone({ session: g.asker!, cwd: p.path, goal: g.id, text: g.summary }).catch(() => {}),
+// A goal a session handed over reports back to it when it lands or gets stuck (`sessions` is set by then).
+const crew = new Crew(store, ws, new ClaudeCli(), new Rinai(), home, changed, (g, p, stuck) =>
+  void sessions.goalReport({ session: g.asker!, cwd: p.path, goal: g.id, text: stuck ?? g.summary, ok: !stuck }).catch(() => {}),
 )
 await crew.recover()
 // Tasks handed to the crew on the board. A pull, once a minute: nothing on the web can reach this machine.

@@ -789,15 +789,18 @@ export class Sessions {
   }
 
   /**
-   * A crew goal that `session` handed off has landed: the reporter's summary goes to it and wakes it, as a spawn's
-   * end does. With the session gone, it waits in the user's inbox.
+   * A crew goal that `session` handed off has landed (`ok`), its summary in `text`, or one of its tickets needs a
+   * human (not `ok`), why in `text`. It goes to that session and wakes it, as a spawn's end does. With the session
+   * gone, it waits in the user's inbox.
    */
-  async goalDone(m: { session: string; cwd: string; goal: number; text: string }) {
+  async goalReport(m: { session: string; cwd: string; goal: number; text: string; ok: boolean }) {
     const s = this.all.get(m.session)
     const from = `the crew, on goal ${m.goal}`
     const said = m.text.trim().slice(0, 2000)
-    if (!s) return void this.tell((await this.root(m.cwd)).repo, { kind: 'goal', origin: 'yap', from, sender: '', text: said, ok: true })
-    this.post(s, { kind: 'goal', origin: 'yap', from, sender: '', text: said, ok: true }, `The crew merged goal ${m.goal}, which you handed it: ${said}`)
+    const msg = { kind: 'goal' as const, origin: 'yap' as const, from, sender: '', text: said, ok: m.ok }
+    if (!s) return void this.tell((await this.root(m.cwd)).repo, msg)
+    const line = m.ok ? `The crew merged goal ${m.goal}, which you handed it: ${said}` : `Goal ${m.goal}, which you handed the crew, is stuck and needs a human: ${said}`
+    this.post(s, msg, line)
     this.save(s)
     await this.panes.wake(s, `${WAKE}the crew`)
   }

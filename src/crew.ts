@@ -282,8 +282,8 @@ export class Crew {
     private tracker: Tracker,
     private home: string,
     private changed: () => void = () => {},
-    /** A goal a session handed over has landed: tell that session the summary. */
-    private reported: (goal: Goal, project: Project) => void = () => {},
+    /** A goal a session handed over has landed (tell that session the summary), or with `stuck`, a ticket of it needs a human. */
+    private reported: (goal: Goal, project: Project, stuck?: string) => void = () => {},
   ) {}
 
   /** What each running ticket's agent is doing right now, and when it last did anything. */
@@ -503,7 +503,9 @@ export class Crew {
   // Only yap's own label for why (the text before the first colon) leaves the machine: what follows it is an
   // author's report or a reviewer's finding, which an issue body can talk into carrying anything.
   private report(p: Project, t: Ticket, what: 'start' | 'stuck', detail = '') {
-    const issue = this.store.goals().find(g => g.id === t.goal_id)?.issue
+    const goal = this.store.goals().find(g => g.id === t.goal_id)
+    if (what === 'stuck' && goal?.asker) this.reported(goal, p, `t${t.id} "${t.title}": ${first(detail)}. \`yap show ${t.id}\` has the story.`)
+    const issue = goal?.issue
     const repo = p.tracker
     if (!repo || !issue) return
     const say = async () => {

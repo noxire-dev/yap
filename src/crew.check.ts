@@ -24,7 +24,7 @@ import { rpc } from './mcp'
 const ok = { ok: true, log: '' }
 const TWO = { tickets: [{ title: 'first', body: '', criteria: ['a', 'b'], deps: [] }, { title: 'second', body: '', criteria: ['a', 'b'], deps: [0] }] }
 
-function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean; planText?: string; noPlan?: boolean; reported?: (g: Goal, p: Project) => void } = {}) {
+function rig(reviews: boolean[], o: { gateOk?: boolean; plan?: object; hang?: boolean; report?: string; diff?: string; landed?: string; baseBroken?: boolean; handed?: (Card & { by: string | null })[] | never[]; briefFails?: boolean; briefGate?: Promise<void>; handedFails?: boolean; planText?: string; noPlan?: boolean; reported?: (g: Goal, p: Project, stuck?: string) => void } = {}) {
   let atBase = false
   const store = new SqliteStore(new Database(':memory:'))
   const merged: string[] = []
@@ -588,11 +588,30 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const woken: string[] = []
   const reg = new Sessions(ws, store, () => 1_000_000, { wake: async s => (woken.push(s.id), true) })
   await reg.yap('join', { session: 'aaaa1111', cwd: '/repo' })
-  await reg.goalDone({ session: 'aaaa1111', cwd: '/repo', goal: 3, text: 'did it' })
+  await reg.goalReport({ session: 'aaaa1111', cwd: '/repo', goal: 3, text: 'did it', ok: true })
   assert.deepEqual(woken, ['aaaa1111'])
   assert.match((await reg.yap('will-edit', { session: 'aaaa1111', cwd: '/repo', path: 'x.ts' })).context!, /The crew merged goal 3, which you handed it: did it/)
-  await reg.goalDone({ session: 'gone', cwd: '/repo', goal: 4, text: 'also' })
-  assert.deepEqual(reg.inbox().map(m => [m.kind, m.origin, m.from, m.text]), [['goal', 'yap', 'the crew, on goal 4', 'also']])
+  await reg.goalReport({ session: 'aaaa1111', cwd: '/repo', goal: 5, text: 't9 "x": still failing', ok: false })
+  assert.match((await reg.yap('will-edit', { session: 'aaaa1111', cwd: '/repo', path: 'y.ts' })).context!, /Goal 5, which you handed the crew, is stuck and needs a human: t9 "x": still failing/)
+  assert.deepEqual(woken, ['aaaa1111', 'aaaa1111'], 'woken for a stuck goal too')
+  await reg.goalReport({ session: 'gone', cwd: '/repo', goal: 4, text: 'also', ok: true })
+  assert.deepEqual(reg.inbox().map(m => [m.kind, m.origin, m.from, m.text, m.ok]), [['goal', 'yap', 'the crew, on goal 4', 'also', true]])
+}
+
+// A goal a session handed over whose ticket never passes review: the session hears it is stuck, once, when it
+// escalates.
+{
+  const said: [Goal, string | undefined][] = []
+  const { store, crew } = rig([false, false, false, false], { plan: { tickets: [{ title: 'only', body: '', criteria: ['a', 'b'], deps: [] }] }, reported: (g, _p, stuck) => said.push([g, stuck]) })
+  const p = await crew.openProject('.')
+  const goal = await crew.compose(p.id, 'make retries sane', false, 'aaaa1111')
+  await until(() => store.goals().find(g => g.status === 'ready'))
+  crew.startGoal(goal.id)
+  const [t] = store.tickets()
+  await settled(store, t.id)
+  assert.equal(said.length, 1)
+  assert.equal(said[0][0].id, goal.id)
+  assert.match(said[0][1]!, new RegExp(`^t${t.id} "only": still failing after \\d rounds.*\`yap show ${t.id}\` has the story\\.$`))
 }
 
 // The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.

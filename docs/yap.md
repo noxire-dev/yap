@@ -92,8 +92,9 @@ An answer has up to five parts, and an agent maps each to what it has:
   `user`, `local` (see Trust) or `yap` (the daemon itself), `from` as the model reads it (`session @auth`, `the user`,
   `an unverified local process`), `sender` the sending session's id (`""` without one), `re` the id of the message it answers, `ok` on a spawn's end. On a
   `conflict`, `from` and `sender` are the other side and `text` the conflicting files, one per line, empty once clean.
-  A `goal` is the crew's summary of a goal the session handed it (`yap goal` from inside the session), sent when
-  its last ticket merges: `from` `the crew, on goal <id>`, origin `yap`. The session is woken for it, as for a
+  A `goal` is the crew reporting on a goal the session handed it (`yap goal` from inside the session): with `ok`,
+  the summary, once its last ticket merges; without, a ticket that needs a human (`t<id> "<title>": <why>`), each
+  time one escalates. `from` is `the crew, on goal <id>`, origin `yap`. The session is woken for it, as for a
   spawn's end; a session gone by then leaves it in the user's inbox.
 - `seq`: with `messages`, the highest `seq` among them.
 
