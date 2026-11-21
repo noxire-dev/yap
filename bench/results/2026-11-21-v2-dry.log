@@ -1,0 +1,15 @@
+2026-11-21T21:52:48.926Z bench 2026-11-21-v2-dry: 1 pairs × 1 repeats × setups ABCD, model claude-sonnet-5-5, 3 at a time, 45 min a run; daemons on 4300+slot, shared daemon port 4170 is never used; run dirs C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21-v2-dry; plan weekly usage 29%
+2026-11-21T21:52:49.184Z 26-1_2-r1-A: start, setup A (subagents (one session, Task tool)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21-v2-dry\26-1_2-r1-A\yap YAP_PORT=4300
+2026-11-21T21:52:49.191Z 26-1_2-r1-B: start, setup B (bare parallel (two sessions, no yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21-v2-dry\26-1_2-r1-B\yap YAP_PORT=4301
+2026-11-21T21:52:49.204Z 26-1_2-r1-C: start, setup C (yap peers (two sessions with yap)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21-v2-dry\26-1_2-r1-C\yap YAP_PORT=4302
+2026-11-21T21:53:40.066Z 26-1_2-r1-C: init check ok: 2 agents, plugins [yap] each
+2026-11-21T21:53:40.503Z 26-1_2-r1-B: init check ok: 2 agents, plugins [] each
+2026-11-21T21:53:40.503Z 26-1_2-r1-B: FAIL f1=false f2=false cost=$0.17 tokens=246457 wall=51s collisions=1 interventions=0 agents=2 notes: merge conflict in mux.go
+2026-11-21T21:53:41.185Z 26-1_2-r1-D: start, setup D (commander (yap spawn, workers share a tree)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-21-v2-dry\26-1_2-r1-D\yap YAP_PORT=4301
+2026-11-21T21:53:45.274Z 26-1_2-r1-C: PASS f1=true f2=true cost=$0.16 tokens=281693 wall=51s collisions=0 interventions=0 agents=2
+2026-11-21T21:54:00.923Z 26-1_2-r1-A: init check ok: 1 agents, plugins [] each
+2026-11-21T21:54:06.296Z 26-1_2-r1-A: PASS f1=true f2=true cost=$0.28 tokens=409615 wall=72s collisions=0 interventions=0 agents=1
+2026-11-21T21:55:00.038Z 26-1_2-r1-D: init check ok: 3 agents, plugins [yap] each
+2026-11-21T21:55:04.488Z 26-1_2-r1-D: PASS f1=true f2=true cost=$0.24 tokens=397091 wall=79s collisions=1 interventions=0 agents=3
+2026-11-21T21:55:04.683Z bench 2026-11-21-v2-dry: done, 4 rows, 0 could not run, cost $0.86, plan weekly usage 29% -> 29%
+2026-11-21T21:55:04.684Z bench 2026-11-21-v2-dry: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench2\bench\results\2026-11-21-v2-dry.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench2\bench\results\2026-11-21-v2-dry.md

@@ -1,0 +1,184 @@
+[
+ {
+  "date": "2026-11-21",
+  "run": "26-1_2-r1-B",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "B",
+  "pass": false,
+  "f1": false,
+  "f2": false,
+  "total_cost_usd": 0.1655,
+  "tokens": 246457,
+  "tokens_detail": {
+   "input": 18,
+   "output": 4763,
+   "cache_read": 217651,
+   "cache_creation": 24025
+  },
+  "wall_s": 51,
+  "collisions": 1,
+  "collisions_detail": {
+   "merge_conflict_files": 1,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 2,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [],
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-21-v2-dry\\26-1_2-r1-B\\yap",
+   "port": 4301
+  }
+ },
+ {
+  "date": "2026-11-21",
+  "run": "26-1_2-r1-C",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "C",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.1636,
+  "tokens": 281693,
+  "tokens_detail": {
+   "input": 20,
+   "output": 3998,
+   "cache_read": 253114,
+   "cache_creation": 24561
+  },
+  "wall_s": 51,
+  "collisions": 0,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 2,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-21-v2-dry\\26-1_2-r1-C\\yap",
+   "port": 4302
+  }
+ },
+ {
+  "date": "2026-11-21",
+  "run": "26-1_2-r1-A",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "A",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.283,
+  "tokens": 409615,
+  "tokens_detail": {
+   "input": 40,
+   "output": 8119,
+   "cache_read": 343057,
+   "cache_creation": 58399
+  },
+  "wall_s": 72,
+  "collisions": 0,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-21-v2-dry\\26-1_2-r1-A\\yap",
+   "port": 4300
+  }
+ },
+ {
+  "date": "2026-11-21",
+  "run": "26-1_2-r1-D",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "D",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.244,
+  "tokens": 397091,
+  "tokens_detail": {
+   "input": 30,
+   "output": 7373,
+   "cache_read": 356044,
+   "cache_creation": 33644
+  },
+  "wall_s": 79,
+  "collisions": 1,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 3,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-21-v2-dry\\26-1_2-r1-D\\yap",
+   "port": 4301
+  }
+ }
+]

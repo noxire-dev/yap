@@ -1,6 +1,6 @@
 // The bench's scoring rules, run: what goes into a row and what the report says from it.
 import assert from 'node:assert/strict'
-import { dropTests, median, report, tally, testFuncs, type Row } from './run'
+import { dropTests, initCheck, median, plugins, report, tally, testFuncs, type Row } from './run'
 
 assert.equal(median([3, 1, 2]), 2)
 assert.equal(median([4, 1, 2, 3]), 2.5)
@@ -52,12 +52,26 @@ assert.equal(Math.round(turns.cost * 100), 73)
 assert.deepEqual([turns.input, turns.output, turns.cache_read, turns.cache_creation], [10, 2, 3, 4])
 assert.equal(turns.failed.length, 0, 'an agent that went on to succeed did not fail')
 
+// v2's clean agents: each agent's init line lists only yap (C, D) or nothing (A, B); Claude Code's built-ins don't
+// count, and an agent that never logged an init line fails the check.
+const builtin = { name: 'cc-plugin-telemetry', source: 'cc-plugin-telemetry@builtin' }
+const init = (...ps: object[]) => ({ type: 'system', subtype: 'init', plugins: [...ps, builtin] })
+const yapP = { name: 'yap', source: 'yap@inline' }
+const found = plugins([{ type: 'bench_argv' }, init(yapP), { type: 'bench_argv' }, init(), { type: 'bench_argv' }, init({ name: 'ponytail', source: 'ponytail@ponytail' })])
+assert.deepEqual(found, [['yap'], [], ['ponytail']])
+assert.equal(initCheck([['yap'], ['yap']], true), '')
+assert.equal(initCheck([[], []], false), '')
+assert.match(initCheck([['yap'], []], true), /agent 2 loaded \[\], want \[yap\]/)
+assert.match(initCheck([['yap']], false), /agent 1 loaded \[yap\], want \[\]/)
+assert.match(initCheck(plugins([{ type: 'bench_argv' }, init(), { type: 'bench_argv' }]), false), /agent 2 logged no init line/)
+assert.match(initCheck([], false), /no agent ran/)
+
 // The report names, for each setup, the columns it lost on and why its runs failed; a setup with no runs says so.
 const row = (setup: Row['setup'], pass: boolean, cost: number, extra: Partial<Row> = {}): Row => ({
   date: 'd', run: `${setup}${cost}`, task: '26', pair: [1, 2], repeat: 1, setup, pass, f1: pass, f2: pass, total_cost_usd: cost, tokens: 100,
   tokens_detail: { input: 0, output: 0, cache_read: 0, cache_creation: 0 }, wall_s: 600, collisions: 0,
   collisions_detail: { merge_conflict_files: 0, destructive_git: 0, stale_edits: 0 }, interventions: 0, interventions_detail: [],
-  agents: 1, api_key_sources: ['none'], daemon: { home: 'h', port: 4200 }, ...extra,
+  agents: 1, api_key_sources: ['none'], plugins: [[]], daemon: { home: 'h', port: 4300 }, ...extra,
 })
 const md = report(
   [row('A', true, 1), row('A', true, 2), row('B', false, 1, { collisions: 1, collisions_detail: { merge_conflict_files: 1, destructive_git: 0, stale_edits: 0 } }), row('C', false, 3, { error: 'boom' })],
@@ -68,5 +82,8 @@ assert.match(md, /\*\*A\*\* .*lost on cost \(\$1\.50 median against B's \$1\.00\
 assert.match(md, /\*\*B\*\* .*lost on pass rate \(0% against A's 100%\).*collisions.*1 on a merge conflict/)
 assert.match(md, /\*\*C\*\* .*1 that could not run \(boom\)/)
 assert.match(md, /\*\*D\*\* .*has no runs/)
+assert.doesNotMatch(md, /\*\*E\*\*/, 'v2 has no crew setup')
+assert.doesNotMatch(md, /Where the time went/, 'no split given, no timing section')
+assert.match(report([row('A', true, 1)], 'd-v2', 'setup  runs  wall\nA  1  60.0'), /## Where the time went[\s\S]*trace\.ts --setups d-v2[\s\S]*A {2}1 {2}60\.0/)
 
 console.log('bench ok')
