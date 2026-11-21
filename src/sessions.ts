@@ -799,6 +799,7 @@ export class Sessions {
     const said = m.text.trim().slice(0, 2000)
     const msg = { kind: 'goal' as const, origin: 'yap' as const, from, sender: '', text: said, ok: m.ok }
     if (!s) return void this.tell((await this.root(m.cwd)).repo, msg)
+    // Kodr (kodr-herdr 25a4721) reads these two sentences out of the hook context: change them only with Kodr.
     const line = m.ok ? `The crew merged goal ${m.goal}, which you handed it: ${said}` : `Goal ${m.goal}, which you handed the crew, is stuck and needs a human: ${said}`
     this.post(s, msg, line)
     this.save(s)
