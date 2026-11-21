@@ -1,18 +1,39 @@
 # yap
 
-Claude Code sessions on one machine that see each other, message each other and stay out of each other's way.
+Coding-agent sessions on one machine that see each other, message each other and stay out of each other's way.
 
-Open two sessions on one repo and each knows who else is there and which files they edited. Each is warned
-before it edits a file the other just changed, can't `git checkout` or `git stash` the tree out from under the
-other, and can ask it something: `yap say '@auth' are you done with the session refactor?`. A session idle in a
-Herdr pane is woken to answer. A session can claim a directory before working in it, so the others are warned
-before they edit there. A repo's notes board carries decisions and handoffs to the sessions that come later.
+Run three agents on one repo and they step on each other: one edits a file another just changed, one runs
+`git stash` and wipes another's work, none knows what the others are doing. yap gives them a shared room. A new
+session starts knowing who else is there:
 
-The protocol underneath is [YAP](docs/yap.md): a handful of verbs over local HTTP. Claude Code speaks it through
-hooks; any agent that can run a command around its tools can speak it directly.
+```
+Other agents are working in this repository right now. Don't redo their work, and re-read a file
+listed here before you edit it:
+- @auth (3fc8e133), active just now, doing "move sessions to the new store": edited src/auth/session.ts, src/auth/store.ts
+This repository's yap board, what sessions and the user left for whoever works here next:
+- #12 2h ago, session @api: The v2 routes are behind a flag until the client ships; don't delete v1.
+```
 
-On top of it sits a crew: you give it a goal, and agents plan, write, review and merge it without you watching.
-See "The crew" below.
+- **See:** who is in the repo, what each says it is doing, which files each edited.
+- **Warned:** before editing a file a peer changed in the last 30 minutes, the agent is told who and why.
+- **Guarded:** `git checkout`, `stash`, `reset --hard` and friends are refused while a peer is working in the tree.
+- **Talk:** `yap say '@auth' are you done with the store?`. An agent idle in a Herdr pane is woken to answer.
+  A question for you lands in `yap inbox`.
+- **Claim:** `yap claim src/auth <why>` warns the others away from a directory before a multi-file task.
+- **Board:** `yap note <text>` pins a decision or handoff that every later session in the repo reads at start.
+
+| Agent | How it joins |
+|---|---|
+| Claude Code | the plugin's hooks (`yap setup`) |
+| Codex | its hooks, run as `yap hook` (works on Windows, where Codex runs hooks through cmd) |
+| Cursor, Zed, Claude Desktop | MCP tools from `yap mcp` |
+| Your own harness | the YAP verbs over local HTTP, see [docs/yap.md](docs/yap.md#bringing-your-own-harness) |
+
+The protocol underneath is [YAP](docs/yap.md): a handful of verbs over `127.0.0.1`. Nothing leaves the machine
+unless you pair a relay (see Remote).
+
+On top of it sits a crew: you give it a goal, and agents plan, write, review and merge it on their own worktrees,
+behind your test gate. See "The crew" below.
 
 ## Run
 
@@ -42,7 +63,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | Command | |
 |---|---|
 | `yap sessions` | The live sessions, their names, what each says it is doing and what each edited. |
-| `yap say [--question\|--blocker] [--re <id>] [@name] <text>` | Message one session, or all of them in this repo, or `@user` for you. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
+| `yap say [--question\|--blocker] [--re <id>] ['@name'] <text>` | Message one session, or all of them in this repo, or `@user` for you. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
 | `yap doing <text>` | From inside a session: say what it is working on, one line its peers and you see. |
 | `yap inbox` | What sessions in this repo said to you (`yap say '@user'`), and how background sessions you started ended. |
 | `yap spawn [--codex] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. |
