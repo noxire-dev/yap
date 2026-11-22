@@ -21,7 +21,8 @@ Status: version 1. Everything here runs today.
 - The **board** is a repo's notes: decisions, warnings, handoffs. Notes outlive sessions. A note over a day old is
   stale.
 - A **claim** is a session saying it is about to work under a file or directory. It only warns: peers in any
-  worktree of the repo hear of it before they edit there. It lasts 20 minutes past its making or the holder's last
+  worktree of the repo hear of it before they edit there (`will-edit`), or right after a shell command of theirs
+  changed a file there (`ran`), when the holder hears of it too. It lasts 20 minutes past its making or the holder's last
   edit under it, and ends sooner on `release` or when the session leaves.
 
 ## Verbs
@@ -35,7 +36,7 @@ Every call carries `session` (the id) and `cwd`, and may carry `ack` (see Answer
 | `will-edit` | Before a file write (`path`) | If the file is inside a peer's live claim, in any worktree, answers with the holder and reason, once per claim. If a peer in the same tree edited that file in the last 30 minutes, answers with who, once per file per peer edit. Neither denies. |
 | `edited` | After a file write (`path`) | Records it, if inside the tree. The first one names the session. |
 | `will-run` | Before a shell command (`command`) | Notes the start time. If the command would move the tree (`checkout`, `switch`, `stash`, `reset --hard`, `clean`, `restore`, `rebase`, `pull`, `merge`) or sweep it (`add -A`, `commit -a`) while a peer in the same tree edited in the last 30 minutes, answers with a **deny**. The tree is the one the git runs in: a `cd <dir>` before it or `git -C <dir>` names another worktree, judged by who works there. |
-| `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. When two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first. |
+| `ran` | After a shell command | Files changed in the tree since `will-run` count as this session's edits, unless a peer's `edited` claimed them. When two shell commands overlap in one working tree, a file they change counts as the edit of whichever session sends `ran` first. If one of those files is inside a peer's live claim, in any worktree, answers with the holder, the path and the reason, and sends the holder a `conflict` message naming the file, once per file per claim. Never denies: the change is made. |
 | `idle` | The agent is about to end its turn (`continuing` if an earlier `idle` answer kept it going) | Answers with messages that came in while it worked, so it reads them now and not after the user's next prompt. Nothing while `continuing`: once a turn, so two sessions can't keep each other talking. Then, after answering, snapshots the working tree (untracked files included, the real index untouched) and test-merges it with the latest snapshot of every peer in another worktree of the repo (`git merge-tree`, git 2.38+). When the files that would conflict change, both sides get a `conflict` message, and another when they merge cleanly again. |
 | `leave` | The conversation ends | Forgets it. |
 | `say` | The agent or user sends a message (`text`, optional `to`, `kind`, `re`, `repo`, `via`) | `to` `user` is the person, not a peer: the message goes to the user's inbox (`inbox`, local and remote), a `question` or `blocker` stays on the sender's `unanswered` until the user replies with `re`, and nobody is woken; the user can't `say` to `user`, and no session is named `user`. Otherwise queues it for one peer (`to` is a name, a name prefix or an id prefix; an exact name wins) or all peers in the repo; a `to` nobody in the repo matches is looked up in every repo. One message id for all its recipients. `kind` `question` or `blocker` keeps it on the sender's `unanswered` until a message with `re` (its id, or 8 characters of it) answers it, or the sender leaves or lapses; a reply with no `to` goes to the asker. An `re` that matches nothing is delivered anyway when it has a `to`; with no `to` it is refused (the question was answered already, or no session asked it), never sent to every peer. `repo` sends to another repo's sessions instead, named by its main checkout's directory (`kodr-herdr`), in any case; one with no live session is refused. A peer idle in a pane is **woken**. Without `session`, the sender is `an unverified local process` (see Trust), or with `via`, the local app the user typed it in, `the user, through <via> (unverified)`. |
@@ -224,7 +225,8 @@ context as `reason`, not `additionalContext`.
 An agent whose harness speaks no YAP can speak it itself through `yap mcp`, an MCP server on stdio. It
 joins on its first request, named for the client (`clientInfo`, from `initialize` or `_meta`), and leaves when stdin closes or the process dies. With `YAP_SESSION` set it is that
 session's tools instead, and joining and leaving are left to whoever set it. Its tools: `yap_check` (`edit`,
-`run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came), `yap_peers`, `yap_say`,
+`run`, `edited`: `will-edit`, `will-run` and `edited`, and the messages that came; a check after one with `run`
+sends `ran` for that command first), `yap_peers`, `yap_say`,
 `yap_claim` (`path` and `why`, or `release`: a claim's id, or `all`), `yap_doing`, `yap_board`, `yap_note` (`replaces`) and `yap_spawn` (`task`, `agent`, `skills`). The model calls them when it decides to, so nothing is enforced.
 `yap_say` takes `kind`, `re` and `repo`, and `yap_peers` lists claims and unanswered questions and blockers. It speaks MCP
 2026-07-28 (no handshake: `server/discover`, the version in each request's `_meta`, `-32022` for one it doesn't
@@ -247,7 +249,7 @@ In a Herdr app terminal the hooks also pass `HC_TERMINAL_ID` as `?terminal=`.
 | `will-edit` | `PreToolUse` (Edit, Write, MultiEdit, NotebookEdit) → `pre` | `+ tool_input.file_path` | `additionalContext`, `systemMessage` |
 | `edited` | `PostToolUse` → `post` | `+ tool_input.file_path` | none |
 | `will-run` | `PreToolUse` (Bash) → `pre` | `+ tool_name: Bash, tool_input.command` | `permissionDecision: deny` and its reason |
-| `ran` | `PostToolUse` (Bash) → `post` | same | none |
+| `ran` | `PostToolUse` (Bash, not async) → `post` | same | `PostToolUse` `additionalContext`, `systemMessage` |
 | `idle` | `Stop` → `stop` | `+ stop_hook_active` as `continuing` | `additionalContext`, which keeps the turn going |
 | `leave` | `SessionEnd` → `end` | `session_id` | none |
 

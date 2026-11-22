@@ -900,7 +900,7 @@ export class Sessions {
       deny: each.find(x => x.deny)?.deny,
     }
     got.seq = Math.max(0, ...each.map(x => x.seq ?? 0)) || undefined
-    const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : verb === 'idle' ? 'Stop' : 'PreToolUse'
+    const name = verb === 'join' ? 'SessionStart' : verb === 'turn' ? 'UserPromptSubmit' : verb === 'idle' ? 'Stop' : event === 'post' ? 'PostToolUse' : 'PreToolUse'
     const notice = a.notice ? { systemMessage: a.notice } : {}
     // Codex's Stop takes no additionalContext: carrying on is a block, and its reason is the next prompt.
     if (verb === 'idle' && a.context && input.codex) return { ...notice, decision: 'block', reason: a.context }
@@ -962,11 +962,29 @@ export class Sessions {
       // A shell command edits too (sed, codegen, a formatter): what changed while it ran counts as this
       // session's, unless another session's edit tool wrote the file in that window.
       const theirs = (f: string) => this.others(s).some(o => o.top === s.top && (o.files.get(f) ?? 0) >= s.shell - 1000)
+      const mine: string[] = []
       for (const f of await this.ws.changed(s.top)) {
         const file = norm(f.path)
-        if (f.mtime >= s.shell - 1000 && !theirs(file)) this.edited(s, file)
+        if (f.mtime >= s.shell - 1000 && !theirs(file)) this.edited(s, file), mine.push(file)
       }
-      return {}
+      // will-edit never saw these: a change inside a peer's claim, in any worktree, is said now, to both. Once a file.
+      const inside = mine.flatMap(file => {
+        const rel = this.rel(s, file)
+        return this.others(s).flatMap(o => this.claimed(o).filter(c => covers(c.path, rel) && !s.warned.has(`ran:${c.id}:${rel}`)).map(c => ({ o, c, rel })))
+      })
+      if (!inside.length) return {}
+      for (const { o, c, rel } of inside) {
+        s.warned.set(`ran:${c.id}:${rel}`, this.now())
+        const there = o.top === s.top ? '' : ' in another worktree'
+        this.post(o, { kind: 'conflict', origin: 'session', from: this.label(s), sender: s.id, text: rel }, `${this.label(s)} changed ${rel}${there} with a shell command, inside your claim on ${c.path}. If that collides with your work, tell them with \`yap say '@${this.tag(s)}' <text>\`.`)
+        this.save(o)
+      }
+      const files = [...new Set(inside.map(h => h.rel))].join(', ')
+      const held = inside.map(({ o, c }) => `${this.label(o)} claimed ${c.path}${o.top === s.top ? '' : ' in another worktree'}: ${c.why}`)
+      return {
+        context: `Your command changed ${files}, inside another session's claim (${[...new Set(held)].join('; ')}). They have been told. Don't change it further: ask them with \`yap say '@<session>' <text>\` whether to keep or undo your change, and tell the user.`,
+        notice: `yap: your command changed ${files}, inside the claim of ${[...new Set(inside.map(({ o }) => `@${this.tag(o)}`))].join(', ')}`,
+      }
     }
 
     if (verb === 'will-run') {

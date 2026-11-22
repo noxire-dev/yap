@@ -115,7 +115,8 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
   `restore`, `rebase`, `pull`, `merge`) is refused while another session edited in the same working tree in the
   last 30 minutes. The model is told to ask that session, use a worktree, or ask you.
 - Claims: `yap claim src/auth <why>` before a task that touches several files there. Sessions in any worktree
-  of the repo are warned once before they edit under it, and a claim that overlaps it says who holds it. It lasts
+  of the repo are warned once before they edit under it, or right after a shell command of theirs (sed, a
+  redirect) changed a file there, and then you hear of it too. A claim that overlaps it says who holds it. It lasts
   20 minutes past your last edit there; `yap release <id>` ends it, `yap release --mine` ends all of yours,
   `yap claims` lists them.
 - Sessions say what they are on: `yap doing <text>` puts one line next to the session's name, in its peers'

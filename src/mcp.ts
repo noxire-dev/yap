@@ -11,7 +11,7 @@ const TOOLS = [
   {
     name: 'yap_check',
     description:
-      'Call before you edit a file another agent may be on, before any git command that switches, resets, stashes or commits, and between steps. It warns when another agent session in this repo just edited the file, says when a git command would wipe or sweep up their work in the same tree (then do not run it), and delivers messages other sessions sent you. Pass the files you changed since your last check in `edited`, so they are warned about yours.',
+      'Call before you edit a file another agent may be on, before any git command that switches, resets, stashes or commits, and between steps. It warns when another agent session in this repo just edited the file, says when a git command would wipe or sweep up their work in the same tree (then do not run it), says when the command you checked last time changed a file inside another session\'s claim, and delivers messages other sessions sent you. Pass the files you changed since your last check in `edited`, so they are warned about yours.',
     inputSchema: { type: 'object', properties: { edit: s, run: s, edited: { type: 'array', items: s } } },
   },
   {
@@ -67,13 +67,22 @@ const tools = (text: string) =>
     .replace(/`yap release <id>`/g, 'yap_claim with release')
     .replace(/, and take a note down with `yap note -d <id>` once it no longer holds/g, '')
 
-const say = (a: Answer) => tools([a.deny && `Don't run it. ${a.deny}`, a.context].filter(Boolean).join('\n\n')) || 'nothing from yap: go ahead'
+const NOTHING = 'nothing from yap: go ahead'
+const say = (a: Answer) => tools([a.deny && `Don't run it. ${a.deny}`, a.context].filter(Boolean).join('\n\n')) || NOTHING
+/** The command each session last checked with `run`, so the next check can send `ran` for it. */
+const running = new WeakMap<YapSession, string>()
 
 async function tool(me: YapSession, name: string, a: Record<string, any>): Promise<string> {
   const yap = me.yap
   if (name === 'yap_check') {
+    // The command it checked last time has run by now: what it changed is said before anything else.
+    const last = running.get(me)
+    running.delete(me)
+    const ran = last === undefined ? '' : say(await me.ran(last))
     for (const f of a.edited ?? []) await me.edited(String(f))
-    return say(a.run ? await me.willRun(String(a.run)) : await me.willEdit(a.edit ? String(a.edit) : ''))
+    if (a.run) running.set(me, String(a.run))
+    const now = say(a.run ? await me.willRun(String(a.run)) : await me.willEdit(a.edit ? String(a.edit) : ''))
+    return ran && ran !== NOTHING ? (now === NOTHING ? ran : `${ran}\n\n${now}`) : now
   }
   if (name === 'yap_peers') {
     const all = await yap.sessions(me.cwd)

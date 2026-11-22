@@ -494,7 +494,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 // Claims, through the /yap handler: an overlapping claim is held in every worktree of the repo, by path components;
 // a peer is warned once before editing inside one; the holder's edits renew it; it ends on release, leave or lapse.
 {
-  const { store, ws } = rig([])
+  const { store, ws, dirty } = rig([])
   let now = 1_000_000
   const reg = new Sessions(ws, store, () => now)
   const as = (session: string, cwd = '/repo') => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd, ...b }) as Promise<any>
@@ -518,6 +518,23 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match((await C('will-edit', { path: 'src/auth/x.ts' })).context, /claimed src\/auth in another worktree/)
   assert.equal((await A('will-edit', { path: 'src/auth/token.ts' })).context, undefined, 'not about its own')
   assert.match((await as('dddd4444')('join')).context, /Claimed by another session[\s\S]*- src\/auth, by @auth: rewriting token refresh/)
+  // A shell command (sed, a redirect) that changes a file inside the claim: warned at `ran`, in any worktree, and
+  // the holder is told. Once a file.
+  await C('will-run', { command: 'sed -i s/a/b/ src/auth/x.ts' })
+  dirty.push({ path: '/wt/src/auth/x.ts', mtime: now })
+  const r = await C('ran', { command: 'sed -i s/a/b/ src/auth/x.ts' })
+  assert.match(r.context, /Your command changed src\/auth\/x\.ts, inside another session's claim \(session @auth claimed src\/auth in another worktree: rewriting token refresh\)/)
+  assert.equal(r.notice, 'yap: your command changed src/auth/x.ts, inside the claim of @auth')
+  assert.match((await A('will-edit', { path: 'README.md' })).context, /session @wt changed src\/auth\/x\.ts in another worktree with a shell command, inside your claim on src\/auth/)
+  assert.equal((await C('ran', { command: 'true' })).context, undefined, 'once a file')
+  // Through Claude Code's hooks, the answer is PostToolUse's, synchronous for Bash so it lands before the next step.
+  const sh = (event: string) => reg.hook(event, { session_id: 'cccc3333', cwd: '/wt', tool_name: 'Bash', tool_input: { command: 'echo >> src/auth/y.ts' } }) as Promise<any>
+  await sh('pre')
+  dirty.push({ path: '/wt/src/auth/y.ts', mtime: now })
+  const post = (await sh('post')).hookSpecificOutput
+  assert.equal(post.hookEventName, 'PostToolUse')
+  assert.match(post.additionalContext, /changed src\/auth\/y\.ts, inside another session's claim/)
+  dirty.length = 0
   // An edit under it renews it; 20 minutes past the last one, it is gone.
   now += 15 * 60_000
   await A('edited', { path: 'src/auth/token.ts' })
@@ -616,7 +633,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
 
 // The harness client (sdk/local.ts) against the daemon's own /yap handler and event stream.
 {
-  const { store, ws } = rig([])
+  const { store, ws, dirty } = rig([])
   const reg = new Sessions(ws, store, () => 1_000_000)
   const answer = local(reg)
   assert.deepEqual(((await answer('hello', {})) as any).extensions, ['board', 'claims', 'conflicts', 'spawn', 'doing', 'inbox'], 'v1: extensions by short name')
@@ -673,6 +690,12 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.match((await b.claim('src/c/d.ts', 'x') as any).held.name, /^codex$/)
   assert.match((await call('yap_peers')).content[0].text, /yours:\n  claimed src\/c \([0-9a-f]{8}\): moving c/)
   assert.match((await call('yap_claim', { release: claimed.slice(11, 19) })).content[0].text, /^released/)
+  // A command it checked with `run`, then ran: the next check sends `ran`, so a change inside a claim is said.
+  await b.claim('src/m', 'moving m')
+  await call('yap_check', { run: 'sed -i s/a/b/ src/m/a.ts' })
+  dirty.push({ path: '/repo/src/m/a.ts', mtime: 1_000_000 })
+  assert.match((await call('yap_check')).content[0].text, /Your command changed src\/m\/a\.ts, inside another session's claim \(session @a claimed src\/m: moving m\)/)
+  dirty.length = 0
   assert.equal((await call('nope')).isError, true)
 
   // The MCP version: a supported one back, never an echo; 2026-07-28 has no handshake, so discover joins.

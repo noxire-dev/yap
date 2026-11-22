@@ -323,7 +323,7 @@ export class YapSession {
     return this.verb('will-run', { command })
   }
 
-  /** After a shell command: files it changed count as this session's. */
+  /** After a shell command: files it changed count as this session's; `context` when one is inside a peer's claim. */
   ran(command: string) {
     return this.verb('ran', { command })
   }
