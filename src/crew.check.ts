@@ -5,7 +5,7 @@ import { YapLocal, YapError as LocalError, wakePrompt } from '../sdk/local'
 import { Yap, YapError } from '../sdk/remote'
 import { Bridge, remote } from './bridge'
 import { boardArgs, boardRpc, isSlug } from './board'
-import { carriedFrom, claudeArgs } from './agent'
+import { carriedFrom, claudeArgs, skillPlugins } from './agent'
 import { Chats, rooted } from './chat'
 import { Crew, ROUNDS } from './crew'
 import { MAIL_MS, threadChips } from './kodrChips'
@@ -15,7 +15,7 @@ import { Sessions, gitRisk, gitWhere, norm, patchFiles } from './sessions'
 import { resolve } from 'node:path'
 import { SqliteStore } from './store'
 import { LocalWorkspace } from './workspace'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { events, local } from './wire'
@@ -740,6 +740,18 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   await Bun.sleep(0)
   assert.equal(runs[0].agent, 'codex')
   assert.equal(spawner.spawns()[0].agent, 'codex')
+
+  // A spawn with skills reaches the runner with them, from a list or a comma string; Codex and bad names are refused.
+  await local(spawner)('spawn', { cwd: '/repo', text: 'tidy', skills: 'ponytail, frontend-craft,ponytail' })
+  await local(spawner)('spawn', { cwd: '/repo', text: 'tidy', skills: ['ponytail:ponytail-review'] })
+  await Bun.sleep(0)
+  assert.deepEqual([runs[1].skills, runs[2].skills], [['ponytail', 'frontend-craft'], ['ponytail:ponytail-review']])
+  await local(spawner)('spawn', { cwd: '/repo', text: 'tidy' })
+  await Bun.sleep(0)
+  assert.ok(!('skills' in runs[3]), 'no skills: the usual session, with the user’s whole setup')
+  await assert.rejects(local(spawner)('spawn', { cwd: '/repo', text: 'tidy', agent: 'codex', skills: ['ponytail'] }), /Codex session loads none/)
+  await assert.rejects(local(spawner)('spawn', { cwd: '/repo', text: 'tidy', skills: ['../etc'] }), /not a skill name/)
+  assert.equal(runs.length, 4, 'a refused spawn starts nothing')
 }
 
 // A session that gave a pid leaves when that process dies, even without a leave (Codex kills its MCP server).
@@ -867,6 +879,31 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(JSON.parse(after('--mcp-config')).mcpServers.rinai, { command: 'bun', args: ['board.ts', 'acme/app'] })
   assert.ok(!claudeArgs({ cwd: '/tmp', prompt: '', only }).includes('--settings'), 'no settings flag when there is nothing to carry')
   assert.equal(claudeArgs({ cwd: '/tmp', prompt: '', readOnly: true }).join(' ').includes('--tools Read,Grep,Glob'), true)
+}
+
+// A lean spawn: no settings file, only the plugin folders given, the user's sign-in carried, auto mode as usual.
+// Skill names resolve to an installed plugin's folder or a copy of the user's own skill; an unknown one throws.
+{
+  const lean = claudeArgs({ cwd: '/tmp', prompt: '', peer: 'p' }, { model: 'x' }, ['/yap', '/ponytail'])
+  const after = (flag: string) => lean[lean.indexOf(flag) + 1]
+  assert.equal(after('--setting-sources'), '')
+  assert.deepEqual(lean.flatMap((a, i) => (a === '--plugin-dir' ? [lean[i + 1]] : [])), ['/yap', '/ponytail'])
+  assert.deepEqual([JSON.parse(after('--settings')), after('--permission-mode')], [{ model: 'x' }, 'auto'])
+  assert.ok(!claudeArgs({ cwd: '/tmp', prompt: '', peer: 'p' }, { model: 'x' }).includes('--setting-sources'), 'no plugins: the usual session')
+
+  const dir = mkdtempSync(join(tmpdir(), 'yap-claude-'))
+  mkdirSync(join(dir, 'plugins'))
+  writeFileSync(join(dir, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'ponytail@ponytail': [{ installPath: '/cache/ponytail/4.8.4' }] } }))
+  mkdirSync(join(dir, 'skills', 'frontend-craft', 'scripts'), { recursive: true })
+  writeFileSync(join(dir, 'skills', 'frontend-craft', 'SKILL.md'), '---\nname: frontend-craft\n---\n')
+  writeFileSync(join(dir, 'skills', 'frontend-craft', 'scripts', 'shoot.mjs'), '')
+  const got = skillPlugins(['ponytail', 'ponytail:ponytail-review', 'frontend-craft'], dir)
+  assert.deepEqual(got.dirs.slice(0, 1), ['/cache/ponytail/4.8.4'], 'a plugin once, however many of its skills are named')
+  assert.ok(existsSync(join(got.tmp!, '.claude-plugin', 'plugin.json')) && existsSync(join(got.tmp!, 'skills', 'frontend-craft', 'scripts', 'shoot.mjs')), 'the user’s skill copied whole into a plugin')
+  assert.equal(skillPlugins(['ponytail'], dir).tmp, undefined, 'no throwaway plugin when nothing needs copying')
+  assert.throws(() => skillPlugins(['nope'], dir), /no plugin or skill named nope/)
+  rmSync(got.tmp!, { recursive: true, force: true })
+  rmSync(dir, { recursive: true, force: true })
 }
 
 // The board's tools: every call is `gh rinai -R <board> <verb>`, an argument list. Another board, a shell, stdin

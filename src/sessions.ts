@@ -742,9 +742,13 @@ export class Sessions {
    * others, they hear about it, and it can be messaged. Its final message goes back to whoever asked: a session
    * gets it in its inbox, the user reads it with `yap spawns`.
    */
-  async spawn(m: { from?: string; cwd: string; text: string; user?: boolean; agent?: Agent }) {
+  async spawn(m: { from?: string; cwd: string; text: string; user?: boolean; agent?: Agent; skills?: string[] }) {
     const task = m.text.trim()
     if (!task) throw new Error('say what the session should do')
+    const skills = [...new Set((m.skills ?? []).map(k => k.trim()).filter(Boolean))]
+    const bad = skills.find(k => !/^[\w.-]+(:[\w.-]+)?$/.test(k))
+    if (bad) throw new Error(`not a skill name: ${bad}`)
+    if (skills.length && m.agent === 'codex') throw new Error('skills are Claude Code plugins and skills: a Codex session loads none')
     if (!this.runner) throw new Error('this daemon cannot start agents')
     const running = [...this.spawned.values()].filter(sp => !sp.done).length
     if (running >= this.cap())
@@ -762,7 +766,7 @@ export class Sessions {
       this.keep(sp)
       this.emit({ type: 'activity', repo: checkout(s?.repo ?? norm(m.cwd)), spawn: id.slice(0, 8), line })
     }
-    void this.runner.run({ cwd: native(m.cwd), prompt, peer: id, agent: m.agent, onActivity }).then(
+    void this.runner.run({ cwd: native(m.cwd), prompt, peer: id, agent: m.agent, onActivity, ...(skills.length ? { skills } : {}) }).then(
       r => this.finished(sp, r.ok, r.text),
       e => this.finished(sp, false, String(e?.message ?? e)),
     )

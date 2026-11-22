@@ -66,7 +66,7 @@ own sign-in and plan, and yap never sees either. By hand, the plugin is
 | `yap say [--question\|--blocker] [--re <id>] ['@name'] <text>` | Message one session, or all of them in this repo, or `@user` for you. A question or blocker stays listed in `yap sessions` until someone replies with `--re` its id. |
 | `yap doing <text>` | From inside a session: say what it is working on, one line its peers and you see. |
 | `yap inbox` | What sessions in this repo said to you (`yap say '@user'`), and how background sessions you started ended. |
-| `yap spawn [--codex] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. |
+| `yap spawn [--codex] [--skills <a,b>] <text>` / `yap spawns [<id>]` | Start a background Claude Code session here on a task (Codex with `--codex`, or when it is the only one installed), or see how those went. With an id, follow one live: each tool call as it makes it, then its last word. `--skills ponytail,frontend-craft` starts a lean one: none of your plugins or skills, only yap and those. |
 | `yap setup` | Connect this machine's agents: the plugin in Claude Code, hooks in Codex, `yap mcp` in Cursor. |
 | `yap mcp` | yap as an MCP server on stdio, for agents without hooks: Codex, Cursor, Zed. |
 | `yap handoffs [trusted\|ask]` | Whether an agent acts on another session's handoff of work you already started (`trusted`, confirmed on the desktop) or asks you first (`ask`, the default). |
@@ -134,6 +134,10 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
   mode; one that is truly yours goes to your inbox as a question while it carries on. Its final message comes back to the session that started it, or to
   `yap spawns` when you started it from your terminal. Three run at once unless `yap config spawns <n>` says
   otherwise; past that, `spawn` is refused with a 429. A daemon restart marks the ones it was running as failed.
+- `yap spawn --skills ponytail,frontend-craft <text>` starts a lean one instead: none of your settings, plugins
+  or skills (about 44k tokens of context with 14 plugins), only yap and the ones named. A name is an installed plugin,
+  loaded whole with its hooks, or a folder in `~/.claude/skills`. Give backend work `ponytail` and UI work
+  `frontend-craft`; Claude Code still picks a skill by its description when the task calls for it.
 
 Shell commands count as edits too: after each one, files `git status` shows changed since it started are
 recorded as that session's. Two sessions running shell commands at the same instant can be mixed up.

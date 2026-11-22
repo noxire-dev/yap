@@ -369,8 +369,11 @@ export class YapSession {
     return this.yap.call<{ released: number }>('release', { session: this.id, cwd: this.cwd, ...(id === 'all' ? { all: true } : { id }) })
   }
 
-  /** Start a background Claude Code (or `codex`) session on `task`; its last word comes back to this one as a message. */
-  spawn(task: string, agent?: 'claude' | 'codex') {
-    return this.yap.call<{ id: string }>('spawn', { session: this.id, cwd: this.cwd, text: task, agent })
+  /**
+   * Start a background Claude Code (or `codex`) session on `task`; its last word comes back to this one as a message.
+   * With `skills` (Claude Code only) it is lean: none of the user's plugins or skills, only yap and these.
+   */
+  spawn(task: string, agent?: 'claude' | 'codex', skills?: string[]) {
+    return this.yap.call<{ id: string }>('spawn', { session: this.id, cwd: this.cwd, text: task, agent, ...(skills?.length ? { skills } : {}) })
   }
 }
