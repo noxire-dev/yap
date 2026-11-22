@@ -5,6 +5,7 @@
 //   bun bench/trace.ts <run dir | run id>          the run's lanes, slowest tools, and gaps where nobody worked
 //   bun bench/trace.ts <run> --html out.html       the same as a timeline
 //   bun bench/trace.ts --setups [<date>]           median split per setup across every run of a date
+//   bun bench/trace.ts --phases [<date>]           median plan, work and tail per setup, and tokens read
 //   bun bench/trace.ts --archive [<dir>]           copy every run's logs out before the runner reuses its directory
 //
 // A run id is a directory name under %TEMP%/yapbench/<date>/, like 26-1_2-r1-D.
@@ -13,7 +14,8 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 type Seg = { kind: 'start' | 'model' | 'tool'; from: number; to: number; label?: string }
-type Lane = { name: string; segs: Seg[]; start: number; end: number; cost: number; turns: number }
+/** `read`: tokens the lane's model calls read (input, cache reads, cache writes), each call counted once; `calls`: how many. */
+type Lane = { name: string; segs: Seg[]; start: number; end: number; cost: number; turns: number; read: number; calls: number }
 type Trace = { run: string; t0: number; t1: number; lanes: Lane[] }
 
 const ROOT = join(tmpdir(), 'yapbench')
@@ -21,11 +23,11 @@ const ROOT = join(tmpdir(), 'yapbench')
 /** One claude process's log into lanes: the agent itself, then one per subagent it ran. */
 function lanes(file: string, n: number): Lane[] {
   const started = Number(basename(file).split('-')[0])
-  const byLane = new Map<string, { segs: Seg[]; last: number; pending: Map<string, { at: number; label: string }> }>()
+  const byLane = new Map<string, { segs: Seg[]; last: number; pending: Map<string, { at: number; label: string }>; calls: Map<string, number> }>()
   let cost = 0, turns = 0, cwd = '', end = started
   const lane = (id: string) => {
     let l = byLane.get(id)
-    if (!l) byLane.set(id, (l = { segs: [], last: NaN, pending: new Map() }))
+    if (!l) byLane.set(id, (l = { segs: [], last: NaN, pending: new Map(), calls: new Map() }))
     return l
   }
   const main = lane('')
@@ -44,6 +46,9 @@ function lanes(file: string, n: number): Lane[] {
     const l = lane(m.parent_tool_use_id ?? '')
     if (Number.isNaN(l.last)) l.last = at
     if (m.type === 'assistant') {
+      // One model call can arrive as several messages, each with the call's usage: keyed by id, it counts once.
+      const u = m.message?.usage
+      if (u) l.calls.set(m.message.id ?? `${at}`, (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0))
       // The model's turn ran from the last thing it was waiting on to this message; one turn can arrive as several
       // messages (thinking, text, a tool call), so extend the previous model segment rather than start a new one.
       const prev = l.segs.at(-1)
@@ -65,7 +70,7 @@ function lanes(file: string, n: number): Lane[] {
   for (const [id, l] of byLane) {
     if (!l.segs.length) continue
     const name = id ? `  subagent ${id.slice(-6)}` : `agent ${n} (${cwd || '?'})`
-    out.push({ name, segs: l.segs, start: id ? l.segs[0].from : started, end: id ? l.segs.at(-1)!.to : end, cost: id ? 0 : cost, turns: id ? 0 : turns })
+    out.push({ name, segs: l.segs, start: id ? l.segs[0].from : started, end: id ? l.segs.at(-1)!.to : end, cost: id ? 0 : cost, turns: id ? 0 : turns, read: [...l.calls.values()].reduce((a, n) => a + n, 0), calls: l.calls.size })
   }
   return out
 }
@@ -135,24 +140,57 @@ function html(t: Trace) {
 }
 const esc = (s: string) => s.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`)
 
-/** Median start-up, model, tool and wall per setup (the letter after the last dash), over every run of a date. */
-function setups(date?: string) {
+/** Every run of a date (the latest if none given) as its setup (the name after the last dash) and its trace. */
+function runsOf(date?: string) {
   const d = date ?? (existsSync(ROOT) ? readdirSync(ROOT).sort().at(-1) : undefined)
   if (!d) throw new Error(`no runs under ${ROOT}`)
-  const by = new Map<string, number[][]>()
+  const out: { setup: string; t: Trace }[] = []
   for (const run of readdirSync(join(ROOT, d))) {
     // A run the plan's limit cut short was moved aside to <run>_limited<n>; its retry is the one that counts.
     if (run.includes('_limited')) continue
-    let t: Trace
-    try { t = load(join(ROOT, d, run)) } catch { continue }
-    const s = run.split('-').at(-1)!
-    const all = t.lanes.flatMap(l => l.segs)
-    const row = [t.t1 - t.t0, sum(all, 'start'), sum(all, 'model'), sum(all, 'tool'), gaps(t).reduce((a, g) => a + g.to - g.from, 0)]
-    by.set(s, [...(by.get(s) ?? []), row])
+    try { out.push({ setup: run.split('-').at(-1)!, t: load(join(ROOT, d, run)) }) } catch {}
   }
-  const med = (xs: number[]) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+  return { d, runs: out }
+}
+
+const med = (xs: number[]) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+
+/** Median start-up, model, tool and wall per setup, over every run of a date. */
+function setups(date?: string) {
+  const { d, runs } = runsOf(date)
+  const by = new Map<string, number[][]>()
+  for (const { setup, t } of runs) {
+    const all = t.lanes.flatMap(l => l.segs)
+    by.set(setup, [...(by.get(setup) ?? []), [t.t1 - t.t0, sum(all, 'start'), sum(all, 'model'), sum(all, 'tool'), gaps(t).reduce((a, g) => a + g.to - g.from, 0)]])
+  }
   const rows = [`setups on ${d}: medians in seconds; start, model and tools are summed over every lane, so they can exceed wall`, '', 'setup  runs    wall   start   model   tools    gaps']
   for (const [s, rs] of [...by].sort()) rows.push(`${s.padEnd(5)} ${String(rs.length).padStart(5)} ${[0, 1, 2, 3, 4].map(i => sec(med(rs.map(r => r[i]))) + ' ').join('')}`)
+  return rows.join('\n')
+}
+
+/**
+ * A run in three phases. The parent is the run's first agent (A's session, D's commander); a worker is any other lane
+ * (A's subagents, D's spawned sessions). Plan: the run's start to the first worker's; work: that to the last worker's
+ * end; tail: that to the run's end. With the parent's model calls (turns) and the tokens it and the workers read. No worker: all plan.
+ */
+function phases(t: Trace) {
+  const [parent, ...workers] = t.lanes
+  const first = workers.length ? Math.min(...workers.map(w => w.start)) : t.t1
+  const last = workers.length ? Math.max(...workers.map(w => w.end)) : t.t1
+  return { plan: first - t.t0, work: last - first, tail: t.t1 - last, turns: parent.calls, parentRead: parent.read, workersRead: workers.reduce((a, w) => a + w.read, 0) }
+}
+
+/** Median phases per setup, over every run of a date. */
+function phaseSplit(date?: string) {
+  const { d, runs } = runsOf(date)
+  const by = new Map<string, ReturnType<typeof phases>[]>()
+  for (const { setup, t } of runs) by.set(setup, [...(by.get(setup) ?? []), phases(t)])
+  const k = (n: number) => `${Math.round(n / 1000)}k`.padStart(9)
+  const rows = [`phases on ${d}: medians; plan, work and tail in seconds, tokens read in thousands`, '', 'setup  runs    plan    work    tail  turns  parent-read  workers-read']
+  for (const [s, ps] of [...by].sort()) {
+    const m = (f: (p: ReturnType<typeof phases>) => number) => med(ps.map(f))
+    rows.push(`${s.padEnd(5)} ${String(ps.length).padStart(5)} ${sec(m(p => p.plan))}  ${sec(m(p => p.work))}  ${sec(m(p => p.tail))}  ${String(m(p => p.turns)).padStart(5)}    ${k(m(p => p.parentRead))}     ${k(m(p => p.workersRead))}`)
+  }
   return rows.join('\n')
 }
 
@@ -177,11 +215,12 @@ function archive(into = join(import.meta.dir, 'archive')) {
 if (import.meta.main) {
   const a = process.argv.slice(2)
   if (!a.length || a[0] === '--help') {
-    console.log('bun bench/trace.ts <run dir | run id> [--html out.html]\nbun bench/trace.ts --setups [<date>]')
+    console.log('bun bench/trace.ts <run dir | run id> [--html out.html]\nbun bench/trace.ts --setups [<date>]\nbun bench/trace.ts --phases [<date>]')
     process.exit(a.length ? 0 : 2)
   }
   if (a[0] === '--archive') console.log(archive(a[1]))
   else if (a[0] === '--setups') console.log(setups(a[1]))
+  else if (a[0] === '--phases') console.log(phaseSplit(a[1]))
   else {
     const t = load(a[0])
     console.log(report(t))
@@ -190,4 +229,4 @@ if (import.meta.main) {
   }
 }
 
-export { gaps, lanes, load, setups }
+export { gaps, lanes, load, phases, phaseSplit, setups }

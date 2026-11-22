@@ -1,11 +1,11 @@
-// The bench: CooperBench task pairs (go-chi) through four ways of running agents, scored on the merged result.
-// Spec: docs/bench/brief.md, v2 changes in docs/bench/brief-v2.md. Run `bun bench/run.ts --tasks 1 --repeats 1`
+// The bench: CooperBench task pairs (go-chi) through three ways of running agents, scored on the merged result.
+// Spec: docs/bench/brief.md, v2 changes in docs/bench/brief-v2.md, v3's in docs/bench/brief-v3.md. Run `bun bench/run.ts --tasks 1 --repeats 1`
 // for the dry run; `--gold` checks the scorer against the dataset's own patches; `--report <json>` rewrites the
 // report from a results file.
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { setups as timing } from './trace'
+import { phaseSplit, setups as timing } from './trace'
 
 const ROOT = resolve(import.meta.dir, '..')
 const CACHE = join(ROOT, 'bench', '.cache')
@@ -14,19 +14,26 @@ const CHI = join(CACHE, 'chi')
 const SHIM = join(CACHE, 'bin')
 const RESULTS = join(ROOT, 'bench', 'results')
 const SHARED_PORT = 4170
-// v1 holds 4200 + slot; v2's daemons are 4300 + slot and nothing else.
-const PORT_BASE = 4300
+// v1 holds 4200 + slot, v2 4300 + slot; v3's daemons are 4400 + slot and nothing else.
+const PORT_BASE = 4400
 
-export const SETUPS = ['A', 'B', 'C', 'D'] as const
+export const SETUPS = ['A2', 'D2', 'D3'] as const
 export type Setup = (typeof SETUPS)[number]
 export const NAMES: Record<Setup, string> = {
-  A: 'subagents (one session, Task tool)',
-  B: 'bare parallel (two sessions, no yap)',
-  C: 'yap peers (two sessions with yap)',
-  D: 'commander (yap spawn, workers share a tree)',
+  A2: 'subagents, trusting (Task tool, features as files)',
+  D2: 'commander on Haiku, pointing (yap spawn)',
+  D3: 'D2 with lean ponytail workers (yap spawn --skills ponytail)',
 }
 /** The setups whose agents load yap (from this repo, through --plugin-dir). */
-export const WITH_YAP: Record<Setup, boolean> = { A: false, B: false, C: true, D: true }
+export const WITH_YAP: Record<Setup, boolean> = { A2: false, D2: true, D3: true }
+/** What each agent's init line must list: the first agent of a run (the parent, the commander), then every other. */
+export const INIT: Record<Setup, { lead: string; rest: string }> = {
+  A2: { lead: '', rest: '' },
+  D2: { lead: 'yap', rest: 'yap' },
+  D3: { lead: 'yap', rest: 'ponytail,yap' },
+}
+/** The commander's own model in D2 and D3; every other agent runs on the bench's model. */
+const COMMANDER = 'claude-haiku-5-5'
 
 // The go-chi pairs of CooperBench's lite and core subsets: the language this machine runs without Docker.
 const BASE: Record<string, string> = { '26': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '27': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '56': '7f280968675bcc9f310008fc6b8abff0b923734c' }
@@ -52,6 +59,8 @@ export interface Row {
   total_cost_usd: number
   tokens: number
   tokens_detail: { input: number; output: number; cache_read: number; cache_creation: number }
+  /** Lines the run's patch adds, the agents' own tests included. */
+  lines_added: number
   wall_s: number
   collisions: number
   collisions_detail: { merge_conflict_files: number; destructive_git: number; stale_edits: number }
@@ -150,34 +159,44 @@ export function plugins(lines: unknown[]) {
   return out
 }
 
-/** The v2 rule: every agent's init line lists only yap (C, D) or nothing (A, B). The problem, or '' when it holds. */
-export function initCheck(found: (string[] | null)[], yap: boolean) {
-  const want = yap ? 'yap' : ''
+/**
+ * Every agent's init line lists exactly what its lane loads (`INIT`): the first agent `lead`, each later one `rest`.
+ * The problem, or '' when it holds.
+ */
+export function initCheck(found: (string[] | null)[], want: { lead: string; rest: string }) {
   if (!found.length) return 'init check: no agent ran'
-  const bad = found.map((p, i) => (p === null ? `agent ${i + 1} logged no init line` : p.join(',') !== want ? `agent ${i + 1} loaded [${p.join(', ')}]` : '')).filter(Boolean)
-  return bad.length ? `init check: ${bad.join('; ')}, want [${want}]` : ''
+  const w = (i: number) => (i ? want.rest : want.lead)
+  const bad = found.map((p, i) => (p === null ? `agent ${i + 1} logged no init line` : p.join(',') !== w(i) ? `agent ${i + 1} loaded [${p.join(', ')}], want [${w(i)}]` : '')).filter(Boolean)
+  return bad.length ? `init check: ${bad.join('; ')}` : ''
 }
+
+/** Lines a patch adds: its `+` lines, not the `+++` file headers. */
+export const linesAdded = (patch: string) => patch.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).length
 
 const pct =(x: number) => `${Math.round(x * 100)}%`
 const usd = (x: number) => `$${x.toFixed(2)}`
 
-/** Medians per setup, and for each setup where it lost: the metrics it was not best on, and the pairs it failed. */
-export function report(rows: Row[], date: string, split = '') {
+/** A setup's runs in numbers: pass rate and medians. Rows from an older bench (v2's A and D) work too. */
+const stats = (rs: Row[]) => ({
+  n: rs.length,
+  errors: rs.filter(r => r.error).length,
+  pass: rs.length ? rs.filter(r => r.pass).length / rs.length : NaN,
+  cost: median(rs.map(r => r.total_cost_usd)),
+  tokens: median(rs.map(r => r.tokens)),
+  wall: median(rs.map(r => r.wall_s)),
+  // v2's rows have no lines_added.
+  lines: median(rs.filter(r => r.lines_added !== undefined).map(r => r.lines_added)),
+  collisions: median(rs.map(r => r.collisions)),
+  interventions: median(rs.map(r => r.interventions)),
+})
+
+/**
+ * Medians per setup, and for each setup where it lost: the metrics it was not best on, and the pairs it failed.
+ * `phases` is the phase split's text, `v2` the rows of the bench before (its A and D get a comparison table).
+ */
+export function report(rows: Row[], date: string, split = '', more: { phases?: string; v2?: { setup: string }[] } = {}) {
   const by = (s: Setup) => rows.filter(r => r.setup === s)
-  const stat = SETUPS.map(s => {
-    const rs = by(s)
-    return {
-      s,
-      n: rs.length,
-      errors: rs.filter(r => r.error).length,
-      pass: rs.length ? rs.filter(r => r.pass).length / rs.length : NaN,
-      cost: median(rs.map(r => r.total_cost_usd)),
-      tokens: median(rs.map(r => r.tokens)),
-      wall: median(rs.map(r => r.wall_s)),
-      collisions: median(rs.map(r => r.collisions)),
-      interventions: median(rs.map(r => r.interventions)),
-    }
-  })
+  const stat = SETUPS.map(s => ({ s, ...stats(by(s)) }))
   const live = stat.filter(x => x.n)
   const best = {
     pass: Math.max(...live.map(x => x.pass)),
@@ -191,13 +210,16 @@ export function report(rows: Row[], date: string, split = '') {
   const out = [
     `# Bench results, ${date}`,
     '',
-    `${rows.length} runs: ${[...new Set(rows.map(r => `${r.task}[${r.pair.join(',')}]`))].length} CooperBench go-chi pairs × ${Math.max(...rows.map(r => r.repeat))} repeats × ${SETUPS.length} setups, on the user's Claude plan through \`claude -p\`, every agent with no user settings or plugins (\`--setting-sources ''\`) and yap only in C and D (\`--plugin-dir\`). Pass is both features' hidden tests on the merged tree. Cost is Claude Code's own \`total_cost_usd\` (the API-price equivalent; the plan was billed, not an API key). Harness: \`bench/run.ts\`, spec: \`docs/bench/brief.md\` and \`docs/bench/brief-v2.md\`, raw rows: \`bench/results/${date}.json\`.`,
+    `${rows.length} runs: ${[...new Set(rows.map(r => `${r.task}[${r.pair.join(',')}]`))].length} CooperBench go-chi pairs × ${Math.max(...rows.map(r => r.repeat))} repeats × ${SETUPS.length} setups, on the user's Claude plan through \`claude -p\`, every agent with no user settings or plugins (\`--setting-sources ''\`), yap only in D2 and D3 (\`--plugin-dir\`), ponytail only in D3's workers (\`yap spawn --skills ponytail\`). Sonnet everywhere but the D2 and D3 commanders (Haiku). Pass is both features' hidden tests on the merged tree. Cost is Claude Code's own \`total_cost_usd\` (the API-price equivalent; the plan was billed, not an API key). Lines is what the patch adds, the agents' own tests included. Harness: \`bench/run.ts\`, spec: \`docs/bench/brief-v3.md\`, raw rows: \`bench/results/${date}.json\`.`,
     '',
-    '| Setup | Runs | Pass | Median cost | Median tokens | Median wall-clock | Median collisions | Median interventions |',
-    '|---|---|---|---|---|---|---|---|',
-    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? `${Math.round(x.wall)}s` : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
+    '| Setup | Runs | Pass | Median cost | Median tokens | Median wall-clock | Median lines added | Median collisions | Median interventions |',
+    '|---|---|---|---|---|---|---|---|---|',
+    ...stat.map(x => `| ${x.s}: ${NAMES[x.s]} | ${x.n}${x.errors ? ` (${x.errors} could not run)` : ''} | ${x.n ? pct(x.pass) : '-'} | ${x.n ? usd(x.cost) : '-'} | ${x.n ? Math.round(x.tokens).toLocaleString('en') : '-'} | ${x.n ? `${Math.round(x.wall)}s` : '-'} | ${x.n ? Math.round(x.lines) : '-'} | ${x.n ? x.collisions : '-'} | ${x.n ? x.interventions : '-'} |`),
     '',
     ...(split ? ['## Where the time went', '', `From \`bun bench/trace.ts --setups ${date}\`, over every agent's log in the run directories.`, '', '```', split.trim(), '```', ''] : []),
+    ...(more.phases ? ['## Plan, work, tail', '', `From \`bun bench/trace.ts --phases ${date}\`: plan is the run's start to the first worker's (a subagent, or a spawned session), work the first worker's start to the last one's end, tail the last worker's end to the run's end. Tokens read are input, cache reads and cache writes, summed over each model call; the parent's alone, then the workers'.`, '', '```', more.phases.trim(), '```', ''] : []),
+    ...compare(stat, more.v2),
+    ...ponytail(stat),
     '## Where each setup lost',
     '',
   ]
@@ -232,6 +254,46 @@ export function report(rows: Row[], date: string, split = '') {
   return out.join('\n')
 }
 
+type Stat = ReturnType<typeof stats> & { s: string }
+const signed = (x: number, f: (x: number) => string) => (x > 0 ? '+' : x < 0 ? '-' : '±') + f(Math.abs(x))
+
+/** v2's A and D against v3's setups, and what each change bought as a row of differences. */
+function compare(stat: Stat[], v2?: { setup: string }[]) {
+  if (!v2?.length) return []
+  const old = (s: string): Stat => ({ s: `v2 ${s}`, ...stats(v2.filter(r => r.setup === s) as Row[]) })
+  const a = old('A'), d = old('D')
+  const get = (s: string) => stat.find(x => x.s === s)!
+  const line = (x: Stat, name = x.s) => `| ${name} | ${x.n} | ${pct(x.pass)} | ${usd(x.cost)} | ${Math.round(x.tokens).toLocaleString('en')} | ${Math.round(x.wall)}s |`
+  const diff = (x: Stat, y: Stat) => `| ${x.s} − ${y.s} | | ${signed(Math.round((x.pass - y.pass) * 100), n => `${n} pts`)} | ${signed(x.cost - y.cost, n => usd(n))} | ${signed(Math.round(x.tokens - y.tokens), n => n.toLocaleString('en'))} | ${signed(Math.round(x.wall - y.wall), n => `${n}s`)} |`
+  const rows = [line(a), line(d), ...stat.filter(x => x.n).map(x => line(x))]
+  const diffs = [['A2', a], ['D2', d], ['D3', d], ['D3', get('D2')]].filter(([s]) => get(s as string).n).map(([s, y]) => diff(get(s as string), y as Stat))
+  return [
+    '## Against v2',
+    '',
+    `v2's A (subagents, the parent told to fix anything left) and D (commander on Sonnet, retyping each feature) from \`bench/results/2026-11-21-v2.json\`, the same six pairs and three repeats; then each change as a difference.`,
+    '',
+    '| Setup | Runs | Pass | Median cost | Median tokens | Median wall-clock |',
+    '|---|---|---|---|---|---|',
+    ...rows,
+    ...diffs,
+    '',
+  ]
+}
+
+/** What ponytail changed: D3 (lean ponytail workers) against D2 (the same, without it). */
+function ponytail(stat: Stat[]) {
+  const d2 = stat.find(x => x.s === 'D2'), d3 = stat.find(x => x.s === 'D3')
+  if (!d2?.n || !d3?.n) return []
+  const pts = Math.round((d3.pass - d2.pass) * 100)
+  const rel = (x: number, y: number) => (y ? `${signed(Math.round(((x - y) / y) * 100), n => `${n}%`)}` : '±0%')
+  return [
+    '## What ponytail changed',
+    '',
+    `D3 is D2 with each worker started as \`yap spawn --skills ponytail\`. Pass rate ${pct(d3.pass)} against ${pct(d2.pass)} (${signed(pts, n => `${n} pts`)}, over ${d3.n} and ${d2.n} runs, so one run is ${Math.round(100 / d3.n)} pts). Median lines added ${Math.round(d3.lines)} against ${Math.round(d2.lines)} (${rel(d3.lines, d2.lines)}), wall-clock ${Math.round(d3.wall)}s against ${Math.round(d2.wall)}s (${rel(d3.wall, d2.wall)}), cost ${usd(d3.cost)} against ${usd(d2.cost)} (${rel(d3.cost, d2.cost)}), tokens ${rel(d3.tokens, d2.tokens)}.`,
+    '',
+  ]
+}
+
 // ---------- the run ----------
 
 const log = (file: string, line: string) => {
@@ -255,7 +317,6 @@ async function must(r: Promise<{ ok: boolean; out: string; err: string }>, what:
 }
 
 const feature = (task: string, f: number) => readFileSync(join(DATA, `task${task}`, `feature${f}`, 'feature.md'), 'utf8').trim()
-const title = (md: string) => (md.match(/Title\**:?\**\s*(.+)/)?.[1] ?? md.split('\n')[0]).replace(/[#*]/g, '').trim()
 
 async function prepare() {
   if (!existsSync(DATA)) await must(sh(['git', 'clone', '--depth', '1', 'https://github.com/cooperbench/CooperBench', join(CACHE, 'CooperBench')], ROOT), 'fetching CooperBench')
@@ -316,10 +377,10 @@ interface Ctx {
   merge_conflict_files: number
 }
 
-/** One headless Claude Code, through the shim like every other in the run. */
-async function agent(c: Ctx, cwd: string, prompt: string, yap: boolean) {
+/** One headless Claude Code, through the shim like every other in the run; on `model` if given, else the bench's. */
+async function agent(c: Ctx, cwd: string, prompt: string, yap: boolean, model?: string) {
   const env = { ...c.env, ...(yap ? {} : { YAP_AGENT: '1' }) }
-  const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--permission-prompts', 'none', '--strict-mcp-config', '--no-session-persistence', '--permission-mode', 'auto']
+  const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose', '--permission-prompts', 'none', '--strict-mcp-config', '--no-session-persistence', '--permission-mode', 'auto', ...(model ? ['--model', model] : [])]
   const p = Bun.spawn(args, { cwd, env, stdin: 'pipe', stdout: 'ignore', stderr: 'pipe', windowsHide: true, timeout: Math.max(1000, c.deadline - Date.now()), killSignal: 'SIGKILL' })
   p.stdin.write(prompt)
   p.stdin.end()
@@ -337,61 +398,57 @@ async function api<T>(c: Ctx, path: string): Promise<T> {
 }
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-const RULES = 'Nobody will answer questions: make the calls yourself. Run `go test ./...` before you finish.'
-const both = (c: Ctx) => `## Feature 1\n\n${feature(c.task, c.pair[0])}\n\n## Feature 2\n\n${feature(c.task, c.pair[1])}`
-const worker = (c: Ctx, i: 0 | 1, yap: boolean) =>
-  `Implement the feature below in this repository. Another agent is implementing a different feature at the same time in its own copy of the repository ("${title(feature(c.task, c.pair[1 - i]))}"), and the two copies are merged when you both finish, so keep your change to what your feature needs. ${RULES} Leave your work in the working tree or commit it.` +
-  (yap ? ' yap is running: the other agent is a peer you can message with `yap say`, and `yap claim` warns it off the files you edit. Settle with it anything both features touch, since the copies get merged.' : '') +
-  `\n\n## Your feature\n\n${feature(c.task, c.pair[i])}`
+/** The pair's features as files outside the repo (`<run dir>/features/1.md`, `2.md`), so nothing of them lands in the patch. */
+function featureFiles(c: Ctx) {
+  mkdirSync(join(c.dir, 'features'), { recursive: true })
+  return c.pair.map((f, i) => {
+    const p = join(c.dir, 'features', `${i + 1}.md`)
+    writeFileSync(p, feature(c.task, f) + '\n')
+    return p.replace(/\\/g, '/')
+  })
+}
+
+// A2 and D2/D3 share the trust rule: the workers run the tests and report, the lead re-runs and fixes nothing unless
+// one reported a failure.
+const TRUST = "The workers run the tests: each must run `go test ./...` before it finishes and end with whether the tests passed. Do not re-run the tests yourself and do not review or fix their work, unless a worker reported a failing test or an unfinished feature: only then fix that, and run `go test ./...` once after your fix. Nobody will answer questions: make the calls yourself."
+
+/** D2 and D3: a commander on Haiku that points each worker at its feature's file. */
+async function commander(c: Ctx, spawn: string) {
+  const [f1, f2] = featureFiles(c)
+  await agent(
+    c,
+    c.repo,
+    `This repository needs two features, written up in \`${f1}\` and \`${f2}\`. Do not read them. Start one background worker per feature with \`${spawn} <task>\`, the task one line: "Implement the feature in <its path>. Another worker builds another feature in this same working tree at the same time. Run \`go test ./...\` before you finish and end with whether the tests passed." Each worker's last word comes back to you on its own when it ends, so do not poll. Wait for both. ${TRUST}`,
+    true,
+    COMMANDER,
+  )
+  // The commander may end before its workers do: the run is over when every spawn is.
+  let spawns: { done?: number; ok?: boolean; result?: string }[] = []
+  while (Date.now() < c.deadline) {
+    spawns = await api(c, '/api/spawns')
+    if (spawns.every(s => s.done)) break
+    await wait(10_000)
+  }
+  if (!spawns.length) c.notes.push('the commander started no workers')
+  for (const s of spawns) if (!s.done) c.notes.push('out of time: a worker was still running at the run deadline')
+  else if (!s.ok) c.notes.push(`a worker failed: ${String(s.result ?? '').slice(0, 120)}`)
+  return patchOf(c.repo, BASE[c.task])
+}
 
 /** Each setup leaves the patch the run produced, against the base commit. */
 const RUN: Record<Setup, (c: Ctx) => Promise<string>> = {
-  async A(c) {
-    await agent(c, c.repo, `This repository needs the two features below. Give each to its own subagent with the Task tool, both at once, then read what they did and fix anything left. ${RULES}\n\n${both(c)}`, false)
-    return patchOf(c.repo, BASE[c.task])
-  },
-  B: c => apart(c, false),
-  C: c => apart(c, true),
-  async D(c) {
+  async A2(c) {
+    const [f1, f2] = featureFiles(c)
     await agent(
       c,
       c.repo,
-      `This repository needs the two features below. Start one background worker per feature with \`yap spawn <task>\`, giving each the full text of its feature and telling it that another worker builds the other feature in this same working tree at the same time, and that it must run \`go test ./...\` before it finishes and end with whether the tests passed. The workers run the tests; each one's last word comes back to you on its own when it ends, so do not poll and do not re-run the tests yourself. Wait for both. Then you are done, unless a worker reported a failing test or an unfinished feature: only then fix that, and run \`go test ./...\` once after your fix. Nobody will answer questions: make the calls yourself.\n\n${both(c)}`,
-      true,
+      `This repository needs two features, written up in \`${f1}\` and \`${f2}\`. Do not read them. Give each to its own subagent with the Task tool, both at once, telling each in one line to implement the feature in its file's path, that another subagent builds another feature in this same working tree at the same time, and to run \`go test ./...\` before it finishes and end with whether the tests passed. ${TRUST.replaceAll('worker', 'subagent')}`,
+      false,
     )
-    // The commander may end before its workers do: the run is over when every spawn is.
-    let spawns: { done?: number; ok?: boolean; result?: string }[] = []
-    while (Date.now() < c.deadline) {
-      spawns = await api(c, '/api/spawns')
-      if (spawns.every(s => s.done)) break
-      await wait(10_000)
-    }
-    if (!spawns.length) c.notes.push('the commander started no workers')
-    for (const s of spawns) if (!s.done) c.notes.push('out of time: a worker was still running at the run deadline')
-    else if (!s.ok) c.notes.push(`a worker failed: ${String(s.result ?? '').slice(0, 120)}`)
     return patchOf(c.repo, BASE[c.task])
   },
-}
-
-/** B and C: one worktree per agent, both at once, then a plain merge. A conflict fails the run (CooperBench's rule). */
-async function apart(c: Ctx, yap: boolean) {
-  const trees = [join(c.dir, 'agent1'), join(c.dir, 'agent2')]
-  for (const [i, t] of trees.entries()) await must(git(c.repo, 'worktree', 'add', '-q', '-b', `agent${i + 1}`, t, BASE[c.task]), 'worktree add')
-  await Promise.all(trees.map((t, i) => agent(c, t, worker(c, i as 0 | 1, yap), yap)))
-  for (const t of trees) {
-    await must(git(t, 'add', '-A'), 'add')
-    await must(git(t, 'commit', '-q', '--allow-empty', '-m', 'agent work'), 'commit')
-  }
-  await must(git(c.repo, 'merge', '-q', '--ff', 'agent1'), 'merge agent1')
-  const m = await git(c.repo, 'merge', '-q', '--no-ff', '--no-edit', 'agent2')
-  if (!m.ok) {
-    const files = (await git(c.repo, 'diff', '--name-only', '--diff-filter=U')).out.trim().split('\n').filter(Boolean)
-    c.merge_conflict_files = files.length || 1
-    c.notes.push(`merge conflict in ${files.join(', ') || 'the merge'}`)
-    await git(c.repo, 'merge', '--abort')
-    return ''
-  }
-  return must(git(c.repo, 'diff', '--binary', BASE[c.task], 'HEAD'), 'diff merged')
+  D2: c => commander(c, 'yap spawn'),
+  D3: c => commander(c, 'yap spawn --skills ponytail'),
 }
 
 const realClaude = () => {
@@ -405,7 +462,7 @@ const realClaude = () => {
 /** The environment every agent and daemon of a run gets: no API key, no ids from the session that started the bench. */
 function runEnv(home: string, port: number, logs: string, model: string, yap: boolean) {
   if (port === SHARED_PORT || resolve(home) === resolve(join(homedir(), '.yap'))) throw new Error('refusing to touch the shared daemon')
-  if (port < PORT_BASE || port >= PORT_BASE + 100) throw new Error(`refusing port ${port}: v2's daemons are on ${PORT_BASE}-${PORT_BASE + 99}`)
+  if (port < PORT_BASE || port >= PORT_BASE + 100) throw new Error(`refusing port ${port}: v3's daemons are on ${PORT_BASE}-${PORT_BASE + 99}`)
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && !/^(ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDECODE|CLAUDE_CODE_\w+|YAP_\w+|HC_\w+|HERDR_\w+|KODR_\w+)$/i.test(k)) env[k] = v
@@ -452,7 +509,7 @@ async function one(o: { task: string; pair: [number, number]; repeat: number; se
   const c: Ctx = { dir, repo: join(dir, 'repo'), task: o.task, pair: o.pair, env, deadline: Date.now() + o.minutes * 60_000, logFile: o.logFile, notes: [], merge_conflict_files: 0 }
   const row: Row = {
     date: o.date, run, task: o.task, pair: o.pair, repeat: o.repeat, setup: o.setup, pass: false, f1: false, f2: false,
-    total_cost_usd: 0, tokens: 0, tokens_detail: { input: 0, output: 0, cache_read: 0, cache_creation: 0 }, wall_s: 0,
+    total_cost_usd: 0, tokens: 0, tokens_detail: { input: 0, output: 0, cache_read: 0, cache_creation: 0 }, lines_added: 0, wall_s: 0,
     collisions: 0, collisions_detail: { merge_conflict_files: 0, destructive_git: 0, stale_edits: 0 }, interventions: 0, interventions_detail: [],
     agents: 0, api_key_sources: [], plugins: [], daemon: { home, port },
   }
@@ -471,22 +528,23 @@ async function one(o: { task: string; pair: [number, number]; repeat: number; se
     await sh(['bun', join(ROOT, 'src', 'cli.ts'), 'stop'], dir, { env, timeout: 60_000 }).catch(() => {})
   }
   const lines = existsSync(join(dir, 'logs'))
-    ? readdirSync(join(dir, 'logs')).flatMap(f => readFileSync(join(dir, 'logs', f), 'utf8').split('\n').flatMap(l => { try { return [JSON.parse(l)] } catch { return [] } }))
+    ? readdirSync(join(dir, 'logs')).sort().flatMap(f => readFileSync(join(dir, 'logs', f), 'utf8').split('\n').flatMap(l => { try { return [JSON.parse(l)] } catch { return [] } }))
     : []
   const t = tally(lines)
   Object.assign(row, {
     total_cost_usd: Math.round(t.cost * 10000) / 10000,
     tokens: t.input + t.output + t.cache_read + t.cache_creation,
     tokens_detail: { input: t.input, output: t.output, cache_read: t.cache_read, cache_creation: t.cache_creation },
+    lines_added: linesAdded(patch),
     agents: t.agents,
     api_key_sources: [...t.sources],
     limited: t.limited || undefined,
   })
   const found = plugins(lines)
   row.plugins = found.map(p => p ?? [])
-  const init = initCheck(found, WITH_YAP[o.setup])
+  const init = initCheck(found, INIT[o.setup])
   if (init && !t.limited) row.error = row.error ? `${row.error}; ${init}` : init
-  log(o.logFile, `${run}: ${init || `init check ok: ${found.length} agents, plugins [${WITH_YAP[o.setup] ? 'yap' : ''}] each`}`)
+  log(o.logFile, `${run}: ${init || `init check ok: ${found.length} agents, ${found.map((p, i) => `agent ${i + 1} [${p!.join(', ')}]`).join(', ')}`}`)
   row.collisions_detail = { merge_conflict_files: c.merge_conflict_files, destructive_git: t.destructive, stale_edits: t.stale }
   row.collisions = c.merge_conflict_files + t.destructive + t.stale
   row.interventions_detail = [...c.notes.filter(n => !n.startsWith('merge conflict')), ...t.failed, ...Array(t.asked).fill('an agent asked a person')]
@@ -502,13 +560,19 @@ async function one(o: { task: string; pair: [number, number]; repeat: number; se
   return row
 }
 
-/** `bun bench/trace.ts --setups <tag>`: where each setup's time went, over the run directories' agent logs. */
-function split(tag: string) {
+/** `bun bench/trace.ts --setups <tag>` and `--phases <tag>`: where each setup's time went, over the run directories' agent logs. */
+function trace(f: (tag: string) => string, tag: string) {
   try {
-    return timing(tag)
+    return f(tag)
   } catch (e: any) {
     return `no timing: ${e?.message ?? e}`
   }
+}
+
+/** The report with everything it reads beside the rows: the timing and phase splits, and v2's rows to compare with. */
+function written(rows: Row[], tag: string) {
+  const v2 = join(RESULTS, '2026-11-21-v2.json')
+  return report(rows, tag, trace(timing, tag), { phases: trace(phaseSplit, tag), v2: existsSync(v2) ? JSON.parse(readFileSync(v2, 'utf8')) : undefined })
 }
 
 /** The plan's weekly usage, as the account reports it: the same number Claude Code's /usage shows. */
@@ -532,7 +596,7 @@ async function main() {
     const file = opt('--report', '')
     const rows: Row[] = JSON.parse(readFileSync(file, 'utf8'))
     const tag = file.split(/[\\/]/).at(-1)!.replace(/\.json$/, '')
-    writeFileSync(file.replace(/\.json$/, '.md'), report(rows, tag, split(tag)) + '\n')
+    writeFileSync(file.replace(/\.json$/, '.md'), written(rows, tag) + '\n')
     return console.log(`wrote ${file.replace(/\.json$/, '.md')}`)
   }
   await prepare()
@@ -557,8 +621,8 @@ async function main() {
   const parallel = Number(opt('--parallel', '3'))
   const minutes = Number(opt('--minutes', '45'))
   const model = opt('--model', 'claude-sonnet-5-5')
-  // v2's own names: results, logs and run directories never meet v1's (<date>) or each other's (dry, full).
-  const tag = `${date}-v2${tasks === 1 && repeats === 1 ? '-dry' : ''}`
+  // v3's own names: results, logs and run directories never meet v1's (<date>), v2's (<date>-v2) or each other's.
+  const tag = `${date}-v3${tasks === 1 && repeats === 1 ? '-dry' : ''}`
   const out = join(RESULTS, `${tag}.json`)
   const logFile = join(RESULTS, `${tag}.log`)
   const rows: Row[] = existsSync(out) && argv.includes('--resume') ? JSON.parse(readFileSync(out, 'utf8')) : []
@@ -586,7 +650,7 @@ async function main() {
     }),
   )
   const after = await weekly()
-  writeFileSync(out.replace(/\.json$/, '.md'), report(rows, tag, split(tag)) + '\n')
+  writeFileSync(out.replace(/\.json$/, '.md'), written(rows, tag) + '\n')
   const cost = rows.reduce((a, r) => a + r.total_cost_usd, 0)
   log(logFile, `bench ${tag}: done, ${rows.length} rows, ${rows.filter(r => r.error).length} could not run, cost ${usd(cost)}, plan weekly usage ${before ?? '?'}% -> ${after ?? '?'}%`)
   log(logFile, `bench ${tag}: wrote ${out} and ${out.replace(/\.json$/, '.md')}`)

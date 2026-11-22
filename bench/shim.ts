@@ -17,6 +17,9 @@ if (model && args.includes('-p') && !args.includes('--model')) args.unshift('--m
 // Clean agents (docs/bench/brief-v2.md): none of the user's settings or plugins, and yap only where the setup uses
 // it, from this repo. The runner reads each agent's init line to check it.
 if (args.includes('-p') && !args.includes('--setting-sources')) args.unshift('--setting-sources', '')
+// A lean `yap spawn --skills` carries the user's settings back in with --settings (their effort level, thinking):
+// dropped, so D3's workers differ from D2's by ponytail alone (docs/bench/brief-v3.md).
+if (args.includes('-p') && args.includes('--settings')) args.splice(args.indexOf('--settings'), 2)
 const plugin = process.env.BENCH_PLUGIN_DIR
 if (plugin && args.includes('-p') && !args.includes('--plugin-dir')) args.unshift('--plugin-dir', plugin)
 const env = { ...process.env }
