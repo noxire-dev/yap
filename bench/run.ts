@@ -36,7 +36,7 @@ export const INIT: Record<Setup, { lead: string; rest: string }> = {
 const COMMANDER = 'claude-haiku-5-5'
 
 // The go-chi pairs of CooperBench's lite and core subsets: the language this machine runs without Docker.
-const BASE: Record<string, string> = { '26': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '27': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '56': '7f280968675bcc9f310008fc6b8abff0b923734c' }
+export const BASE: Record<string, string> = { '26': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '27': '9436cc85db0d35be06e66b91b4f74bbc0295b07b', '56': '7f280968675bcc9f310008fc6b8abff0b923734c' }
 export const PAIRS: [task: string, f1: number, f2: number][] = [
   ['26', 1, 2],
   ['56', 1, 5],
@@ -170,8 +170,14 @@ export function initCheck(found: (string[] | null)[], want: { lead: string; rest
   return bad.length ? `init check: ${bad.join('; ')}` : ''
 }
 
-/** Lines a patch adds: its `+` lines, not the `+++` file headers. */
-export const linesAdded = (patch: string) => patch.split('\n').filter(l => l.startsWith('+') && !l.startsWith('+++')).length
+/** Lines added, from `git diff --numstat`: the first column summed, binary files (`-`) left out. */
+export const linesAdded = (numstat: string) => numstat.split('\n').reduce((a, l) => a + (Number(l.split('\t')[0]) || 0), 0)
+
+/**
+ * Lines the staged tree adds against `base`. Agents on Windows rewrite whole files from CRLF to LF and back, which
+ * a plain diff counts as every line added (mux.go +530 for a 24-line change), so a CR at a line's end is ignored.
+ */
+export const added = async (repo: string, base: string) => linesAdded(await must(git(repo, 'diff', '--cached', '--numstat', '--ignore-cr-at-eol', base), 'numstat'))
 
 const pct =(x: number) => `${Math.round(x * 100)}%`
 const usd = (x: number) => `$${x.toFixed(2)}`
@@ -535,7 +541,7 @@ async function one(o: { task: string; pair: [number, number]; repeat: number; se
     total_cost_usd: Math.round(t.cost * 10000) / 10000,
     tokens: t.input + t.output + t.cache_read + t.cache_creation,
     tokens_detail: { input: t.input, output: t.output, cache_read: t.cache_read, cache_creation: t.cache_creation },
-    lines_added: linesAdded(patch),
+    lines_added: patch.trim() ? await added(c.repo, BASE[o.task]) : 0,
     agents: t.agents,
     api_key_sources: [...t.sources],
     limited: t.limited || undefined,

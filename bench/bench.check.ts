@@ -1,6 +1,6 @@
 // The bench's scoring rules, run: what goes into a row and what the report says from it.
 import assert from 'node:assert/strict'
-import { dropTests, INIT, initCheck, linesAdded, median, plugins, report, tally, testFuncs, type Row } from './run'
+import { added, dropTests, INIT, initCheck, linesAdded, median, plugins, report, tally, testFuncs, type Row } from './run'
 
 assert.equal(median([3, 1, 2]), 2)
 assert.equal(median([4, 1, 2, 3]), 2.5)
@@ -70,8 +70,22 @@ assert.equal(initCheck([['yap'], ['ponytail', 'yap'], ['ponytail', 'yap']], INIT
 assert.match(initCheck([['yap'], ['yap'], ['ponytail', 'yap']], INIT.D3), /agent 2 loaded \[yap\], want \[ponytail,yap\]/, 'a D3 worker without ponytail fails')
 assert.match(initCheck([['ponytail', 'yap'], ['ponytail', 'yap']], INIT.D3), /agent 1 loaded \[ponytail, yap\], want \[yap\]/, 'a D3 commander with ponytail fails')
 
-// Lines added: a patch's + lines, not its +++ headers or - lines.
-assert.equal(linesAdded('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-old\n+new\n+more\n ctx\n'), 2)
+// Lines added: numstat's first column, binary files left out; and a file an agent rewrote from CRLF to LF counts only
+// the lines it really added, not every line (v3's first full run counted mux.go +530 for a 24-line change).
+assert.equal(linesAdded('3\t1\ta.go\n-\t-\tbin.png\n2\t0\tb.go\n'), 5)
+{
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const repo = mkdtempSync(join(tmpdir(), 'lines-'))
+  const g = (...a: string[]) => Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.autocrlf=false', ...a], { cwd: repo })
+  g('init', '-q')
+  writeFileSync(join(repo, 'mux.go'), Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\r\n') + '\r\n')
+  g('add', '-A'), g('commit', '-qm', 'base')
+  writeFileSync(join(repo, 'mux.go'), [...Array.from({ length: 50 }, (_, i) => `line ${i}`), 'new 1', 'new 2'].join('\n') + '\n')
+  g('add', '-A')
+  assert.equal(await added(repo, 'HEAD'), 2)
+}
 
 // The report names, for each setup, the columns it lost on and why its runs failed; a setup with no runs says so.
 const row = (setup: Row['setup'], pass: boolean, cost: number, extra: Partial<Row> = {}): Row => ({
