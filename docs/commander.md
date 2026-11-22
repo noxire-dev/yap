@@ -13,7 +13,7 @@ It sits between two setups people already use:
 | Workers are | in-process subagents of one session | separate Claude Code sessions | separate sessions the user started |
 | Working tree | shared | shared | one each, merged at the end |
 | Workers see each other | no | yes, through yap's hooks | yes, through yap's hooks |
-| What the parent reads | every subagent's full report | each worker's last message | nothing: there is no parent |
+| What the parent reads | each subagent's final message | each worker's last message | nothing: there is no parent |
 | Worker start-up | ~3 s | ~12 s (a new process) | ~6 s |
 
 This file explains the model, the parts of the YAP protocol it rests on, and three benchmarks (2026-11-21 and
@@ -123,11 +123,13 @@ D's time went, as medians over 18 runs each:
 
 - **The 30 s D won was the tail.** A's parent re-ran `go test -count=1 ./...` (about 28 s) after its subagents,
   because its prompt said "read what they did and fix anything left". D's said not to.
-- **The commander's lasting edge is context.** Its parent reads about a quarter of what A's does. The workers read
-  more, since each is a full session with its own system prompt and yap context, so total cost is close.
+- **The parent-context gap is mostly turns, not architecture.** Tokens read summed over turns was 161k against 43k,
+  but A's parent took 6 turns to D's 2, mostly the re-test. Peak context in any one parent turn was 33k against
+  28k (medians; ranges 32-41k and 26-30k).
 - **Coordination was all passive.** D's workers never used `yap say` or `yap claim` (0 of 18 runs). yap's hooks
   warned them about each other 72 times across the 18 runs, and no D run broke on a clash in the shared tree.
-- **D's 78% against 67% is two runs**, both on pair 56[1,5].
+- **D's 78% against 67% is two runs**, both on pair 56[1,5]. Wall-clock spread overlaps: A 91-141 s between
+  the quartiles, D 71-97 s.
 
 ### v3: a fair rematch, and lean workers with a skill
 
@@ -153,25 +155,32 @@ v3 counts tokens read as input plus cache reads plus cache writes, so its token 
 
 - **With the same trust rule, subagents are fastest.** A2's tail fell from 33.5 s to 4 s and its wall from 107 s to
   73 s, at the same pass rate. The 33 s in v2 was the prompt, not the architecture.
-- **Haiku and pointing bought cost, not time.** The commander's plan phase went from 12.7 s to 7.5 s and the median
+- **Haiku and pointing bought cost, not time** (changed together, so which one did it isn't known). The commander's plan phase went from 12.7 s to 7.5 s and the median
   cost from $0.28 to $0.23. The work phase grew 8 s, because each worker reads its file itself, and every spawned
   worker pays about 12 s to start (`start` in the timing split: D2 12.1 s, A2 3.5 s).
-- **Ponytail made smaller patches and changed little else.** Patches were 21% smaller; cost and time were within 3%.
-  The skill loaded (its SessionStart hook ran) but no worker invoked it: the features are too small to trim.
-- **Pass rates are noise.** Every failure in all three setups is feature 1 of 27[3,4], which has never passed in
-  any of the 216 runs, or of 56[1,5]. The spread between setups is one run.
+- **Ponytail: smaller patches, not yet credited.** Patches were 21% smaller; cost and time were within 3%. No
+  worker invoked the skill, but ponytail's SessionStart hook puts its whole instruction text in every session's
+  context, so it may have acted anyway. At 18 runs this is as likely noise.
+- **Pass rates are noise.** Every failure in all three setups is feature 1 of 27[3,4], which has failed all 36 of
+  its runs across v1-v3 (the harness's `--gold` check passes its reference patch, so the task can be solved), or of
+  56[1,5]. The spread between setups is one run.
+- **Peak parent context is the same:** 28k per turn at the median for A2, D2 and D3 (ranges 28-30k). Wall-clock
+  quartiles overlap: A2 65-95 s, D2 75-96 s, D3 75-105 s.
 
 ## What the numbers say
 
-1. **Two agents in one tree beat two trees and a merge.** Every shared-tree setup passed 67-78%; every two-tree setup
-   0%. Telling each other what they were doing didn't stop separate trees from conflicting.
+1. **On these tasks, one shared tree beats two trees and a merge.** Every shared-tree setup passed 67-78%; every
+   two-tree setup 0%. CooperBench picks pairs that conflict, so that holds for overlapping pieces, not in general.
 2. **The prompt costs more than the architecture.** A re-test at the end is 28-69 s. Retyping a brief is about 12 s.
    Fix those first.
-3. **On small tasks the commander ties subagents.** It is about as fast, about as cheap, and about as correct.
-4. **What the commander buys is a small parent context:** 43-80k tokens read against 105-161k for a subagent parent.
-   That should grow with the task. A long session dispatching many pieces stays light, where a subagent parent fills
-   up with every report. None of these tasks was long enough to show it, which is the next benchmark.
-5. **Spawning costs about 12 s per worker.** Subagents start in 3 s. A commander pays it once per piece, so it
+3. **On small tasks the commander ties subagents** on time, cost, pass rate and peak parent context.
+4. **Nothing here shows yap's hooks changing an outcome.** Subagents in a shared tree with no yap (A, A2) pass at
+   the same rate as D. D's workers got 72 warnings and never used `say` or `claim`. The control that would show it,
+   D's workers in the same tree without yap's hooks, hasn't been run. What yap does do in D is the plumbing: start
+   the workers, bring their last words back, wake the commander.
+5. **The thesis left to test is context on long tasks:** a commander's parent should stay flat while a subagent
+   parent grows with each report. On two small features both peak at about 28k.
+6. **Spawning costs about 12 s per worker.** Subagents start in 3 s. A commander pays it once per piece, so it
    suits pieces that run minutes, not seconds.
 
 ## Rules for a commander, from the runs
@@ -181,14 +190,17 @@ v3 counts tokens read as input plus cache reads plus cache writes, so its token 
   reported a failure.
 - Don't poll. A worker's last word arrives on its own.
 - Run the commander on a small model (Haiku). It reads and dispatches.
-- Let workers share the tree when their pieces touch the same files; yap's hooks keep them from clobbering each
-  other. Separate trees need a merge step that understands both changes.
+- Let workers share the tree when their pieces touch the same files. Separate trees need a merge step that
+  understands both changes. Whether yap's hooks help in the shared tree isn't measured yet.
 - Give lean workers only the skills their piece needs (`--skills ponytail` for backend, `--skills frontend-craft`
   for UI). Without `--skills`, every worker pays for the whole setup.
 
 ## Not measured yet
 
-- Long tasks, more than two pieces, and tasks where the pieces depend on each other.
+- A long task, 6 or more pieces, with peak parent context per turn measured, and a control of D's workers in the
+  same tree with yap's hooks off. That one benchmark tests both the context thesis and whether the hooks matter.
+
+- Tasks where the pieces depend on each other, or don't overlap at all.
 - Languages other than Go (this machine has no Docker for CooperBench's other repos).
 - The claim check after Bash edits (#61), and setup C run again once it lands.
 - A UI task, where `frontend-craft` would have something to do.
