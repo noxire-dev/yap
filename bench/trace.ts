@@ -35,6 +35,9 @@ function lanes(file: string, n: number): Lane[] {
     try { m = JSON.parse(line) } catch { continue }
     if (m.type === 'bench_argv') cwd = basename(m.cwd ?? '')
     if (m.type === 'result') (cost = m.total_cost_usd ?? 0), (turns = m.num_turns ?? 0)
+    // A parent that ended its turn to wait on a background subagent is woken by this notification, which carries no
+    // timestamp: it was idle until then, so its next turn starts at the last thing logged, not at its own last message.
+    if (m.type === 'system' && m.subtype === 'task_notification' && !m.parent_tool_use_id) main.last = end
     const at = m.timestamp ? Date.parse(m.timestamp) : NaN
     if (Number.isNaN(at)) continue
     end = Math.max(end, at)

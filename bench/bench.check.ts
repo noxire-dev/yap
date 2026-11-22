@@ -87,3 +87,25 @@ assert.doesNotMatch(md, /Where the time went/, 'no split given, no timing sectio
 assert.match(report([row('A', true, 1)], 'd-v2', 'setup  runs  wall\nA  1  60.0'), /## Where the time went[\s\S]*trace\.ts --setups d-v2[\s\S]*A {2}1 {2}60\.0/)
 
 console.log('bench ok')
+
+// A parent that ends its turn to wait on a background subagent is idle until the notification, not thinking.
+{
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+  const { lanes } = await import('./trace')
+  const t0 = Date.parse('2026-11-21T10:00:00Z'), at = (s: number) => new Date(t0 + s * 1000).toISOString()
+  const f = join(mkdtempSync(join(tmpdir(), 'trace-')), `${t0}-1.jsonl`)
+  const log = [
+    { type: 'assistant', timestamp: at(2), message: { content: [{ type: 'tool_use', id: 't1', name: 'Agent', input: {} }] } },
+    { type: 'user', timestamp: at(3), message: { content: [{ type: 'tool_result', tool_use_id: 't1' }] } },
+    { type: 'assistant', timestamp: at(4), message: { content: [{ type: 'text', text: 'waiting' }] } },
+    { type: 'assistant', timestamp: at(60), parent_tool_use_id: 't1', message: { content: [{ type: 'text', text: 'done' }] } },
+    { type: 'system', subtype: 'task_notification' },
+    { type: 'assistant', timestamp: at(65), message: { content: [{ type: 'text', text: 'read it' }] } },
+  ]
+  writeFileSync(f, log.map(m => JSON.stringify(m)).join('\n'))
+  const main = lanes(f, 1)[0]
+  const model = main.segs.filter(s => s.kind !== 'tool').reduce((a, s) => a + s.to - s.from, 0) / 1000
+  assert.equal(model, 2 + 1 + 5, 'the 56 s waiting on the subagent is not model time')
+}
