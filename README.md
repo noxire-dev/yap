@@ -32,6 +32,10 @@ This repository's yap board, what sessions and the user left for whoever works h
 The protocol underneath is [YAP](docs/yap.md): a handful of verbs over `127.0.0.1`. Nothing leaves the machine
 unless you pair a relay (see Remote).
 
+One session can run others: a commander splits a task, starts a worker per piece with `yap spawn`, and reads only
+their last words. [docs/commander.md](docs/commander.md) explains it and has the benchmarks: 216 runs against
+subagents and parallel sessions.
+
 On top of it sits a crew: you give it a goal, and agents plan, write, review and merge it on their own worktrees,
 behind your test gate. See "The crew" below.
 
