@@ -1,0 +1,1652 @@
+[
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-D4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "D4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 1.0507,
+  "tokens": 2753373,
+  "tokens_detail": {
+   "input": 176,
+   "output": 37017,
+   "cache_read": 2567440,
+   "cache_creation": 148740
+  },
+  "lines_added": 638,
+  "wall_s": 175,
+  "peak_context": 38798,
+  "context_series": [
+   25573,
+   28379,
+   29234,
+   30460,
+   31464,
+   32449,
+   33262,
+   34660,
+   35269,
+   36157,
+   37467,
+   38798
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "7:",
+    "missing": 2
+   },
+   {
+    "file": "mux.go",
+    "worker": "8:",
+    "missing": 1
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r1-D4\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-A4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "A4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.9104,
+  "tokens": 1961826,
+  "tokens_detail": {
+   "input": 170,
+   "output": 33418,
+   "cache_read": 1784408,
+   "cache_creation": 143830
+  },
+  "lines_added": 585,
+  "wall_s": 211,
+  "peak_context": 42431,
+  "context_series": [
+   24609,
+   29686,
+   30609,
+   32123,
+   33618,
+   35294,
+   36720,
+   38399,
+   40129,
+   41192,
+   42431
+  ],
+  "warnings": [],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r1-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-D0",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.9871,
+  "tokens": 2435480,
+  "tokens_detail": {
+   "input": 162,
+   "output": 34295,
+   "cache_read": 2261122,
+   "cache_creation": 139901
+  },
+  "lines_added": 606,
+  "wall_s": 235,
+  "peak_context": 36206,
+  "context_series": [
+   25573,
+   28613,
+   30231,
+   31511,
+   32738,
+   33683,
+   34482,
+   35405,
+   36206
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r1-D0\\yap",
+   "port": 4502
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r2-D4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 2,
+  "setup": "D4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 1.1212,
+  "tokens": 2723483,
+  "tokens_detail": {
+   "input": 176,
+   "output": 35520,
+   "cache_read": 2525822,
+   "cache_creation": 161965
+  },
+  "lines_added": 621,
+  "wall_s": 154,
+  "peak_context": 35575,
+  "context_series": [
+   25573,
+   27422,
+   28371,
+   29604,
+   30749,
+   31777,
+   32790,
+   33623,
+   34785,
+   35575
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "mux.go",
+   "mux_test.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r2-D4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r2-A4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 2,
+  "setup": "A4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.9332,
+  "tokens": 2143549,
+  "tokens_detail": {
+   "input": 186,
+   "output": 35216,
+   "cache_read": 1969985,
+   "cache_creation": 138162
+  },
+  "lines_added": 620,
+  "wall_s": 236,
+  "peak_context": 42656,
+  "context_series": [
+   24609,
+   29805,
+   30707,
+   32185,
+   33709,
+   35352,
+   37133,
+   38698,
+   40148,
+   41636,
+   42656
+  ],
+  "warnings": [],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "0:toolu_01PPvN8oVnbaYteLsWVxpjNP",
+    "missing": 1
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 1,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r2-A4\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r2-D0",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 2,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.8951,
+  "tokens": 2398480,
+  "tokens_detail": {
+   "input": 154,
+   "output": 35540,
+   "cache_read": 2222034,
+   "cache_creation": 140752
+  },
+  "lines_added": 595,
+  "wall_s": 217,
+  "peak_context": 45307,
+  "context_series": [
+   25573,
+   31524,
+   32305,
+   33124,
+   34366,
+   35624,
+   36851,
+   38821,
+   40622,
+   41277,
+   42453,
+   44457,
+   44706,
+   45026,
+   45307
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "8:",
+    "missing": 1
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 3
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r2-D0\\yap",
+   "port": 4502
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r3-A4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 3,
+  "setup": "A4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.8648,
+  "tokens": 1912297,
+  "tokens_detail": {
+   "input": 174,
+   "output": 32990,
+   "cache_read": 1750131,
+   "cache_creation": 129002
+  },
+  "lines_added": 520,
+  "wall_s": 203,
+  "peak_context": 41870,
+  "context_series": [
+   24609,
+   29768,
+   30537,
+   32000,
+   33806,
+   35414,
+   36994,
+   38471,
+   40270,
+   41870
+  ],
+  "warnings": [],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "0:toolu_017pqD1Nb45XjV5BL8GaAPQs",
+    "missing": 1
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r3-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r3-D0",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 3,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.9169,
+  "tokens": 2355515,
+  "tokens_detail": {
+   "input": 154,
+   "output": 36581,
+   "cache_read": 2177810,
+   "cache_creation": 140970
+  },
+  "lines_added": 662,
+  "wall_s": 154,
+  "peak_context": 44481,
+  "context_series": [
+   25573,
+   31677,
+   32507,
+   33912,
+   36436,
+   37856,
+   39058,
+   39757,
+   40536,
+   41399,
+   42241,
+   42652,
+   43250,
+   44481
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 1,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r3-D0\\yap",
+   "port": 4502
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r3-D4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 3,
+  "setup": "D4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 1.1619,
+  "tokens": 3209172,
+  "tokens_detail": {
+   "input": 202,
+   "output": 41650,
+   "cache_read": 3005225,
+   "cache_creation": 162095
+  },
+  "lines_added": 647,
+  "wall_s": 241,
+  "peak_context": 43393,
+  "context_series": [
+   25573,
+   33640,
+   34335,
+   35282,
+   36512,
+   37594,
+   38552,
+   39303,
+   40385,
+   41132,
+   41408,
+   42449,
+   43393
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 3
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L8-r3-D4\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r1-A4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 1,
+  "setup": "A4",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.6152,
+  "tokens": 1150910,
+  "tokens_detail": {
+   "input": 100,
+   "output": 24149,
+   "cache_read": 1029257,
+   "cache_creation": 97404
+  },
+  "lines_added": 442,
+  "wall_s": 109,
+  "peak_context": 35241,
+  "context_series": [
+   24463,
+   27405,
+   29827,
+   31722,
+   33547,
+   35241
+  ],
+  "warnings": [],
+  "collision_files": [],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r1-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r1-D4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 1,
+  "setup": "D4",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.8029,
+  "tokens": 2067592,
+  "tokens_detail": {
+   "input": 130,
+   "output": 28378,
+   "cache_read": 1921975,
+   "cache_creation": 117109
+  },
+  "lines_added": 494,
+  "wall_s": 166,
+  "peak_context": 36996,
+  "context_series": [
+   25427,
+   30402,
+   31488,
+   32067,
+   32695,
+   33100,
+   34126,
+   35360,
+   36143,
+   36996
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r1-D4\\yap",
+   "port": 4502
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r1-D0",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 1,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 5,
+  "pass": true,
+  "total_cost_usd": 0.7177,
+  "tokens": 1533000,
+  "tokens_detail": {
+   "input": 100,
+   "output": 25539,
+   "cache_read": 1397177,
+   "cache_creation": 110184
+  },
+  "lines_added": 449,
+  "wall_s": 139,
+  "peak_context": 33755,
+  "context_series": [
+   25427,
+   26838,
+   27302,
+   27885,
+   29831,
+   31303,
+   32545,
+   33755
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r1-D0\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r2-A4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 2,
+  "setup": "A4",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.6994,
+  "tokens": 1474267,
+  "tokens_detail": {
+   "input": 122,
+   "output": 27945,
+   "cache_read": 1342529,
+   "cache_creation": 103671
+  },
+  "lines_added": 394,
+  "wall_s": 134,
+  "peak_context": 34683,
+  "context_series": [
+   24463,
+   27355,
+   28254,
+   29918,
+   31469,
+   33195,
+   34683
+  ],
+  "warnings": [],
+  "collision_files": [
+   "tree.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 5
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r2-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r2-D0",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 2,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 5,
+  "pass": true,
+  "total_cost_usd": 0.6388,
+  "tokens": 1417322,
+  "tokens_detail": {
+   "input": 92,
+   "output": 24852,
+   "cache_read": 1294032,
+   "cache_creation": 98346
+  },
+  "lines_added": 428,
+  "wall_s": 112,
+  "peak_context": 35532,
+  "context_series": [
+   25427,
+   29021,
+   29895,
+   30829,
+   31947,
+   32921,
+   34336,
+   35532
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [
+   "context.go",
+   "tree.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r2-D0\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r3-A4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 3,
+  "setup": "A4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.6391,
+  "tokens": 1321736,
+  "tokens_detail": {
+   "input": 114,
+   "output": 24039,
+   "cache_read": 1196559,
+   "cache_creation": 101024
+  },
+  "lines_added": 392,
+  "wall_s": 120,
+  "peak_context": 34657,
+  "context_series": [
+   24463,
+   27445,
+   28420,
+   30023,
+   31614,
+   33165,
+   34657
+  ],
+  "warnings": [],
+  "collision_files": [],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r3-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r2-D4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 2,
+  "setup": "D4",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.8077,
+  "tokens": 2070761,
+  "tokens_detail": {
+   "input": 124,
+   "output": 31795,
+   "cache_read": 1894820,
+   "cache_creation": 144022
+  },
+  "lines_added": 518,
+  "wall_s": 205,
+  "peak_context": 43577,
+  "context_series": [
+   25713,
+   30688,
+   31781,
+   31955,
+   32572,
+   33327,
+   34465,
+   35734,
+   36601,
+   37062,
+   38988,
+   40208,
+   40989,
+   42440,
+   43577
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "context.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r2-D4\\yap",
+   "port": 4502
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r3-D4",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 3,
+  "setup": "D4",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.8629,
+  "tokens": 2343552,
+  "tokens_detail": {
+   "input": 142,
+   "output": 29823,
+   "cache_read": 2192537,
+   "cache_creation": 121050
+  },
+  "lines_added": 481,
+  "wall_s": 139,
+  "peak_context": 37188,
+  "context_series": [
+   25427,
+   30501,
+   32339,
+   32939,
+   33518,
+   34901,
+   36121,
+   37188
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "tree.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 2
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r3-D4\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L5-r3-D0",
+  "long": "L5",
+  "features": [
+   "56.1",
+   "56.2",
+   "56.3",
+   "56.4",
+   "56.5"
+  ],
+  "repeat": 3,
+  "setup": "D0",
+  "per": [
+   false,
+   true,
+   true,
+   true,
+   true
+  ],
+  "passed": 4,
+  "pass": false,
+  "total_cost_usd": 0.6579,
+  "tokens": 1277800,
+  "tokens_detail": {
+   "input": 84,
+   "output": 25696,
+   "cache_read": 1150980,
+   "cache_creation": 101040
+  },
+  "lines_added": 527,
+  "wall_s": 136,
+  "peak_context": 32895,
+  "context_series": [
+   25427,
+   27485,
+   28403,
+   29908,
+   30610,
+   31683,
+   32895
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 6,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4\\L5-r3-D0\\yap",
+   "port": 4500
+  }
+ }
+]

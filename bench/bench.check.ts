@@ -1,6 +1,6 @@
 // The bench's scoring rules, run: what goes into a row and what the report says from it.
 import assert from 'node:assert/strict'
-import { added, dropTests, INIT, initCheck, linesAdded, median, plugins, report, tally, testFuncs, type Row } from './run'
+import { added, clashes, dropTests, INIT, initCheck, LONG, linesAdded, median, parentContext, plugins, quartiles, report, report4, tally, testFuncs, warningsIn, workerEdits, type Row, type Row4 } from './run'
 
 assert.equal(median([3, 1, 2]), 2)
 assert.equal(median([4, 1, 2, 3]), 2.5)
@@ -118,6 +118,95 @@ assert.match(vs, /\| A2 − v2 A \| \| \+50 pts \| -\$0\.25 \| ±0 \| -20s \|/)
 assert.match(vs, /\| D3 − D2 \| \| -100 pts \| ±\$0\.00 \| ±0 \| \+10s \|/)
 // What ponytail changed: D3 against D2 on pass rate, lines added and time.
 assert.match(vs, /## What ponytail changed[\s\S]*Pass rate 0% against 100% \(-100 pts.*lines added 5 against 10 \(-50%\), wall-clock 70s against 60s \(\+17%\)/)
+
+// ---------- v4 ----------
+
+// Quartiles interpolate between ranks; one value is all five.
+assert.deepEqual(quartiles([4, 1, 3, 2, 5]), { min: 1, p25: 2, med: 3, p75: 4, max: 5 })
+assert.deepEqual(quartiles([1, 2, 3, 4]), { min: 1, p25: 1.75, med: 2.5, p75: 3.25, max: 4 })
+assert.deepEqual(quartiles([7]), { min: 7, p25: 7, med: 7, p75: 7, max: 7 })
+
+// Peak parent context: the parent's own calls (no parent_tool_use_id), one call once however many messages carry it,
+// the call's last usage winning; input + cache read + cache write.
+{
+  const call = (id: string, input: number, read: number, write: number, parent?: string) => ({ type: 'assistant', ...(parent ? { parent_tool_use_id: parent } : {}), message: { id, usage: { input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: write, output_tokens: 999 }, content: [] } })
+  const series = parentContext([call('a', 1, 10, 100), call('a', 1, 10, 100), call('s', 5, 50_000, 0, 'tool1'), call('b', 2, 20_000, 300), { type: 'user', message: { content: [] } }, call('c', 3, 30_000, 0)])
+  assert.deepEqual(series, [111, 20_302, 30_003], 'a subagent\'s 50k call is not the parent\'s')
+  assert.equal(Math.max(...series), 30_003)
+}
+
+// The D0 check: zero peer-warning lines in every D0 worker's log, counted per log line; D4's may have any.
+{
+  const warn = { type: 'system', subtype: 'hook_response', output: '{"additionalContext":"Other agents are working in this repository right now."}' }
+  assert.equal(warningsIn([{ type: 'bench_argv' }, warn, { type: 'assistant', message: { content: [] } }, warn]), 2)
+  assert.equal(warningsIn([{ type: 'system', subtype: 'hook_response', output: '' }]), 0)
+  const { hooksCheck } = await import('./run')
+  assert.equal(hooksCheck('D0', [0, 0, 0]), '')
+  assert.match(hooksCheck('D0', [0, 2, 1]), /no-hooks check: D0 workers logged 3 peer-warning lines \(0, 2, 1\)/)
+  assert.equal(hooksCheck('D4', [3, 1]), '', 'D4 is meant to hear its peers')
+}
+
+// Collisions: a file two workers both edited (Edit, MultiEdit, Write; a failed call and the parent's own left out),
+// and a clobber when a worker's lines on it are missing from the final tree. A worker that takes its own line out
+// again did not get clobbered; a subagent is a worker of its own inside the parent's log.
+{
+  const use = (id: string, name: string, input: object, parent?: string) => ({ type: 'assistant', ...(parent ? { parent_tool_use_id: parent } : {}), message: { content: [{ type: 'tool_use', id, name, input }] } })
+  const failed = (id: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'String to replace not found' }] } })
+  const parent = [use('p1', 'Edit', { file_path: 'C:\\run\\repo\\mux.go', old_string: 'x := 1', new_string: 'parentLine()' }), use('s1', 'Edit', { file_path: 'C:/run/repo/tree.go', old_string: 'base line', new_string: 'base line\nsubagentLine()' }, 'task1')]
+  const w1 = [use('a', 'Edit', { file_path: 'C:/run/repo/mux.go', old_string: 'func Base() {', new_string: 'func Base() {\n\tworkerOne()\n\tdroppedByOne()' }), use('b', 'Edit', { file_path: 'C:/run/repo/mux.go', old_string: '\tdroppedByOne()', new_string: '' })]
+  const w2 = [use('c', 'MultiEdit', { file_path: 'C:/Run/Repo/MUX.go', edits: [{ old_string: 'func Base() {', new_string: 'func Base() {\n\tworkerTwo()' }] }), use('d', 'Write', { file_path: 'C:/run/repo/new.go', content: 'package chi\nfunc New() {}' }), use('e', 'Edit', { file_path: 'C:/run/repo/tree.go', old_string: 'nope', new_string: 'neverLanded()' }), failed('e')]
+  const w3 = [use('f', 'Write', { file_path: 'C:/run/repo/new.go', content: 'package chi\nfunc Other() {}' })]
+  const edits = workerEdits([parent, w1, w2, w3], p => p.replace(/\\/g, '/').toLowerCase().replace('c:/run/repo/', ''))
+  assert.deepEqual([...edits.keys()].sort(), ['0:task1', '1:', '2:', '3:'], 'the parent\'s own edit is not a worker\'s')
+  const files: Record<string, string> = { 'mux.go': 'func Base() {\n\tworkerTwo()\n}', 'new.go': 'package chi\nfunc Other() {}', 'tree.go': 'base line\nsubagentLine()' }
+  const c = clashes(edits, f => files[f] ?? null)
+  assert.deepEqual(c.files, ['mux.go', 'new.go'], 'tree.go: the subagent alone, the other edit failed')
+  assert.deepEqual(c.clobbers, [{ file: 'mux.go', worker: '1:', missing: 1 }, { file: 'new.go', worker: '2:', missing: 1 }], 'workerOne() was lost, droppedByOne() was its own; New() was written over')
+  assert.deepEqual(clashes(edits, f => (f === 'mux.go' ? 'func Base() {\n\tworkerOne()\n\tworkerTwo()' : files[f])).clobbers.map(x => x.file), ['new.go'], 'both kept: no clobber on mux.go')
+}
+
+// Per-feature scoring in the report: each feature's passing runs against the ceiling, features passed of the ceiling,
+// all-passed runs, quartiles; the parent-context table and per-call series; D4 against D0.
+{
+  const r4 = (setup: Row4['setup'], repeat: number, per: boolean[], extra: Partial<Row4> = {}): Row4 => ({
+    date: 'd', run: `L5-r${repeat}-${setup}`, long: 'L5', features: LONG.L5.features.map(([t, f]) => `${t}.${f}`), repeat, setup, per, passed: per.filter(Boolean).length, pass: per.every(Boolean),
+    total_cost_usd: 1, tokens: 1000, tokens_detail: { input: 0, output: 0, cache_read: 0, cache_creation: 0 }, lines_added: 10, wall_s: 100 * repeat,
+    peak_context: 30_000, context_series: [10_000, 20_000, 30_000], warnings: [], collision_files: [], clobbers: [], collisions_detail: { destructive_git: 0, stale_edits: 0 },
+    interventions: 0, interventions_detail: [], agents: 1, api_key_sources: ['none'], plugins: [[]], daemon: { home: 'h', port: 4500 }, ...extra,
+  })
+  const T = true, F = false
+  const rows = [
+    r4('A4', 1, [T, T, T, T, F]), r4('A4', 2, [T, T, T, T, T]), r4('A4', 3, [T, F, T, T, F], { error: 'init check: boom' }),
+    r4('D4', 1, [T, T, F, T, F], { warnings: [2, 1], collision_files: ['mux.go'], clobbers: [{ file: 'mux.go', worker: '2:', missing: 3 }] }),
+    r4('D0', 1, [F, F, F, F, F], { warnings: [0, 0], collision_files: ['mux.go', 'tree.go'] }),
+  ]
+  const md = report4(rows, 'd-v4', { L5: [T, T, T, T, F] }, { reading: '## Reading\n\nBy hand.' })
+  assert.match(md, /\| A4 \| L5 \| 3 \(1 could not run\) \| 4\.5 \(4\.3–4\.8; 4–5\) of 5 \| 4 \(4–4; 4–4\) of 4 \| 1 of 2 \| 150s \(125s–175s; 100s–200s\) \|/, 'the errored run is counted but not scored')
+  assert.match(md, /\| L5 56\.1 \| passes \| 2\/2 \| 1\/1 \| 0\/1 \|/)
+  assert.match(md, /\| L5 56\.5 \| fails \| 1\/2 \| 0\/1 \| 0\/1 \|/)
+  assert.match(md, /\| A4 \| L5 \| 2 \| 10k .*\| 30k .*\| 3 .*\| 4k /, 'growth per piece: (30k − 10k) / 5')
+  assert.match(md, /L5-r1-D4 +10 20 30/)
+  assert.match(md, /\| D4 \| L5 \| 1 \| 3 of 5 \| 0 of 1 \| 1 .*\| 1 \| 3 \| 3 \|/)
+  assert.match(md, /\| D0 \| L5 \| 1 \| 0 of 5 \| 0 of 1 \| 2 .*\| 0 \| 0 \| 0 \|/)
+  assert.match(md, /## Runs that could not run\n\n- L5-r3-A4: init check: boom/)
+  assert.match(md, /## Reading\n\nBy hand\.$/)
+  assert.doesNotMatch(report4(rows, 'd-v4'), /passes \|/, 'no ceiling given: unknown, not passes')
+}
+// The commander's wake: yap's own wake line, for the newest spawn that ended since it was last told; nothing new,
+// no wake. Several ending while it worked come as one wake: the inbox hands it all of them.
+{
+  const { nextWake, wakeLine } = await import('./run')
+  assert.equal(wakeLine({ id: '0123456789ab' }), 'yap: a message from session @01234567')
+  assert.equal(wakeLine({ id: '0123456789ab', name: 'mux' }), 'yap: a message from session @mux')
+  const sp = [{ id: 'aaaaaaaaaa' }, { id: 'bbbbbbbbbb', done: 20 }, { id: 'cccccccccc', done: 10 }]
+  assert.deepEqual(nextWake(sp, 0), { line: 'yap: a message from session @bbbbbbbb', told: 2 })
+  assert.equal(nextWake(sp, 2), null, 'told of both already')
+  assert.equal(nextWake([{ id: 'aaaaaaaaaa' }], 0), null, 'none ended yet')
+}
+
+// The long tasks: L8 is tasks 26 and 27 on their one base, L5 task 56.
+assert.deepEqual(LONG.L8.features.map(([t, f]) => `${t}.${f}`), ['26.1', '26.2', '26.3', '26.4', '27.1', '27.2', '27.3', '27.4'])
+assert.equal(LONG.L5.features.length, 5)
 
 console.log('bench ok')
 

@@ -15,3 +15,15 @@
   kept popping dialogs: `sudo pwsh -c "Set-NetFirewallProfile -All -NotifyOnListen True"`.
 - Plan usage, for the record: the dry run left the weekly meter at 1%, and the full run took it from 1% to 2%
   ($13.73 API-equivalent for 54 runs), under the 10% stop line.
+
+# Needs you: bench v4 (branch bench-v4)
+
+- Windows Firewall NotifyOnListen may still be OFF on all three profiles. This session's UAC prompt to turn it off
+  came back "Operation was cancelled by the user"; the first dry run raised dialogs, and @commander then turned it
+  off from its own session (2026-11-22, about 22:35). At the end, `sudo pwsh -NoProfile -File bench/firewall.ps1 on`
+  from this session did not take (still False), and @commander was asked to run it. Check
+  `(Get-NetFirewallProfile).NotifyOnListen`; if it reads False, run that command.
+- Plan usage, for the record: the dry runs left the weekly meter at 3%, and the full run took it from 3% to 4%
+  ($15.28 API-equivalent for 18 runs), under the 10% stop line.
+- Merge or push bench-v4. It is committed but not pushed. It sits on bench-v3 (and so v2), and carries main's
+  docs/commander.md with a v4 section added; main's copy is unchanged.

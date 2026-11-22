@@ -1,0 +1,318 @@
+[
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-A4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "A4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 0.8217,
+  "tokens": 1916361,
+  "tokens_detail": {
+   "input": 168,
+   "output": 31243,
+   "cache_read": 1762531,
+   "cache_creation": 122419
+  },
+  "lines_added": 581,
+  "wall_s": 162,
+  "peak_context": 42419,
+  "context_series": [
+   24639,
+   29807,
+   30761,
+   32293,
+   33785,
+   35226,
+   36582,
+   38180,
+   39836,
+   41634,
+   42419
+  ],
+  "warnings": [],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "0:toolu_01XBvk3cJX4rKtcXqP5hiUGq",
+    "missing": 1
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4-dry\\L8-r1-A4\\yap",
+   "port": 4500
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-D4",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "D4",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 1.0503,
+  "tokens": 2619584,
+  "tokens_detail": {
+   "input": 172,
+   "output": 36253,
+   "cache_read": 2436994,
+   "cache_creation": 146165
+  },
+  "lines_added": 651,
+  "wall_s": 172,
+  "peak_context": 36253,
+  "context_series": [
+   25603,
+   28639,
+   29846,
+   31277,
+   33041,
+   33966,
+   34335,
+   35229,
+   36253
+  ],
+  "warnings": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [],
+  "collisions_detail": {
+   "destructive_git": 1,
+   "stale_edits": 1
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4-dry\\L8-r1-D4\\yap",
+   "port": 4501
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "L8-r1-D0",
+  "long": "L8",
+  "features": [
+   "26.1",
+   "26.2",
+   "26.3",
+   "26.4",
+   "27.1",
+   "27.2",
+   "27.3",
+   "27.4"
+  ],
+  "repeat": 1,
+  "setup": "D0",
+  "per": [
+   true,
+   true,
+   false,
+   true,
+   true,
+   true,
+   false,
+   true
+  ],
+  "passed": 6,
+  "pass": false,
+  "total_cost_usd": 1.0105,
+  "tokens": 3150764,
+  "tokens_detail": {
+   "input": 198,
+   "output": 40486,
+   "cache_read": 2961698,
+   "cache_creation": 148382
+  },
+  "lines_added": 632,
+  "wall_s": 220,
+  "peak_context": 47929,
+  "context_series": [
+   25603,
+   26779,
+   27781,
+   28946,
+   30131,
+   31169,
+   32310,
+   33718,
+   34744,
+   36851,
+   37645,
+   38631,
+   39747,
+   40178,
+   41096,
+   42157,
+   43163,
+   44379,
+   45790,
+   46571,
+   47566,
+   47929
+  ],
+  "warnings": [
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "collision_files": [
+   "mux.go"
+  ],
+  "clobbers": [
+   {
+    "file": "mux.go",
+    "worker": "4:",
+    "missing": 3
+   }
+  ],
+  "collisions_detail": {
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 9,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v4-dry\\L8-r1-D0\\yap",
+   "port": 4502
+  }
+ }
+]

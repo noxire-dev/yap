@@ -1,0 +1,106 @@
+2026-11-22T22:39:56.047Z bench 2026-11-22-v4: tasks L8,L5 × 3 repeats × setups A4,D4,D0, model claude-sonnet-5-5, 3 at a time, 45 min a run; daemons on 4500+slot, shared daemon port 4170 is never used; run dirs C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4; plan weekly usage 3%
+2026-11-22T22:39:56.354Z L8-r1-A4: start, setup A4 (subagents, one per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r1-A4\yap YAP_PORT=4500
+2026-11-22T22:39:56.361Z L8-r1-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r1-D4\yap YAP_PORT=4501
+2026-11-22T22:39:56.396Z L8-r1-D0: start, setup D0 (D4 with the workers' yap hooks off), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r1-D0\yap YAP_PORT=4502
+2026-11-22T22:42:50.938Z L8-r1-D4: the commander was woken 8 times
+2026-11-22T22:42:51.200Z L8-r1-D4: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:42:51.201Z L8-r1-D4: hooks check: 8 peer-warning lines in 8 worker logs (1, 1, 1, 1, 1, 1, 1, 1)
+2026-11-22T22:43:13.812Z L8-r1-D4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:43:13.812Z L8-r1-D4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:43:13.813Z L8-r1-D4: 6/8 features [11011101] cost=$1.05 tokens=2753373 wall=175s peak-context=38798 parent-calls=12 files-two-edited=1 clobbers=2 agents=9
+2026-11-22T22:43:14.092Z L8-r2-A4: start, setup A4 (subagents, one per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r2-A4\yap YAP_PORT=4501
+2026-11-22T22:43:27.193Z L8-r1-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:43:51.026Z L8-r1-A4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:43:51.026Z L8-r1-A4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:43:51.026Z L8-r1-A4: 6/8 features [11011101] cost=$0.91 tokens=1961826 wall=211s peak-context=42431 parent-calls=11 files-two-edited=1 clobbers=0 agents=1
+2026-11-22T22:43:51.038Z L8-r1-D0: the commander was woken 6 times
+2026-11-22T22:43:51.289Z L8-r1-D0: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:43:51.289Z L8-r1-D0: hooks check: 0 peer-warning lines in 8 worker logs (0, 0, 0, 0, 0, 0, 0, 0)
+2026-11-22T22:43:51.303Z L8-r2-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r2-D4\yap YAP_PORT=4500
+2026-11-22T22:44:18.626Z L8-r1-D0: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:44:18.626Z L8-r1-D0: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:44:18.626Z L8-r1-D0: 6/8 features [11011101] cost=$0.99 tokens=2435480 wall=235s peak-context=36206 parent-calls=9 files-two-edited=1 clobbers=0 agents=9
+2026-11-22T22:44:18.931Z L8-r2-D0: start, setup D0 (D4 with the workers' yap hooks off), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r2-D0\yap YAP_PORT=4502
+2026-11-22T22:46:24.841Z L8-r2-D4: the commander was woken 6 times
+2026-11-22T22:46:25.096Z L8-r2-D4: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:46:25.096Z L8-r2-D4: hooks check: 8 peer-warning lines in 8 worker logs (1, 1, 1, 1, 1, 1, 1, 1)
+2026-11-22T22:46:48.150Z L8-r2-D4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:46:48.150Z L8-r2-D4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:46:48.150Z L8-r2-D4: 6/8 features [11011101] cost=$1.12 tokens=2723483 wall=154s peak-context=35575 parent-calls=10 files-two-edited=2 clobbers=0 agents=9
+2026-11-22T22:46:48.442Z L8-r3-A4: start, setup A4 (subagents, one per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r3-A4\yap YAP_PORT=4500
+2026-11-22T22:47:10.164Z L8-r2-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:47:33.951Z L8-r2-A4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:47:33.952Z L8-r2-A4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:47:33.952Z L8-r2-A4: 6/8 features [11011101] cost=$0.93 tokens=2143549 wall=236s peak-context=42656 parent-calls=11 files-two-edited=1 clobbers=1 agents=1
+2026-11-22T22:47:34.219Z L8-r3-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r3-D4\yap YAP_PORT=4501
+2026-11-22T22:47:55.501Z L8-r2-D0: the commander was woken 5 times
+2026-11-22T22:47:55.838Z L8-r2-D0: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:47:55.839Z L8-r2-D0: hooks check: 0 peer-warning lines in 8 worker logs (0, 0, 0, 0, 0, 0, 0, 0)
+2026-11-22T22:48:20.320Z L8-r2-D0: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:48:20.321Z L8-r2-D0: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:48:20.321Z L8-r2-D0: 6/8 features [11011101] cost=$0.90 tokens=2398480 wall=217s peak-context=45307 parent-calls=15 files-two-edited=1 clobbers=1 agents=9
+2026-11-22T22:48:20.630Z L8-r3-D0: start, setup D0 (D4 with the workers' yap hooks off), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L8-r3-D0\yap YAP_PORT=4502
+2026-11-22T22:50:11.471Z L8-r3-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:50:34.654Z L8-r3-A4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | FAIL | FAIL	github.com/go-chi/chi/v5	0.969s
+2026-11-22T22:50:34.655Z L8-r3-A4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:50:34.655Z L8-r3-A4: 6/8 features [11011101] cost=$0.86 tokens=1912297 wall=203s peak-context=41870 parent-calls=10 files-two-edited=1 clobbers=1 agents=1
+2026-11-22T22:50:34.958Z L5-r1-A4: start, setup A4 (subagents, one per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r1-A4\yap YAP_PORT=4500
+2026-11-22T22:50:54.172Z L8-r3-D0: the commander was woken 6 times
+2026-11-22T22:50:54.408Z L8-r3-D0: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:50:54.408Z L8-r3-D0: hooks check: 0 peer-warning lines in 8 worker logs (0, 0, 0, 0, 0, 0, 0, 0)
+2026-11-22T22:51:18.027Z L8-r3-D0: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:51:18.028Z L8-r3-D0: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:51:18.028Z L8-r3-D0: 6/8 features [11011101] cost=$0.92 tokens=2355515 wall=154s peak-context=44481 parent-calls=14 files-two-edited=1 clobbers=0 agents=9
+2026-11-22T22:51:18.280Z L5-r1-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r1-D4\yap YAP_PORT=4502
+2026-11-22T22:51:34.800Z L8-r3-D4: the commander was woken 8 times
+2026-11-22T22:51:35.066Z L8-r3-D4: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:51:35.066Z L8-r3-D4: hooks check: 8 peer-warning lines in 8 worker logs (1, 1, 1, 1, 1, 1, 1, 1)
+2026-11-22T22:51:58.352Z L8-r3-D4: feature 26.3: --- FAIL: TestVersionSelector (0.01s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:51:58.353Z L8-r3-D4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:51:58.353Z L8-r3-D4: 6/8 features [11011101] cost=$1.16 tokens=3209172 wall=241s peak-context=43393 parent-calls=13 files-two-edited=1 clobbers=0 agents=9
+2026-11-22T22:51:58.649Z L5-r1-D0: start, setup D0 (D4 with the workers' yap hooks off), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r1-D0\yap YAP_PORT=4501
+2026-11-22T22:52:23.815Z L5-r1-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:52:39.062Z L5-r1-A4: feature 56.1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:52:39.062Z L5-r1-A4: 4/5 features [01111] cost=$0.62 tokens=1150910 wall=109s peak-context=35241 parent-calls=6 files-two-edited=0 clobbers=0 agents=1
+2026-11-22T22:52:39.379Z L5-r2-A4: start, setup A4 (subagents, one per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r2-A4\yap YAP_PORT=4500
+2026-11-22T22:54:03.804Z L5-r1-D4: the commander was woken 5 times
+2026-11-22T22:54:04.049Z L5-r1-D4: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:54:04.050Z L5-r1-D4: hooks check: 5 peer-warning lines in 5 worker logs (1, 1, 1, 1, 1)
+2026-11-22T22:54:17.150Z L5-r1-D0: the commander was woken 3 times
+2026-11-22T22:54:17.390Z L5-r1-D0: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:54:17.391Z L5-r1-D0: hooks check: 0 peer-warning lines in 5 worker logs (0, 0, 0, 0, 0)
+2026-11-22T22:54:18.464Z L5-r1-D4: feature 56.1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:54:18.465Z L5-r1-D4: 4/5 features [01111] cost=$0.80 tokens=2067592 wall=166s peak-context=36996 parent-calls=10 files-two-edited=1 clobbers=0 agents=6
+2026-11-22T22:54:18.724Z L5-r2-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r2-D4\yap YAP_PORT=4502
+2026-11-22T22:54:32.447Z L5-r1-D0: 5/5 features [11111] cost=$0.72 tokens=1533000 wall=139s peak-context=33755 parent-calls=8 files-two-edited=0 clobbers=0 agents=6
+2026-11-22T22:54:32.749Z L5-r2-D0: start, setup D0 (D4 with the workers' yap hooks off), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r2-D0\yap YAP_PORT=4501
+2026-11-22T22:54:53.181Z L5-r2-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:55:08.449Z L5-r2-A4: feature 56.1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:55:08.450Z L5-r2-A4: 4/5 features [01111] cost=$0.70 tokens=1474267 wall=134s peak-context=34683 parent-calls=7 files-two-edited=1 clobbers=0 agents=1
+2026-11-22T22:55:08.797Z L5-r3-A4: start, setup A4 (subagents, one per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r3-A4\yap YAP_PORT=4500
+2026-11-22T22:56:24.234Z L5-r2-D0: the commander was woken 5 times
+2026-11-22T22:56:24.495Z L5-r2-D0: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:56:24.495Z L5-r2-D0: hooks check: 0 peer-warning lines in 5 worker logs (0, 0, 0, 0, 0)
+2026-11-22T22:56:38.578Z L5-r2-D0: 5/5 features [11111] cost=$0.64 tokens=1417322 wall=112s peak-context=35532 parent-calls=8 files-two-edited=2 clobbers=0 agents=6
+2026-11-22T22:56:38.873Z L5-r3-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r3-D4\yap YAP_PORT=4501
+2026-11-22T22:57:08.724Z L5-r3-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:57:23.403Z L5-r3-A4: feature 56.3: --- FAIL: TestRouteTracing (0.00s) | FAIL | FAIL	github.com/go-chi/chi/v5	1.007s
+2026-11-22T22:57:23.403Z L5-r3-A4: 4/5 features [11011] cost=$0.64 tokens=1321736 wall=120s peak-context=34657 parent-calls=7 files-two-edited=0 clobbers=0 agents=1
+2026-11-22T22:57:23.680Z L5-r3-D0: start, setup D0 (D4 with the workers' yap hooks off), 5 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4\L5-r3-D0\yap YAP_PORT=4500
+2026-11-22T22:57:43.359Z L5-r2-D4: the commander was woken 5 times
+2026-11-22T22:57:43.601Z L5-r2-D4: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:57:43.602Z L5-r2-D4: hooks check: 5 peer-warning lines in 5 worker logs (1, 1, 1, 1, 1)
+2026-11-22T22:57:59.122Z L5-r2-D4: feature 56.1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:57:59.122Z L5-r2-D4: 4/5 features [01111] cost=$0.81 tokens=2070761 wall=205s peak-context=43577 parent-calls=15 files-two-edited=1 clobbers=0 agents=6
+2026-11-22T22:58:57.409Z L5-r3-D4: the commander was woken 4 times
+2026-11-22T22:58:57.710Z L5-r3-D4: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:58:57.710Z L5-r3-D4: hooks check: 5 peer-warning lines in 5 worker logs (1, 1, 1, 1, 1)
+2026-11-22T22:59:11.709Z L5-r3-D4: feature 56.1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:59:11.709Z L5-r3-D4: 4/5 features [01111] cost=$0.86 tokens=2343552 wall=139s peak-context=37188 parent-calls=8 files-two-edited=1 clobbers=0 agents=6
+2026-11-22T22:59:39.178Z L5-r3-D0: the commander was woken 4 times
+2026-11-22T22:59:39.433Z L5-r3-D0: init check ok: 6 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap]
+2026-11-22T22:59:39.434Z L5-r3-D0: hooks check: 0 peer-warning lines in 5 worker logs (0, 0, 0, 0, 0)
+2026-11-22T22:59:53.256Z L5-r3-D0: feature 56.1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T22:59:53.256Z L5-r3-D0: 4/5 features [01111] cost=$0.66 tokens=1277800 wall=136s peak-context=32895 parent-calls=7 files-two-edited=0 clobbers=0 agents=6
+2026-11-22T22:59:53.565Z bench 2026-11-22-v4: done, 18 rows, 0 could not run, cost $15.28, plan weekly usage 3% -> 4%
+2026-11-22T22:59:53.565Z bench 2026-11-22-v4: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench4\bench\results\2026-11-22-v4.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench4\bench\results\2026-11-22-v4.md
