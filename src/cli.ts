@@ -27,7 +27,7 @@ yap say [--question|--blocker] [--re <id>] [--repo <name>] ['@id'] <text>
                     a question or blocker stays on your list until a reply with --re <its id>
 yap doing <text>    say what this session is working on, one line its peers and the user see; '' clears it
 yap inbox           what sessions in this repo said to the user, and how background sessions ended
-yap spawn [--codex] <text>  start a background Claude Code (or Codex) session here on that task; its last word comes back to you
+yap spawn [--codex] [--skills <a,b>] <text>  start a background Claude Code (or Codex) session here on that task; its last word comes back to you. --skills: a lean one, only yap and those plugins or skills
 yap spawns [<id>]    the background sessions yap started, and how each ended; with an id, what it does as it goes, live
 yap mcp             yap as an MCP server on stdio, for agents without hooks (Codex, Cursor, Zed)
 yap config [<key> [<value>]]  yap's settings: spawns, how many background sessions run at once (3)
@@ -484,8 +484,12 @@ try {
   } else if (cmd === 'spawn') {
     await daemon()
     // Codex when asked, or when it is the only agent here: the session runs on whichever plan the user has.
-    const codex = rest[0] === '--codex' ? !!rest.shift() : !Bun.which('claude') && !!Bun.which('codex')
-    const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' '), agent: codex ? 'codex' : undefined })
+    // --skills a,b: a lean session, with none of the user's plugins or skills but yap and these.
+    const at = rest.indexOf('--skills')
+    const skills = at >= 0 ? rest.splice(at, 2)[1]?.split(',') : undefined
+    if (at >= 0 && !skills?.[0]) throw new Error('yap spawn --skills <name,name> <text>: an installed plugin (ponytail) or a skill in ~/.claude/skills')
+    const codex = rest[0] === '--codex' ? !!rest.shift() : !skills && !Bun.which('claude') && !!Bun.which('codex')
+    const r = await api.send('POST', '/yap/spawn', { session: me, cwd: target(), text: rest.join(' '), agent: codex ? 'codex' : undefined, skills })
     console.log(`started @${r.id} in the background. It is a peer: \`yap say '@${r.id}'\` reaches it. Its last word comes ${me ? 'to this session when it finishes' : 'back in `yap spawns`'}.`)
   } else if (cmd === 'pair') {
     const relay = String(rest[0] ?? '').replace(/\/$/, '')

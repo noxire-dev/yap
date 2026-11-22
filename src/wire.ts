@@ -3,6 +3,9 @@ import { PROTOCOL, type Sessions, VERBS, type Verb } from './sessions'
 /** Everything `/yap/<verb>` takes: the agent's own verbs, then the ones about the repo. */
 export const ALL = [...VERBS, 'say', 'note', 'unnote', 'spawn', 'claim', 'release', 'doing', 'hello', 'sessions', 'notes', 'spawns', 'claims', 'inbox']
 
+/** spawn's `skills`: a list of names, or one string of them separated by commas. */
+const skills = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === 'string' ? v.split(',') : undefined)
+
 /** `POST /yap/<verb>` on this machine: a JSON body in, the verb's answer out. Throws on a bad call. */
 export function local(sessions: Sessions) {
   return async (verb: string, b: Record<string, unknown>): Promise<unknown> => {
@@ -11,7 +14,7 @@ export function local(sessions: Sessions) {
     if (verb === 'say') return sessions.say({ from: str('session'), cwd, text: String(b.text ?? ''), to: str('to'), kind: str('kind'), re: str('re'), repo: str('repo'), via: str('via') })
     if (verb === 'note') return sessions.note({ from: str('session'), cwd, text: String(b.text ?? ''), replaces: b.replaces == null ? undefined : Number(b.replaces) })
     if (verb === 'unnote') return sessions.unnote(cwd, Number(b.id)).then(() => ({}))
-    if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? ''), agent: str('agent') === 'codex' ? 'codex' : undefined })
+    if (verb === 'spawn') return sessions.spawn({ from: str('session'), cwd, text: String(b.text ?? ''), agent: str('agent') === 'codex' ? 'codex' : undefined, skills: skills(b.skills) })
     if (verb === 'claim') return sessions.claim({ from: str('session'), cwd, path: String(b.path ?? ''), why: String(b.why ?? '') })
     if (verb === 'release') return sessions.release({ from: str('session'), id: str('id'), all: b.all === true })
     if (verb === 'doing') return sessions.doing({ from: str('session'), cwd, text: String(b.text ?? '') })

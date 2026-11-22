@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { GH_ENV } from './board'
 import { childEnv } from './env'
 import type { Agent, AgentRun, AgentRunner } from './ports'
@@ -55,8 +55,10 @@ function codexAuth() {
 export class ClaudeCli implements AgentRunner {
   async run(o: AgentRun) {
     const { cwd, prompt, signal, onActivity, onText, peer, chat } = o
-    // Only a board run reads no settings file, so only it needs the user's carried in.
-    const args = claudeArgs(o, o.only ? carried() : {})
+    // A run with named skills reads no settings file either: yap and those skills are all it loads.
+    const lean = o.skills?.length && !o.only ? skillPlugins(o.skills) : null
+    // Only a board run and a lean one read no settings file, so only they need the user's carried in.
+    const args = claudeArgs(o, o.only || lean ? carried() : {}, lean ? [YAP_PLUGIN, ...lean.dirs] : [])
     // A board run's folder is yap's own and may not exist yet: it is where the run stands, nothing is read there.
     if (o.only) mkdirSync(cwd, { recursive: true })
 
@@ -66,6 +68,7 @@ export class ClaudeCli implements AgentRunner {
     // A board run's server is gh: a gh signed in by environment needs that environment. The run has no shell to read it.
     const gh = o.only ? Object.fromEntries(GH_ENV.filter(k => process.env[k]).map(k => [k, process.env[k]!])) : {}
     const p = Bun.spawn(args, { cwd, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', signal, windowsHide: true, env: { ...childEnv(), ...auth(), ...yap, ...gh } })
+    if (lean?.tmp) void p.exited.then(() => rmSync(lean.tmp!, { recursive: true, force: true }))
     p.stdin.write(prompt)
     p.stdin.end()
     const stderr = new Response(p.stderr).text()
@@ -107,7 +110,7 @@ export class ClaudeCli implements AgentRunner {
 }
 
 /** The `claude` command line for a run. Pure, so the check can read it. */
-export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, settings: Record<string, unknown> = {}) {
+export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, settings: Record<string, unknown> = {}, plugins: string[] = []) {
   const args = ['claude', '-p', '--output-format', 'stream-json', '--verbose']
   // No human is there to answer a prompt: anything that would ask is denied.
   args.push('--permission-prompts', 'none', '--strict-mcp-config')
@@ -122,9 +125,45 @@ export function claudeArgs({ readOnly, only, schema, peer, chat }: AgentRun, set
     if (Object.keys(settings).length) args.push('--settings', JSON.stringify(settings))
   } else if (readOnly) args.push('--tools', 'Read,Grep,Glob')
   else args.push('--permission-mode', 'auto')
+  // A lean run: none of the user's settings, plugins or skills, only these plugin folders (yap's, the skills asked for).
+  if (plugins.length && !only) {
+    args.push('--setting-sources', '', ...plugins.flatMap(d => ['--plugin-dir', d]))
+    if (Object.keys(settings).length) args.push('--settings', JSON.stringify(settings))
+  }
   if (schema) args.push('--json-schema', JSON.stringify(schema))
   if (peer) args.push('--session-id', peer)
   return args
+}
+
+/** This repo is yap's Claude Code plugin: a lean run loads its hooks from here, as the installed plugin would. */
+const YAP_PLUGIN = resolve(import.meta.dir, '..')
+
+/**
+ * Where each named skill lives, as folders for --plugin-dir. A name is an installed plugin (`ponytail`, or one of its
+ * skills, `ponytail:ponytail-review`, which loads the whole plugin and its hooks), or a skill of the user's own in
+ * `~/.claude/skills`, copied into one throwaway plugin (`tmp`, removed when the run ends). Throws on a name that is
+ * neither, before anything starts.
+ */
+export function skillPlugins(names: string[], dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')) {
+  let installed: Record<string, { installPath: string }[]> = {}
+  try {
+    installed = JSON.parse(readFileSync(join(dir, 'plugins', 'installed_plugins.json'), 'utf8')).plugins ?? {}
+  } catch {}
+  const plugin = (name: string) => Object.entries(installed).find(([k]) => k.split('@')[0] === name)?.[1]?.[0]?.installPath
+  const dirs = new Set<string>()
+  const own: string[] = []
+  for (const name of names) {
+    const p = plugin(name.split(':')[0])
+    if (p) dirs.add(p)
+    else if (!name.includes(':') && existsSync(join(dir, 'skills', name, 'SKILL.md'))) own.push(name)
+    else throw new Error(`no plugin or skill named ${name}: an installed plugin (claude plugin list), or a folder in ${join(dir, 'skills')}`)
+  }
+  if (!own.length) return { dirs: [...dirs] }
+  const tmp = mkdtempSync(join(tmpdir(), 'yap-skills-'))
+  mkdirSync(join(tmp, '.claude-plugin'))
+  writeFileSync(join(tmp, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'skills', version: '0.0.0', description: "the user's skills a yap spawn was asked to load" }))
+  for (const name of own) cpSync(join(dir, 'skills', name), join(tmp, 'skills', name), { recursive: true })
+  return { dirs: [...dirs, tmp], tmp }
 }
 
 /**

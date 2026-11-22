@@ -180,6 +180,11 @@ export interface AgentRun {
   only?: { name: string; command: string; args: string[] }
   /** Each piece of text the agent says, as it says it. */
   onText?: (text: string) => void
+  /**
+   * A lean run (Claude Code only): none of the user's settings, plugins or skills, only yap and these, each an
+   * installed plugin's name or a skill in `~/.claude/skills`.
+   */
+  skills?: string[]
 }
 
 export type Agent = 'claude' | 'codex'

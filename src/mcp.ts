@@ -48,8 +48,9 @@ const TOOLS = [
   },
   {
     name: 'yap_spawn',
-    description: 'Start a background agent session in this repo on a task: Claude Code, or Codex with agent "codex". It is a peer you can message; its last word comes back to you as a message.',
-    inputSchema: { type: 'object', properties: { task: s, agent: { type: 'string', enum: ['claude', 'codex'] } }, required: ['task'] },
+    description:
+      'Start a background agent session in this repo on a task: Claude Code, or Codex with agent "codex". It is a peer you can message; its last word comes back to you as a message. `skills` (Claude Code only) makes it lean: none of the user\'s plugins or skills, only yap and these, each an installed plugin\'s name (ponytail) or a skill in ~/.claude/skills (frontend-craft).',
+    inputSchema: { type: 'object', properties: { task: s, agent: { type: 'string', enum: ['claude', 'codex'] }, skills: { type: 'array', items: s } }, required: ['task'] },
   },
 ]
 
@@ -109,7 +110,7 @@ async function tool(me: YapSession, name: string, a: Record<string, any>): Promi
   }
   if (name === 'yap_doing') return (await me.doing(String(a.text ?? '')), a.text ? 'the others see it next to your name' : 'cleared')
   if (name === 'yap_note') return `pinned #${(await me.note(String(a.text ?? ''), a.replaces == null ? undefined : Number(a.replaces))).id}`
-  if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''), a.agent === 'codex' ? 'codex' : undefined)).id}; its last word comes back to you through yap_check`
+  if (name === 'yap_spawn') return `started @${(await me.spawn(String(a.task ?? ''), a.agent === 'codex' ? 'codex' : undefined, Array.isArray(a.skills) ? a.skills.map(String) : undefined)).id}; its last word comes back to you through yap_check`
   throw new Error(`no tool ${name}`)
 }
 
