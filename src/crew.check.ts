@@ -397,6 +397,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   assert.deepEqual(woken, ['aaaa1111'])
   assert.match((await reg.yap('turn', { session: 'aaaa1111', cwd: '/repo', prompt: `yap: a message from session @${id}` })).context!, new RegExp(`Session @${id} \\(@fetch\\), which you started, finished: Added a retry`), 'the report names the spawn by the id spawn announced, the name it took beside it')
   assert.deepEqual(reg.spawns().map(s => [s.id, s.name, s.ok]), [[id, 'fetch', true]])
+  assert.deepEqual(((await local(reg)('spawns', { cwd: '/repo', id: `@${id}` })) as { id: string }[]).map(s => s.id), [id], 'picked as spawn printed it, @ and all')
 
   // No more than the setting run at once; what ran outlives the daemon, and what was running comes back failed.
   let cap = 1

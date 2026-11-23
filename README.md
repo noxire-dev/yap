@@ -265,7 +265,11 @@ yap go [<goal>]                                     # starts the drafts, or one 
 yap status · yap show 12 · yap init
 ```
 
-Install it for every session with a symlink, `ln -s "$PWD/skills/yap" ~/.claude/skills/yap` (a junction on
+`skills/commander` runs a task as a commander ([docs/commander.md](docs/commander.md)): the session splits it,
+starts one lean `yap spawn` worker per piece, waits on each with `yap spawns <id>` in the background, and checks
+and commits once every report is in. Say "commander" or "fan this out to workers".
+
+Install either for every session with a symlink, `ln -s "$PWD/skills/yap" ~/.claude/skills/yap` (a junction on
 Windows: `mklink /J`), or load the repo as a plugin for one session with `claude --plugin-dir <this repo>`.
 
 ## Herdr

@@ -814,6 +814,7 @@ export class Sessions {
    * `log`, the lines after `since` (an `n`); the list leaves the logs out and counts them in `steps`.
    */
   spawns(id?: string, since = 0) {
+    id = id?.replace(/^@/, '')
     return [...this.spawned.values()]
       .reverse()
       .filter(sp => !id || sp.id.startsWith(id))

@@ -17,7 +17,8 @@ It sits between two setups people already use:
 | Worker start-up | ~3 s | ~12 s (a new process) | ~6 s |
 
 This file explains the model, the parts of the YAP protocol it rests on, and three benchmarks (2026-11-21 and
-2026-11-22, 216 runs in all) that measured it against the other two setups.
+2026-11-22, 216 runs in all) that measured it against the other two setups. The `commander` skill
+(`skills/commander/SKILL.md`, in the yap plugin) runs it from any session: say "commander".
 
 ## How a run goes
 
