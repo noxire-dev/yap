@@ -28,8 +28,6 @@ const BOARD = 10
 export const STALE = 24 * 60 * 60_000
 /** File names that say nothing on their own; a session named from one takes its directory too. */
 const GENERIC = new Set(['index', 'main', 'mod', 'lib', 'init', '__init__', 'readme', 'utils', 'util', 'types', 'app', 'page', 'route', 'layout'])
-/** Harness markup Claude Code feeds in as a prompt (another agent's message, a task notification): not what the user asked. */
-const MARKUP = /^<[\w-]+[\s>]/
 /**
  * An idle session in a pane is woken with a prompt the user sees, so it is one plain line; the message and what
  * to do with it come with it as context, which only the model reads.
@@ -120,8 +118,10 @@ interface Session {
   repo: string
   started: number
   at: number
-  /** When this session was last told about the others. */
+  /** When this session was last told about the others; 0 until it had the overview. */
   told: number
+  /** The peers and peer claims it was told of, so a turn says only what is new. */
+  known?: { peers: string[]; claims: string[] }
   /** File (normalized) to when this session last edited it. */
   files: Map<string, number>
   /** File to the other session's edit time it was already warned about. */
@@ -134,8 +134,6 @@ interface Session {
   shell: number
   /** The directory it last reported from; a session that moves (into a worktree, say) is re-rooted. */
   cwd: string
-  /** When it last did something the others should hear about: started, prompted, edited. */
-  news: number
   /** Its working tree as of its last turn's end, as a commit nothing points at. */
   snap?: string
   /** Peer id to the files their working trees would conflict in if merged. */
@@ -400,7 +398,6 @@ export class Sessions {
     if (!s) throw new Error('only a session is doing something: run it from inside one')
     const text = m.text.trim().split(/\r?\n/)[0].slice(0, 200)
     s.doing = text || undefined
-    s.news = this.now()
     this.save(s)
     this.emit({ type: 'doing', repo: checkout(s.repo), session: s.id, name: s.name, text })
     return {}
@@ -492,7 +489,7 @@ export class Sessions {
     let s = this.all.get(id)
     if (!s) {
       const { top, repo } = await this.root(input.cwd)
-      s = { id, name: '', top, repo, started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd, news: now }
+      s = { id, name: '', top, repo, started: now, at: now, told: 0, files: new Map(), warned: new Map(), inbox: [], shell: 0, cwd: input.cwd }
       this.all.set(id, s)
       if (input.name) s.name = this.unique(s, slug(input.name))
       this.emit({ type: 'join', repo: checkout(repo), session: id, name: s.name })
@@ -512,7 +509,7 @@ export class Sessions {
 
   /** Record an edit to `file` (normalized, inside its tree); the first one names the session, unique in its repo. */
   private edited(s: Session, file: string) {
-    s.files.set(file, (s.news = this.now()))
+    s.files.set(file, this.now())
     for (const c of this.claimed(s)) if (covers(c.path, this.rel(s, file))) c.at = this.now()
     s.name ||= this.naming(s, file)
     this.emit({ type: 'edited', repo: checkout(s.repo), session: s.id, name: s.name, path: relative(s.top, file).replace(/\\/g, '/') })
@@ -569,22 +566,59 @@ export class Sessions {
       .map(t => `- yap crew: t${t.id} "${t.title}" (${t.status === 'todo' ? 'queued' : t.status}, merges into ${p.base} when approved)`)
   }
 
+  /** How to use yap, and who this session is: told once, at join. */
+  private you(s: Session) {
+    return `You are session @${this.tag(s)}. Message the others with \`yap say '@<session>' <text>\` or \`yap say <text>\` for all of them. Before a task that touches more than two files in one directory, claim it with \`yap claim <path> <why>\`, so the others are warned before they edit there, and \`yap release <id>\` when you are done. Leave something on the board for later sessions (a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds. Say what you are working on with \`yap doing <text>\` when you start a task, and again when it changes. When you produce something another session could use (an analysis, a decision, a research file), pin it on the board with where it is, not only in your reply.`
+  }
+
+  /** Live claims by its peers, in any worktree of the repo. */
+  private peerClaims(s: Session) {
+    return this.others(s).flatMap(o => this.claimed(o).map(c => ({ o, c, line: `- ${c.path}, by @${this.tag(o)}${o.top === s.top ? '' : ' in another worktree'}: ${c.why}` })))
+  }
+
+  /** Remember what the session now knows of, so a later turn tells it only what is new. */
+  private know(s: Session) {
+    s.told = this.now()
+    s.known = { peers: this.others(s).map(o => o.id), claims: this.peerClaims(s).map(x => x.c.id) }
+  }
+
+  /** Everything, once: peers, claims, the board, how to use yap. A spawned session has its brief, so only the last. */
   private overview(s: Session) {
-    const lines = [...this.others(s).map(o => this.line(o, s)), ...this.crew(s)]
-    const notes = this.store.notes(s.repo).slice(0, BOARD)
+    const spawned = this.spawned.has(s.id)
+    const lines = spawned ? [] : [...this.others(s).map(o => this.line(o, s)), ...this.crew(s)]
+    const notes = spawned ? [] : this.store.notes(s.repo).slice(0, BOARD)
     const stale = notes.some(n => this.now() - n.ts > STALE)
-    const claims = this.others(s).flatMap(o => this.claimed(o).map(c => `- ${c.path}, by @${this.tag(o)}${o.top === s.top ? '' : ' in another worktree'}: ${c.why}`))
+    const claims = spawned ? [] : this.peerClaims(s).map(x => x.line)
     const board = notes.map(n => `- #${n.id} ${ago(n.ts, this.now())}${this.now() - n.ts > STALE ? ', may be stale' : ''}, ${n.author}: ${n.text.slice(0, 300)}`)
     if (stale) board.push(`Notes marked "may be stale" are over a day old. If you can tell one no longer holds, take it down; if you can't, don't act on it without checking.`)
-    s.told = this.now()
-    if (!lines.length && !board.length) return ''
+    this.know(s)
+    if (!spawned && !lines.length && !board.length) return ''
     return [
       ...(lines.length
         ? [`Other agents are working in this repository right now. Don't redo their work, and re-read a file listed here before you edit it:`, ...lines]
         : []),
       ...(claims.length ? [`Claimed by another session: leave these to their holder, or ask them first:`, ...claims] : []),
       ...(board.length ? [`This repository's yap board, what sessions and the user left for whoever works here next:`, ...board] : []),
-      `You are session @${this.tag(s)}. Message the others with \`yap say '@<session>' <text>\` or \`yap say <text>\` for all of them. Before a task that touches more than two files in one directory, claim it with \`yap claim <path> <why>\`, so the others are warned before they edit there, and \`yap release <id>\` when you are done. Leave something on the board for later sessions (a decision, a warning, a handoff) with \`yap note <text>\`, and take a note down with \`yap note -d <id>\` once it no longer holds. Say what you are working on with \`yap doing <text>\` when you start a task, and again when it changes. When you produce something another session could use (an analysis, a decision, a research file), pin it on the board with where it is, not only in your reply.`,
+      this.you(s),
+    ].join('\n')
+  }
+
+  /**
+   * What is new since the session was last told: a peer that joined or left, a claim a peer made. Notes and
+   * messages come through the inbox. Nothing new is ''.
+   */
+  private news(s: Session) {
+    if (this.spawned.has(s.id)) return ''
+    const known = s.known ?? { peers: [], claims: [] }
+    const peers = this.others(s)
+    const joined = peers.filter(o => !known.peers.includes(o.id)).map(o => this.line(o, s))
+    const left = known.peers.filter(id => !peers.some(o => o.id === id)).map(id => `@${id.slice(0, 8)}`)
+    const claims = this.peerClaims(s).filter(x => !known.claims.includes(x.c.id)).map(x => x.line)
+    this.know(s)
+    return [
+      ...(joined.length ? [`Joined this repository:`, ...joined] : []),
+      ...(left.length ? [`Left: ${left.join(', ')}`] : []),
+      ...(claims.length ? [`Newly claimed by another session: leave these to their holder, or ask them first:`, ...claims] : []),
     ].join('\n')
   }
 
@@ -604,7 +638,6 @@ export class Sessions {
     const shown = resolve(native(m.cwd), native(m.path)).replace(/\\/g, '/').slice(-path.length)
     const c = { id: randomUUID().slice(0, 8), path: shown, why: m.why.trim().slice(0, 300), at: this.now() }
     s.claims = [...this.claimed(s), c]
-    s.news = this.now()
     this.save(s)
     return { id: c.id }
   }
@@ -738,8 +771,8 @@ export class Sessions {
   }
 
   /**
-   * Start a background Claude Code session in `cwd` on `text`. It is a peer like any other: it hears about the
-   * others, they hear about it, and it can be messaged. Its final message goes back to whoever asked: a session
+   * Start a background Claude Code session in `cwd` on `text`. It is a peer: the others hear about it, it can be
+   * messaged and the guards cover it, but it has its brief, so it gets no overview. Its final message goes back to whoever asked: a session
    * gets it in its inbox, the user reads it with `yap spawns`.
    */
   async spawn(m: { from?: string; cwd: string; text: string; user?: boolean; agent?: Agent; skills?: string[] }) {
@@ -759,7 +792,7 @@ export class Sessions {
     this.spawned.set(id, sp)
     this.keep(sp)
     const who = s ? `session @${this.tag(s)}, which asked for it` : `${this.label(s, m.user)}, who asked for it, through \`yap spawns\``
-    const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session: make the calls yourself and say what you decided. If one is truly the user's to make, ask it with \`yap say --question '@user' <text>\` and carry on with the rest; an answer reaches you while you still run. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository, and yap tells you about them as you go.`
+    const prompt = `${task}\n\nyap started you in the background for ${this.label(s, m.user)}. Nobody is watching this session: make the calls yourself and say what you decided. If one is truly the user's to make, ask it with \`yap say --question '@user' <text>\` and carry on with the rest; an answer reaches you while you still run. End with what you did and anything left; that final message goes to ${who}. Other sessions may be working in this repository: their messages reach you, and yap warns you before you step on their work.`
     const onActivity = (line: string) => {
       if (!line || sp.done) return
       sp.log = [...(sp.log ?? []), { n: (sp.log?.at(-1)?.n ?? 0) + 1, at: this.now(), line }].slice(-LOG)
@@ -950,12 +983,9 @@ export class Sessions {
 
     if (verb === 'turn' && call.prompt?.startsWith(WAKE)) return { context: both(this.trusted() ? TRUSTED_WOKEN : WOKEN, drain()) }
     if (verb === 'turn') {
-      const first = String(call.prompt ?? '').trim().split(/\r?\n/)[0]
-      if (!MARKUP.test(first)) s.news = this.now()
-      // Only when another session started, prompted or edited since this one last heard, so a quiet repo, or a
-      // neighbour merely reading, costs no context.
-      const moved = this.others(s).some(o => o.news > s.told) || (this.crew(s).length > 0 && s.told === 0)
-      return { context: both(moved ? this.overview(s) : '', drain()) }
+      // The overview once (a session yap missed at start gets it on its first turn), then only what is new, so a
+      // quiet repo, or a neighbour merely working, costs no context.
+      return { context: both(s.told ? this.news(s) : this.overview(s), drain()) }
     }
 
     if (verb === 'ran') {

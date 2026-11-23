@@ -1026,7 +1026,9 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   await B('join', { name: 'api' })
   now += 1000
   assert.deepEqual(await A('doing', { text: 'rewriting token refresh\nand more' }), {})
-  assert.match((await B('turn', { prompt: 'go on' })).context, /- @auth \(aaaa1111\), active just now, doing "rewriting token refresh": no edits yet/)
+  assert.deepEqual(await B('turn', { prompt: 'go on' }), {}, 'a peer changing what it does is not news')
+  assert.match((await as('cccc3333')('join')).context, /- @auth \(aaaa1111\), active just now, doing "rewriting token refresh": no edits yet/, 'a session joining sees it')
+  await as('cccc3333')('leave')
   assert.equal((await reg.peers('/repo')).find(s => s.name === 'auth')!.doing, 'rewriting token refresh')
   await assert.rejects(local(reg)('doing', { cwd: '/repo', text: 'x' }), /only a session/)
 
@@ -1206,6 +1208,48 @@ assert.equal(rooted('Read /Repo/src/a.ts', '/repo', false), 'Read /Repo/src/a.ts
   assert.match(ctx(await later.hook('start', { session_id: 'dddd4444', cwd: '/repo' })), /#1 4d ago, may be stale[\s\S]*over a day old/)
   await reg.unnote('/repo', n.id)
   assert.deepEqual(await reg.notes('/repo'), [])
+}
+
+// The bus: a session gets the overview once, at join; a turn after that answers only what is new, each item once,
+// and a spawned session, which has its brief, gets no overview at all.
+{
+  const { store, ws } = rig([])
+  let now = 1_000_000
+  const runs: any[] = []
+  const runner: AgentRunner = { run: o => (runs.push(o), new Promise(() => {})) }
+  const reg = new Sessions(ws, store, () => now, undefined, runner)
+  const as = (session: string) => (verb: string, b: object = {}) => local(reg)(verb, { session, cwd: '/repo', ...b }) as Promise<any>
+  const [a, b] = [as('aaaa1111'), as('bbbb2222')]
+  await a('note', { text: 'the parser is mine' })
+  await a('edited', { path: 'src/auth.ts' })
+  assert.match((await b('join')).context, /@auth[\s\S]*yap board[\s\S]*the parser is mine[\s\S]*You are session @bbbb2222/, 'join: the overview')
+  now += 60_000
+  await a('turn', { prompt: 'keep going' })
+  await a('edited', { path: 'src/auth2.ts' })
+  assert.deepEqual(await b('turn', { prompt: 'go' }), {}, 'a peer working is not news')
+  await a('note', { text: 'parser done, tests next' })
+  const told = (await b('turn', { prompt: 'go' })).context
+  assert.match(told, /New note on the board, #2 from session @auth: parser done/)
+  assert.doesNotMatch(told, /the parser is mine|You are session|Other agents/, 'the note alone, not the board or the instructions again')
+  assert.deepEqual(await b('turn', { prompt: 'go' }), {}, 'told once')
+  await as('cccc3333')('join')
+  await a('claim', { path: 'src/parser', why: 'rewriting it' })
+  const news = (await b('turn', { prompt: 'go' })).context
+  assert.match(news, /Joined[\s\S]*@cccc3333/)
+  assert.match(news, /src\/parser, by @auth: rewriting it/)
+  assert.doesNotMatch(news, /yap board|You are session/)
+  await as('cccc3333')('leave')
+  assert.match((await b('turn', { prompt: 'go' })).context, /Left: @cccc3333/)
+  assert.deepEqual(await b('turn', { prompt: 'go' }), {})
+
+  const { id } = await a('spawn', { text: 'write the parser tests' })
+  const sp = runs[0].peer
+  assert.equal(sp.slice(0, 8), id)
+  const brief = (await as(sp)('join')).context
+  assert.match(brief, /You are session @[\w]+\. Message the others/)
+  assert.doesNotMatch(brief, /@auth|yap board|parser/, 'no peers, no board: it has its brief')
+  await a('say', { to: `@${id}`, text: 'tests in src/parser.check.ts' })
+  assert.match((await as(sp)('turn', { prompt: 'go' })).context, /tests in src\/parser\.check\.ts/, 'messages still reach it')
 }
 
 // The gate squashes the commit the reviewer saw, never whatever the branch points at by then.

@@ -1,26 +1,31 @@
 # yap
 
-Coding-agent sessions on one machine that see each other, message each other and stay out of each other's way.
+A bus for coding-agent sessions on one machine: the ones you start separately, in any agent, leave notes,
+message each other, hand off and spawn.
 
-Run three agents on one repo and they step on each other: one edits a file another just changed, one runs
-`git stash` and wipes another's work, none knows what the others are doing. yap gives them a shared room. A new
-session starts knowing who else is there:
+Claude Code's agent teams cover a lead and the teammates it starts. yap is for the sessions nobody launched
+together: a Claude Code here, a Codex there, the one you open tomorrow. A new session reads the repo's board
+once, then hears only what is new:
 
 ```
-Other agents are working in this repository right now. Don't redo their work, and re-read a file
-listed here before you edit it:
-- @auth (3fc8e133), active just now, doing "move sessions to the new store": edited src/auth/session.ts, src/auth/store.ts
 This repository's yap board, what sessions and the user left for whoever works here next:
 - #12 2h ago, session @api: The v2 routes are behind a flag until the client ships; don't delete v1.
+
+From session @auth: I moved sessions to the new store; the old one goes once your branch is in.
 ```
 
-- **See:** who is in the repo, what each says it is doing, which files each edited.
-- **Warned:** before editing a file a peer changed in the last 30 minutes, the agent is told who and why.
-- **Guarded:** `git checkout`, `stash`, `reset --hard` and friends are refused while a peer is working in the tree.
+- **Board:** `yap note <text>` pins a decision or handoff that every later session in the repo reads at start.
 - **Talk:** `yap say '@auth' are you done with the store?`. An agent idle in a Herdr pane is woken to answer.
   A question for you lands in `yap inbox`.
+- **Spawn:** `yap spawn <task>` starts a background session; its last word comes back to whoever asked.
+- **Told once:** the overview (peers, claims, board) comes at start. After that a prompt carries only news: a
+  message, a note, a peer joining or leaving, a new claim. Nothing new, nothing said.
+
+Then the guards, which cost nothing until two sessions overlap:
+
+- **Warned:** before editing a file a peer changed in the last 30 minutes, the agent is told who and why.
+- **Guarded:** `git checkout`, `stash`, `reset --hard` and friends are refused while a peer is working in the tree.
 - **Claim:** `yap claim src/auth <why>` warns the others away from a directory before a multi-file task.
-- **Board:** `yap note <text>` pins a decision or handoff that every later session in the repo reads at start.
 
 | Agent | How it joins |
 |---|---|
@@ -100,9 +105,10 @@ grouped by repo, worktrees included, and the crew counts as one more worker.
 The plugin runs its own copy of yap. A daemon is only replaced by newer code from the copy it runs from, or by
 a newer release from another copy, and never while a ticket or a spawn is running.
 
-- A new session is told who else is in the repo, which files each touched (not what it was asked:
-  a prompt is yours), plus any tickets the crew is running.
-- On your next prompt it hears what moved since, and nothing at all when nothing did.
+- A new session is told once who else is in the repo, which files each touched (not what it was asked:
+  a prompt is yours), their claims, any tickets the crew is running, and the board.
+- After that a prompt carries only news, each item once: a message, a note, a peer that joined or left, a new
+  claim. A peer merely working is not news, and nothing at all is said when nothing is new.
 - Before an edit to a file another session in the same working tree changed in the last 30 minutes, the model
   is told who and why and to re-read it first, and you see a one-line notice. Once per file per change.
 - A session is named from the first file it edits (`@auth`, `@api-index`), never from your prompt; before that, by
@@ -120,7 +126,7 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
   20 minutes past your last edit there; `yap release <id>` ends it, `yap release --mine` ends all of yours,
   `yap claims` lists them.
 - Sessions say what they are on: `yap doing <text>` puts one line next to the session's name, in its peers'
-  context, `yap sessions` and the web. Sessions are told to set it when they start a task, and to pin anything
+  context when they start, `yap sessions` and the web. Sessions are told to set it when they start a task, and to pin anything
   another session could use (an analysis, a decision, a research file) on the board with where it is.
 - A session can talk to you: `yap say '@user' <text>`, or `--question` / `--blocker`, lands in your inbox
   (`yap inbox`, and the web's `inbox`). Answer with `yap say --re <id> <text>` from the web; it goes to the
@@ -135,7 +141,8 @@ a newer release from another copy, and never while a ticket or a spawn is runnin
 - Who is live, what each edited and undelivered messages survive a daemon restart.
 - `yap sessions` lists them.
 - `yap spawn <text>` starts a background Claude Code session in this repo on that task. It is a peer like the
-  others: it hears about them, they hear about it, and `yap say` reaches it. It makes its own calls under auto
+  others: they hear about it, `yap say` reaches it and the guards cover it, but it starts with its brief, not
+  the overview. It makes its own calls under auto
   mode; one that is truly yours goes to your inbox as a question while it carries on. Its final message comes back to the session that started it, or to
   `yap spawns` when you started it from your terminal. Three run at once unless `yap config spawns <n>` says
   otherwise; past that, `spawn` is refused with a 429. A daemon restart marks the ones it was running as failed.
