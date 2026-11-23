@@ -780,16 +780,15 @@ export class Sessions {
     this.forget(sp.id)
     const s = this.all.get(sp.from)
     const said = sp.result!.slice(0, 2000)
-    if (!s) {
-      // Started by the user (or a session since gone): its end waits in the user's inbox.
-      const from = `session @${sp.name || sp.id.slice(0, 8)}`
-      this.tell((await this.root(sp.cwd)).repo, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok })
-      return
-    }
-    const from = `session @${sp.name || sp.id.slice(0, 8)}`
-    this.post(s, { kind: 'spawn', origin: 'session', from, sender: sp.id, text: said, ok }, `${from[0].toUpperCase()}${from.slice(1)}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
+    // Named by the id `spawn` returned, so the asker can match it to what it started; the name it took, beside it.
+    const id = sp.id.slice(0, 8)
+    const from = `session @${id}`
+    const msg = { kind: 'spawn' as const, origin: 'session' as const, from, sender: sp.id, text: said, ok }
+    // Started by the user (or a session since gone): its end waits in the user's inbox.
+    if (!s) return void this.tell((await this.root(sp.cwd)).repo, msg)
+    this.post(s, msg, `Session @${id}${sp.name ? ` (@${sp.name})` : ''}, which you started, ${ok ? 'finished' : 'failed'}: ${said}`)
     this.save(s)
-    await this.panes.wake(s, `${WAKE}session @${sp.name || sp.id.slice(0, 8)}`)
+    await this.panes.wake(s, `${WAKE}${from}`)
   }
 
   /**

@@ -387,7 +387,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   const woken: string[] = []
   const reg = new Sessions(ws, store, () => 1_000_000, { wake: async s => (woken.push(s.id), true) }, runner)
   await reg.yap('join', { session: 'aaaa1111', cwd: '/repo' })
-  const { id } = await reg.spawn({ from: 'aaaa1111', cwd: '/repo', text: 'add a retry to fetchUser' })
+  const { id } = (await local(reg)('spawn', { session: 'aaaa1111', cwd: '/repo', text: 'add a retry to fetchUser' })) as { id: string }
   assert.equal(runs[0].peer.slice(0, 8), id)
   assert.match(runs[0].prompt, /^add a retry to fetchUser\n\n.*session @aaaa1111, which asked for it/s)
   await reg.yap('edited', { session: runs[0].peer, cwd: '/repo', path: 'src/fetch.ts' })
@@ -395,7 +395,7 @@ const settled = (store: SqliteStore, id: number) => until(() => store.tickets().
   finish('Added a retry with backoff to fetchUser.')
   await Bun.sleep(0)
   assert.deepEqual(woken, ['aaaa1111'])
-  assert.match((await reg.yap('turn', { session: 'aaaa1111', cwd: '/repo', prompt: 'yap: a message from session @fetch' })).context!, /Session @fetch, which you started, finished: Added a retry/)
+  assert.match((await reg.yap('turn', { session: 'aaaa1111', cwd: '/repo', prompt: `yap: a message from session @${id}` })).context!, new RegExp(`Session @${id} \\(@fetch\\), which you started, finished: Added a retry`), 'the report names the spawn by the id spawn announced, the name it took beside it')
   assert.deepEqual(reg.spawns().map(s => [s.id, s.name, s.ok]), [[id, 'fetch', true]])
 
   // No more than the setting run at once; what ran outlives the daemon, and what was running comes back failed.
