@@ -1,0 +1,182 @@
+2026-11-22T18:54:09.557Z bench 2026-11-22-v3: 6 pairs × 3 repeats × setups A2D2D3, model claude-sonnet-5-5, 3 at a time, 45 min a run; daemons on 4400+slot, shared daemon port 4170 is never used; run dirs C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3; plan weekly usage 1%
+2026-11-22T18:54:09.849Z 26-1_2-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r1-D2\yap YAP_PORT=4401
+2026-11-22T18:54:09.856Z 26-1_2-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r1-A2\yap YAP_PORT=4400
+2026-11-22T18:54:09.864Z 26-1_2-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r1-D3\yap YAP_PORT=4402
+2026-11-22T18:55:15.064Z 26-1_2-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T18:55:16.692Z 26-1_2-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T18:55:20.843Z 26-1_2-r1-D2: PASS f1=true f2=true cost=$0.17 tokens=386755 wall=65s collisions=0 interventions=0 agents=3
+2026-11-22T18:55:21.120Z 26-1_2-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r2-A2\yap YAP_PORT=4401
+2026-11-22T18:55:22.538Z 26-1_2-r1-A2: PASS f1=true f2=true cost=$0.20 tokens=375166 wall=67s collisions=0 interventions=0 agents=1
+2026-11-22T18:55:22.804Z 26-1_2-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r2-D2\yap YAP_PORT=4400
+2026-11-22T18:55:24.642Z 26-1_2-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T18:55:30.407Z 26-1_2-r1-D3: PASS f1=true f2=true cost=$0.22 tokens=485449 wall=75s collisions=0 interventions=0 agents=3
+2026-11-22T18:55:30.663Z 26-1_2-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r2-D3\yap YAP_PORT=4402
+2026-11-22T18:56:26.190Z 26-1_2-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T18:56:32.177Z 26-1_2-r2-A2: PASS f1=true f2=true cost=$0.20 tokens=419704 wall=65s collisions=1 interventions=0 agents=1
+2026-11-22T18:56:32.472Z 26-1_2-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r3-A2\yap YAP_PORT=4401
+2026-11-22T18:56:59.087Z 26-1_2-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T18:57:04.751Z 26-1_2-r2-D2: PASS f1=true f2=true cost=$0.22 tokens=568193 wall=96s collisions=1 interventions=0 agents=3
+2026-11-22T18:57:05.035Z 26-1_2-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r3-D2\yap YAP_PORT=4400
+2026-11-22T18:57:31.299Z 26-1_2-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T18:57:31.709Z 26-1_2-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T18:57:37.011Z 26-1_2-r2-D3: PASS f1=true f2=true cost=$0.22 tokens=485546 wall=121s collisions=0 interventions=0 agents=3
+2026-11-22T18:57:37.284Z 26-1_2-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-1_2-r3-D3\yap YAP_PORT=4402
+2026-11-22T18:57:37.394Z 26-1_2-r3-A2: PASS f1=true f2=true cost=$0.19 tokens=323054 wall=59s collisions=0 interventions=0 agents=1
+2026-11-22T18:57:37.677Z 56-1_5-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r1-A2\yap YAP_PORT=4401
+2026-11-22T18:58:35.562Z 26-1_2-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T18:58:41.250Z 26-1_2-r3-D2: PASS f1=true f2=true cost=$0.21 tokens=459926 wall=91s collisions=0 interventions=0 agents=3
+2026-11-22T18:58:41.521Z 56-1_5-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r1-D2\yap YAP_PORT=4400
+2026-11-22T18:58:51.096Z 26-1_2-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T18:58:56.797Z 26-1_2-r3-D3: PASS f1=true f2=true cost=$0.20 tokens=451417 wall=74s collisions=1 interventions=0 agents=3
+2026-11-22T18:58:57.069Z 56-1_5-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r1-D3\yap YAP_PORT=4402
+2026-11-22T18:59:22.401Z 56-1_5-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T18:59:28.180Z 56-1_5-r1-A2: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T18:59:28.181Z 56-1_5-r1-A2: FAIL f1=false f2=true cost=$0.34 tokens=554094 wall=105s collisions=2 interventions=0 agents=1
+2026-11-22T18:59:28.467Z 56-1_5-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r2-A2\yap YAP_PORT=4401
+2026-11-22T19:00:08.505Z 56-1_5-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:00:14.346Z 56-1_5-r1-D2: feature 1: --- FAIL: TestSetAllowHeader (0.00s) |     --- FAIL: TestSetAllowHeader/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:00:14.346Z 56-1_5-r1-D2: FAIL f1=false f2=true cost=$0.31 tokens=554372 wall=87s collisions=0 interventions=0 agents=3
+2026-11-22T19:00:14.673Z 56-1_5-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r2-D2\yap YAP_PORT=4400
+2026-11-22T19:01:05.926Z 56-1_5-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:01:11.767Z 56-1_5-r2-A2: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:01:11.767Z 56-1_5-r2-A2: FAIL f1=false f2=true cost=$0.39 tokens=799574 wall=98s collisions=0 interventions=0 agents=1
+2026-11-22T19:01:12.062Z 56-1_5-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r2-D3\yap YAP_PORT=4401
+2026-11-22T19:01:23.061Z 56-1_5-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:01:28.842Z 56-1_5-r1-D3: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:01:28.843Z 56-1_5-r1-D3: FAIL f1=false f2=true cost=$0.49 tokens=1092772 wall=146s collisions=0 interventions=0 agents=3
+2026-11-22T19:01:29.116Z 56-1_5-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r3-A2\yap YAP_PORT=4402
+2026-11-22T19:02:37.066Z 56-1_5-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:02:43.134Z 56-1_5-r2-D3: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:02:43.135Z 56-1_5-r2-D3: FAIL f1=false f2=true cost=$0.29 tokens=486922 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T19:02:43.404Z 56-1_5-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r3-D2\yap YAP_PORT=4401
+2026-11-22T19:02:55.940Z 56-1_5-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:03:01.831Z 56-1_5-r3-A2: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:03:01.831Z 56-1_5-r3-A2: FAIL f1=false f2=true cost=$0.32 tokens=560175 wall=87s collisions=0 interventions=0 agents=1
+2026-11-22T19:03:02.096Z 56-1_5-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-1_5-r3-D3\yap YAP_PORT=4402
+2026-11-22T19:03:31.720Z 56-1_5-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:03:37.515Z 56-1_5-r2-D2: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:03:37.516Z 56-1_5-r2-D2: FAIL f1=false f2=true cost=$0.53 tokens=1336680 wall=197s collisions=0 interventions=0 agents=3
+2026-11-22T19:03:37.804Z 27-2_4-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r1-A2\yap YAP_PORT=4400
+2026-11-22T19:04:08.637Z 56-1_5-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:04:14.215Z 56-1_5-r3-D2: PASS f1=true f2=true cost=$0.28 tokens=485048 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T19:04:14.523Z 27-2_4-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r1-D2\yap YAP_PORT=4401
+2026-11-22T19:04:35.292Z 27-2_4-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:04:41.026Z 27-2_4-r1-A2: PASS f1=true f2=true cost=$0.17 tokens=280034 wall=58s collisions=0 interventions=0 agents=1
+2026-11-22T19:04:41.333Z 27-2_4-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r1-D3\yap YAP_PORT=4400
+2026-11-22T19:05:19.562Z 27-2_4-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:05:25.095Z 27-2_4-r1-D2: PASS f1=true f2=true cost=$0.18 tokens=440265 wall=65s collisions=0 interventions=0 agents=3
+2026-11-22T19:05:25.354Z 27-2_4-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r2-A2\yap YAP_PORT=4401
+2026-11-22T19:05:38.363Z 56-1_5-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:05:44.272Z 56-1_5-r3-D3: feature 1: --- FAIL: TestMethodNotAllowed (0.00s) |     --- FAIL: TestMethodNotAllowed/Unregistered_Method (0.00s) | FAIL
+2026-11-22T19:05:44.273Z 56-1_5-r3-D3: FAIL f1=false f2=true cost=$0.38 tokens=802734 wall=156s collisions=0 interventions=0 agents=3
+2026-11-22T19:05:44.532Z 27-2_4-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r2-D2\yap YAP_PORT=4402
+2026-11-22T19:06:25.166Z 27-2_4-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:06:30.788Z 27-2_4-r1-D3: PASS f1=true f2=true cost=$0.21 tokens=447222 wall=104s collisions=0 interventions=0 agents=3
+2026-11-22T19:06:31.062Z 27-2_4-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r2-D3\yap YAP_PORT=4400
+2026-11-22T19:06:32.997Z 27-2_4-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:06:38.720Z 27-2_4-r2-A2: PASS f1=true f2=true cost=$0.17 tokens=361897 wall=68s collisions=1 interventions=0 agents=1
+2026-11-22T19:06:38.989Z 27-2_4-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r3-A2\yap YAP_PORT=4401
+2026-11-22T19:07:32.282Z 27-2_4-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:07:37.876Z 27-2_4-r3-A2: PASS f1=true f2=true cost=$0.15 tokens=256003 wall=53s collisions=0 interventions=0 agents=1
+2026-11-22T19:07:38.163Z 27-2_4-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r3-D2\yap YAP_PORT=4401
+2026-11-22T19:07:56.309Z 27-2_4-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:08:01.912Z 27-2_4-r2-D3: PASS f1=true f2=true cost=$0.22 tokens=512011 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T19:08:02.180Z 27-2_4-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-2_4-r3-D3\yap YAP_PORT=4400
+2026-11-22T19:08:04.466Z 27-2_4-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:08:10.278Z 27-2_4-r2-D2: PASS f1=true f2=true cost=$0.23 tokens=540645 wall=140s collisions=1 interventions=0 agents=3
+2026-11-22T19:08:10.550Z 26-2_4-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r1-A2\yap YAP_PORT=4402
+2026-11-22T19:08:38.912Z 27-2_4-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:08:44.573Z 27-2_4-r3-D2: PASS f1=true f2=true cost=$0.17 tokens=379644 wall=61s collisions=0 interventions=0 agents=3
+2026-11-22T19:08:44.865Z 26-2_4-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r1-D2\yap YAP_PORT=4401
+2026-11-22T19:09:27.067Z 27-2_4-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:09:32.836Z 27-2_4-r3-D3: PASS f1=true f2=true cost=$0.21 tokens=478410 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T19:09:33.136Z 26-2_4-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r1-D3\yap YAP_PORT=4400
+2026-11-22T19:09:41.220Z 26-2_4-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:09:47.507Z 26-2_4-r1-A2: PASS f1=true f2=true cost=$0.28 tokens=527829 wall=91s collisions=0 interventions=0 agents=1
+2026-11-22T19:09:47.798Z 26-2_4-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r2-A2\yap YAP_PORT=4402
+2026-11-22T19:10:15.376Z 26-2_4-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:10:20.902Z 26-2_4-r1-D2: PASS f1=true f2=true cost=$0.28 tokens=466641 wall=91s collisions=0 interventions=0 agents=3
+2026-11-22T19:10:21.197Z 26-2_4-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r2-D2\yap YAP_PORT=4401
+2026-11-22T19:11:17.460Z 26-2_4-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:11:23.123Z 26-2_4-r1-D3: PASS f1=true f2=true cost=$0.33 tokens=666494 wall=105s collisions=0 interventions=0 agents=3
+2026-11-22T19:11:23.382Z 26-2_4-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r2-D3\yap YAP_PORT=4400
+2026-11-22T19:11:27.076Z 26-2_4-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:11:32.999Z 26-2_4-r2-A2: PASS f1=true f2=true cost=$0.33 tokens=613940 wall=99s collisions=0 interventions=0 agents=1
+2026-11-22T19:11:33.338Z 26-2_4-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r3-A2\yap YAP_PORT=4402
+2026-11-22T19:12:06.220Z 26-2_4-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:12:11.922Z 26-2_4-r2-D2: PASS f1=true f2=true cost=$0.31 tokens=605480 wall=105s collisions=0 interventions=0 agents=3
+2026-11-22T19:12:12.206Z 26-2_4-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r3-D2\yap YAP_PORT=4401
+2026-11-22T19:13:02.823Z 26-2_4-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:13:07.975Z 26-2_4-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:13:08.483Z 26-2_4-r3-A2: PASS f1=true f2=true cost=$0.28 tokens=500373 wall=90s collisions=0 interventions=0 agents=1
+2026-11-22T19:13:08.771Z 26-2_4-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\26-2_4-r3-D3\yap YAP_PORT=4402
+2026-11-22T19:13:14.100Z 26-2_4-r2-D3: PASS f1=true f2=true cost=$0.30 tokens=626925 wall=105s collisions=1 interventions=0 agents=3
+2026-11-22T19:13:14.388Z 56-2_3-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r1-A2\yap YAP_PORT=4400
+2026-11-22T19:13:56.525Z 26-2_4-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:14:02.122Z 26-2_4-r3-D2: PASS f1=true f2=true cost=$0.33 tokens=688238 wall=105s collisions=0 interventions=0 agents=3
+2026-11-22T19:14:02.418Z 56-2_3-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r1-D2\yap YAP_PORT=4401
+2026-11-22T19:14:23.632Z 56-2_3-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:14:29.235Z 56-2_3-r1-A2: PASS f1=true f2=true cost=$0.22 tokens=425805 wall=69s collisions=0 interventions=0 agents=1
+2026-11-22T19:14:29.509Z 56-2_3-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r1-D3\yap YAP_PORT=4400
+2026-11-22T19:14:54.050Z 26-2_4-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:14:59.854Z 26-2_4-r3-D3: PASS f1=true f2=true cost=$0.34 tokens=694289 wall=105s collisions=0 interventions=0 agents=3
+2026-11-22T19:15:00.139Z 56-2_3-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r2-A2\yap YAP_PORT=4402
+2026-11-22T19:15:28.481Z 56-2_3-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:15:34.167Z 56-2_3-r1-D2: PASS f1=true f2=true cost=$0.29 tokens=686357 wall=86s collisions=1 interventions=0 agents=3
+2026-11-22T19:15:34.491Z 56-2_3-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r2-D2\yap YAP_PORT=4401
+2026-11-22T19:16:05.055Z 56-2_3-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:16:10.741Z 56-2_3-r1-D3: PASS f1=true f2=true cost=$0.26 tokens=506480 wall=96s collisions=0 interventions=0 agents=3
+2026-11-22T19:16:11.017Z 56-2_3-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r2-D3\yap YAP_PORT=4400
+2026-11-22T19:16:34.498Z 56-2_3-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:16:40.387Z 56-2_3-r2-A2: PASS f1=true f2=true cost=$0.26 tokens=531969 wall=95s collisions=2 interventions=0 agents=1
+2026-11-22T19:16:40.688Z 56-2_3-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r3-A2\yap YAP_PORT=4402
+2026-11-22T19:16:49.121Z 56-2_3-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:16:54.702Z 56-2_3-r2-D2: PASS f1=true f2=true cost=$0.24 tokens=414526 wall=75s collisions=0 interventions=0 agents=3
+2026-11-22T19:16:54.988Z 56-2_3-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r3-D2\yap YAP_PORT=4401
+2026-11-22T19:17:20.273Z 56-2_3-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:17:26.117Z 56-2_3-r2-D3: PASS f1=true f2=true cost=$0.24 tokens=430054 wall=69s collisions=0 interventions=0 agents=3
+2026-11-22T19:17:26.411Z 56-2_3-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\56-2_3-r3-D3\yap YAP_PORT=4400
+2026-11-22T19:17:57.158Z 56-2_3-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:18:02.844Z 56-2_3-r3-A2: PASS f1=true f2=true cost=$0.27 tokens=466402 wall=77s collisions=1 interventions=0 agents=1
+2026-11-22T19:18:03.127Z 27-3_4-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r1-A2\yap YAP_PORT=4402
+2026-11-22T19:18:09.543Z 56-2_3-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:18:15.068Z 56-2_3-r3-D2: PASS f1=true f2=true cost=$0.24 tokens=474565 wall=75s collisions=0 interventions=0 agents=3
+2026-11-22T19:18:15.391Z 27-3_4-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r1-D2\yap YAP_PORT=4401
+2026-11-22T19:18:47.619Z 56-2_3-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:18:53.197Z 56-2_3-r3-D3: PASS f1=true f2=true cost=$0.25 tokens=473474 wall=81s collisions=0 interventions=0 agents=3
+2026-11-22T19:18:53.482Z 27-3_4-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r1-D3\yap YAP_PORT=4400
+2026-11-22T19:19:06.088Z 27-3_4-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:19:11.905Z 27-3_4-r1-A2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:19:11.905Z 27-3_4-r1-A2: FAIL f1=false f2=true cost=$0.17 tokens=320205 wall=63s collisions=0 interventions=0 agents=1
+2026-11-22T19:19:12.177Z 27-3_4-r2-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r2-A2\yap YAP_PORT=4402
+2026-11-22T19:19:39.494Z 27-3_4-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:19:45.174Z 27-3_4-r1-D2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:19:45.175Z 27-3_4-r1-D2: FAIL f1=false f2=true cost=$0.19 tokens=442925 wall=84s collisions=0 interventions=0 agents=3
+2026-11-22T19:19:45.452Z 27-3_4-r2-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r2-D2\yap YAP_PORT=4401
+2026-11-22T19:20:24.639Z 27-3_4-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:20:30.270Z 27-3_4-r1-D3: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:20:30.270Z 27-3_4-r1-D3: FAIL f1=false f2=true cost=$0.22 tokens=552292 wall=91s collisions=0 interventions=0 agents=3
+2026-11-22T19:20:30.550Z 27-3_4-r2-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r2-D3\yap YAP_PORT=4400
+2026-11-22T19:21:10.690Z 27-3_4-r2-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:21:16.314Z 27-3_4-r2-D2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:21:16.314Z 27-3_4-r2-D2: FAIL f1=false f2=true cost=$0.18 tokens=421848 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T19:21:16.573Z 27-3_4-r3-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r3-A2\yap YAP_PORT=4401
+2026-11-22T19:21:36.152Z 27-3_4-r2-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:21:41.788Z 27-3_4-r2-D3: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:21:41.788Z 27-3_4-r2-D3: FAIL f1=false f2=true cost=$0.21 tokens=455317 wall=66s collisions=0 interventions=0 agents=3
+2026-11-22T19:21:42.070Z 27-3_4-r3-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r3-D2\yap YAP_PORT=4400
+2026-11-22T19:22:21.134Z 27-3_4-r3-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:22:26.633Z 27-3_4-r3-A2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:22:26.633Z 27-3_4-r3-A2: FAIL f1=false f2=true cost=$0.18 tokens=394140 wall=65s collisions=1 interventions=0 agents=1
+2026-11-22T19:22:26.888Z 27-3_4-r3-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3\27-3_4-r3-D3\yap YAP_PORT=4401
+2026-11-22T19:22:53.447Z 27-3_4-r3-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T19:22:59.388Z 27-3_4-r3-D2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:22:59.389Z 27-3_4-r3-D2: FAIL f1=false f2=true cost=$0.19 tokens=387449 wall=72s collisions=0 interventions=0 agents=3
+2026-11-22T19:23:32.243Z 27-3_4-r3-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T19:23:37.779Z 27-3_4-r3-D3: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:23:37.779Z 27-3_4-r3-D3: FAIL f1=false f2=true cost=$0.22 tokens=572196 wall=65s collisions=0 interventions=0 agents=3
+2026-11-22T19:26:51.991Z 27-3_4-r2-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T19:26:57.728Z 27-3_4-r2-A2: feature 3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T19:26:57.728Z 27-3_4-r2-A2: FAIL f1=false f2=true cost=$0.27 tokens=600111 wall=460s collisions=1 interventions=0 agents=1
+2026-11-22T19:26:58.148Z bench 2026-11-22-v3: done, 54 rows, 0 could not run, cost $13.73, plan weekly usage 1% -> 2%
+2026-11-22T19:26:58.148Z bench 2026-11-22-v3: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench3\bench\results\2026-11-22-v3.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench3\bench\results\2026-11-22-v3.md

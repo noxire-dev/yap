@@ -85,8 +85,7 @@ Paste in a fresh session in this repo, in auto mode:
   run, as in CooperBench (no union merge). D's workers share the commander's tree, which is yap's gap today. E
   merges through its own gate (`go test ./...`).
 - Every run gets its own daemon: `YAP_HOME` in the run's temp dir, `YAP_PORT` 4200 + slot. A and B run with
-  `YAP_AGENT=1`, so yap's hooks stay quiet. `runEnv` refuses port 4170 and `~/.yap`. The daemons run with
-  `YAP_YOLO=1`. Without it, E's `yap gate` puts a yes/no dialog on the user's desktop every run.
+  `YAP_AGENT=1`, so yap's hooks stay quiet. `runEnv` refuses port 4170 and `~/.yap`.
 - Scoring: the final patch without test files, on a fresh base checkout, plus each feature's `tests.patch`, then
   `go test -run <its tests> ./...`. `bun bench/run.ts --gold` shows the scorer passes the gold patch and fails the
   base on every pair.

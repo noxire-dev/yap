@@ -1,0 +1,149 @@
+[
+ {
+  "date": "2026-11-22",
+  "run": "26-1_2-r1-D2",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "D2",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.2161,
+  "tokens": 546454,
+  "tokens_detail": {
+   "input": 38,
+   "output": 6656,
+   "cache_read": 502881,
+   "cache_creation": 36879
+  },
+  "lines_added": 635,
+  "wall_s": 81,
+  "collisions": 0,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 3,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ],
+   [
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v3-dry\\26-1_2-r1-D2\\yap",
+   "port": 4401
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "26-1_2-r1-A2",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "A2",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.2572,
+  "tokens": 394310,
+  "tokens_detail": {
+   "input": 40,
+   "output": 6658,
+   "cache_read": 331172,
+   "cache_creation": 56440
+  },
+  "lines_added": 622,
+  "wall_s": 83,
+  "collisions": 0,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 1,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   []
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v3-dry\\26-1_2-r1-A2\\yap",
+   "port": 4400
+  }
+ },
+ {
+  "date": "2026-11-22",
+  "run": "26-1_2-r1-D3",
+  "task": "26",
+  "pair": [
+   1,
+   2
+  ],
+  "repeat": 1,
+  "setup": "D3",
+  "pass": true,
+  "f1": true,
+  "f2": true,
+  "total_cost_usd": 0.2304,
+  "tokens": 523723,
+  "tokens_detail": {
+   "input": 34,
+   "output": 6694,
+   "cache_read": 472982,
+   "cache_creation": 44013
+  },
+  "lines_added": 632,
+  "wall_s": 85,
+  "collisions": 0,
+  "collisions_detail": {
+   "merge_conflict_files": 0,
+   "destructive_git": 0,
+   "stale_edits": 0
+  },
+  "interventions": 0,
+  "interventions_detail": [],
+  "agents": 3,
+  "api_key_sources": [
+   "none"
+  ],
+  "plugins": [
+   [
+    "yap"
+   ],
+   [
+    "ponytail",
+    "yap"
+   ],
+   [
+    "ponytail",
+    "yap"
+   ]
+  ],
+  "daemon": {
+   "home": "C:\\Users\\noxire\\AppData\\Local\\Temp\\yapbench\\2026-11-22-v3-dry\\26-1_2-r1-D3\\yap",
+   "port": 4402
+  }
+ }
+]

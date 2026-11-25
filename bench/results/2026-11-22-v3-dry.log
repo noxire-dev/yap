@@ -1,0 +1,12 @@
+2026-11-22T18:52:10.760Z bench 2026-11-22-v3-dry: 1 pairs × 1 repeats × setups A2D2D3, model claude-sonnet-5-5, 3 at a time, 45 min a run; daemons on 4400+slot, shared daemon port 4170 is never used; run dirs C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3-dry; plan weekly usage 1%
+2026-11-22T18:52:11.038Z 26-1_2-r1-A2: start, setup A2 (subagents, trusting (Task tool, features as files)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3-dry\26-1_2-r1-A2\yap YAP_PORT=4400
+2026-11-22T18:52:11.056Z 26-1_2-r1-D2: start, setup D2 (commander on Haiku, pointing (yap spawn)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3-dry\26-1_2-r1-D2\yap YAP_PORT=4401
+2026-11-22T18:52:11.063Z 26-1_2-r1-D3: start, setup D3 (D2 with lean ponytail workers (yap spawn --skills ponytail)), throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v3-dry\26-1_2-r1-D3\yap YAP_PORT=4402
+2026-11-22T18:53:32.238Z 26-1_2-r1-D2: init check ok: 3 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap]
+2026-11-22T18:53:34.212Z 26-1_2-r1-A2: init check ok: 1 agents, agent 1 []
+2026-11-22T18:53:36.167Z 26-1_2-r1-D3: init check ok: 3 agents, agent 1 [yap], agent 2 [ponytail, yap], agent 3 [ponytail, yap]
+2026-11-22T18:53:38.117Z 26-1_2-r1-D2: PASS f1=true f2=true cost=$0.22 tokens=546454 wall=81s collisions=0 interventions=0 agents=3
+2026-11-22T18:53:39.995Z 26-1_2-r1-A2: PASS f1=true f2=true cost=$0.26 tokens=394310 wall=83s collisions=0 interventions=0 agents=1
+2026-11-22T18:53:41.946Z 26-1_2-r1-D3: PASS f1=true f2=true cost=$0.23 tokens=523723 wall=85s collisions=0 interventions=0 agents=3
+2026-11-22T18:53:42.157Z bench 2026-11-22-v3-dry: done, 3 rows, 0 could not run, cost $0.70, plan weekly usage 1% -> 1%
+2026-11-22T18:53:42.157Z bench 2026-11-22-v3-dry: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench3\bench\results\2026-11-22-v3-dry.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench3\bench\results\2026-11-22-v3-dry.md

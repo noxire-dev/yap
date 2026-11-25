@@ -1,0 +1,20 @@
+2026-11-22T22:30:38.113Z bench 2026-11-22-v4-dry: tasks L8 × 1 repeats × setups A4,D4,D0, model claude-sonnet-5-5, 3 at a time, 45 min a run; daemons on 4500+slot, shared daemon port 4170 is never used; run dirs C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4-dry; plan weekly usage 3%
+2026-11-22T22:30:38.348Z L8-r1-A4: start, setup A4 (subagents, one per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4-dry\L8-r1-A4\yap YAP_PORT=4500
+2026-11-22T22:30:38.380Z L8-r1-D0: start, setup D0 (D4 with the workers' yap hooks off), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4-dry\L8-r1-D0\yap YAP_PORT=4502
+2026-11-22T22:30:38.406Z L8-r1-D4: start, setup D4 (commander on Haiku, one yap spawn per feature, all at once), 8 features, throwaway daemon YAP_HOME=C:\Users\noxire\AppData\Local\Temp\yapbench\2026-11-22-v4-dry\L8-r1-D4\yap YAP_PORT=4501
+2026-11-22T22:33:26.329Z L8-r1-D4: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:33:26.329Z L8-r1-D4: hooks check: 8 peer-warning lines in 8 worker logs (1, 1, 1, 1, 1, 1, 1, 1)
+2026-11-22T22:33:26.465Z L8-r1-A4: init check ok: 1 agents, agent 1 []
+2026-11-22T22:33:49.355Z L8-r1-D4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:33:49.356Z L8-r1-D4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:33:49.356Z L8-r1-D4: 6/8 features [11011101] cost=$0.94 tokens=2037433 wall=168s peak-context=28512 parent-calls=2 files-two-edited=1 clobbers=1 agents=9
+2026-11-22T22:33:49.479Z L8-r1-A4: feature 26.3: --- FAIL: TestVersionSelector (0.00s) | FAIL | FAIL	github.com/go-chi/chi/v5	0.931s
+2026-11-22T22:33:49.479Z L8-r1-A4: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:33:49.479Z L8-r1-A4: 6/8 features [11011101] cost=$1.08 tokens=1821298 wall=168s peak-context=41820 parent-calls=9 files-two-edited=1 clobbers=0 agents=1
+2026-11-22T22:33:57.155Z L8-r1-D0: init check ok: 9 agents, agent 1 [yap], agent 2 [yap], agent 3 [yap], agent 4 [yap], agent 5 [yap], agent 6 [yap], agent 7 [yap], agent 8 [yap], agent 9 [yap]
+2026-11-22T22:33:57.155Z L8-r1-D0: hooks check: 0 peer-warning lines in 8 worker logs (0, 0, 0, 0, 0, 0, 0, 0)
+2026-11-22T22:34:19.379Z L8-r1-D0: feature 26.3: --- FAIL: TestVersionSelector (0.01s) | --- FAIL: TestRoleBasedSelector (0.00s) | FAIL
+2026-11-22T22:34:19.380Z L8-r1-D0: feature 27.3: FAIL	github.com/go-chi/chi/v5 [build failed] | FAIL | .\logging_test.go:27:2: undefined: logDebug
+2026-11-22T22:34:19.380Z L8-r1-D0: 6/8 features [11011101] cost=$1.06 tokens=2630919 wall=199s peak-context=28599 parent-calls=2 files-two-edited=1 clobbers=0 agents=9
+2026-11-22T22:34:19.596Z bench 2026-11-22-v4-dry: done, 3 rows, 0 could not run, cost $3.08, plan weekly usage 3% -> 3%
+2026-11-22T22:34:19.597Z bench 2026-11-22-v4-dry: wrote C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench4\bench\results\2026-11-22-v4-dry.json and C:\Users\noxire\falke\Projects\mirako\kumi\.claude\worktrees\bench4\bench\results\2026-11-22-v4-dry.md
